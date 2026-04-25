@@ -2,31 +2,25 @@
 //  CloseCutApp.swift
 //  CloseCut
 //
-//  Created by Azul Ramirez Kuri on 25/04/26.
-//
 
 import SwiftUI
 import SwiftData
 
 @main
 struct CloseCutApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
         }
-        .modelContainer(sharedModelContainer)
+        .modelContainer(for: [
+            LocalEntry.self,
+            LocalReaction.self,
+            LocalComment.self,
+            LocalCircle.self,
+            LocalUserProfile.self,
+            PendingAction.self
+        ])
     }
 }

@@ -6,3 +6,7 @@
 //
 
 import Foundation
+
+struct AppEnvironment {
+    static let appName = "CloseCut"
+}
