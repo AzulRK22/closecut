@@ -11,11 +11,13 @@ struct CloseCutApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     @StateObject private var authService = AuthService()
+    @StateObject private var sessionViewModel = SessionViewModel()
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(authService)
+                .environmentObject(sessionViewModel)
         }
         .modelContainer(for: [
             LocalEntry.self,

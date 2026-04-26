@@ -4,11 +4,14 @@
 //
 //  Created by Azul Ramirez Kuri on 25/04/26.
 //
+
 import SwiftUI
 import SwiftData
 
 struct RootView: View {
     @EnvironmentObject private var authService: AuthService
+    @EnvironmentObject private var sessionViewModel: SessionViewModel
+    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         switch authService.authState {
@@ -17,12 +20,57 @@ struct RootView: View {
 
         case .signedOut:
             AuthView()
+                .onAppear {
+                    sessionViewModel.reset()
+                }
 
         case .signedIn(let user):
-            RootSignedInTestView(user: user)
+            SignedInSessionGate(user: user)
 
         case .error:
             AuthView()
+        }
+    }
+}
+
+private struct SignedInSessionGate: View {
+    @EnvironmentObject private var authService: AuthService
+    @EnvironmentObject private var sessionViewModel: SessionViewModel
+    @Environment(\.modelContext) private var modelContext
+
+    let user: AuthUser
+
+    var body: some View {
+        Group {
+            switch sessionViewModel.profileState {
+            case .idle:
+                LoadingProfileView()
+                    .task {
+                        await sessionViewModel.prepareSession(
+                            authUser: user,
+                            modelContext: modelContext
+                        )
+                    }
+
+            case .loading:
+                LoadingProfileView()
+
+            case .ready(let profile):
+                RootSignedInTestView(
+                    user: user,
+                    profile: profile
+                )
+
+            case .error(let message):
+                ProfileErrorView(message: message) {
+                    Task {
+                        await sessionViewModel.prepareSession(
+                            authUser: user,
+                            modelContext: modelContext
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -40,6 +88,45 @@ private struct LoadingAuthView: View {
     }
 }
 
+private struct LoadingProfileView: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+
+            Text("Preparing your profile")
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Preparing your profile")
+    }
+}
+
+private struct ProfileErrorView: View {
+    let message: String
+    let retry: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.largeTitle)
+
+            Text("We couldn't prepare your profile.")
+                .font(.headline)
+
+            Text(message)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            Button("Retry") {
+                retry()
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding()
+    }
+}
+
 private struct RootSignedInTestView: View {
     @EnvironmentObject private var authService: AuthService
     @Environment(\.modelContext) private var modelContext
@@ -48,6 +135,7 @@ private struct RootSignedInTestView: View {
     private var entries: [LocalEntry]
 
     let user: AuthUser
+    let profile: UserProfile
 
     var body: some View {
         NavigationStack {
@@ -59,7 +147,10 @@ private struct RootSignedInTestView: View {
                 Text("Signed in as:")
                     .foregroundStyle(.secondary)
 
-                Text(user.email ?? user.id)
+                Text(profile.displayName)
+                    .font(.headline)
+
+                Text(profile.email ?? user.id)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
@@ -92,7 +183,7 @@ private struct RootSignedInTestView: View {
             tags: ["quiet", "memory", "fatherhood"],
             intensity: 5,
             watchContext: .home,
-            visibility: .privateOnly,
+            visibility: profile.defaultVisibility,
             syncStatus: .pending
         )
 
@@ -109,6 +200,7 @@ private struct RootSignedInTestView: View {
 #Preview {
     RootView()
         .environmentObject(AuthService())
+        .environmentObject(SessionViewModel())
         .modelContainer(for: [
             LocalEntry.self,
             LocalReaction.self,
