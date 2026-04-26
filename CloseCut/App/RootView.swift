@@ -11,7 +11,6 @@ import SwiftData
 struct RootView: View {
     @EnvironmentObject private var authService: AuthService
     @EnvironmentObject private var sessionViewModel: SessionViewModel
-    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         switch authService.authState {
@@ -34,7 +33,6 @@ struct RootView: View {
 }
 
 private struct SignedInSessionGate: View {
-    @EnvironmentObject private var authService: AuthService
     @EnvironmentObject private var sessionViewModel: SessionViewModel
     @Environment(\.modelContext) private var modelContext
 
@@ -56,7 +54,7 @@ private struct SignedInSessionGate: View {
                 LoadingProfileView()
 
             case .ready(let profile):
-                RootSignedInTestView(
+                HomeView(
                     user: user,
                     profile: profile
                 )
@@ -124,94 +122,6 @@ private struct ProfileErrorView: View {
             .buttonStyle(.borderedProminent)
         }
         .padding()
-    }
-}
-
-private struct RootSignedInTestView: View {
-    @EnvironmentObject private var authService: AuthService
-    @Environment(\.modelContext) private var modelContext
-
-    @Query(sort: \LocalEntry.watchedAt, order: .reverse)
-    private var entries: [LocalEntry]
-
-    let user: AuthUser
-    let profile: UserProfile
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 16) {
-                Text("CloseCut")
-                    .font(.largeTitle)
-                    .fontWeight(.semibold)
-
-                Text("Signed in as:")
-                    .foregroundStyle(.secondary)
-
-                Text(profile.displayName)
-                    .font(.headline)
-
-                Text(profile.email ?? user.id)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-
-                Text("Local entries: \(entries.count)")
-                    .foregroundStyle(.secondary)
-
-                if let latestEntry = entries.first {
-                    VStack(spacing: 4) {
-                        Text("Latest: \(latestEntry.title)")
-                            .font(.footnote)
-
-                        Text("Tags: \(latestEntry.tags.joined(separator: ", "))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        Text("Status: \(latestEntry.syncStatusRaw)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .multilineTextAlignment(.center)
-                }
-
-                Button("Create test entry") {
-                    createTestEntry()
-                }
-                .buttonStyle(.borderedProminent)
-
-                Button("Sign Out") {
-                    authService.signOut()
-                }
-                .buttonStyle(.bordered)
-            }
-            .padding()
-            .navigationTitle("CloseCut")
-        }
-    }
-
-    private func createTestEntry() {
-        let repository = EntryRepository()
-
-        do {
-            _ = try repository.createLocalEntry(
-                ownerId: user.id,
-                title: "Aftersun",
-                type: .movie,
-                mood: "Melancholic",
-                takeaway: "Some memories hurt because they mattered.",
-                quote: nil,
-                tags: ["quiet", "memory", "fatherhood", "memory"],
-                intensity: 5,
-                watchContext: .home,
-                cinemaAudio: nil,
-                cinemaScreen: nil,
-                cinemaComfort: nil,
-                visibility: profile.defaultVisibility,
-                watchedAt: Date(),
-                modelContext: modelContext
-            )
-        } catch {
-            print("Failed to create test entry via repository: \(error.localizedDescription)")
-        }
     }
 }
 
