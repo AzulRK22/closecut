@@ -19,6 +19,7 @@ struct HomeView: View {
     let profile: UserProfile
 
     @State private var selectedSegment: HomeSegment = .timeline
+    @State private var isShowingEntryEditor = false
 
     private var entries: [Entry] {
         localEntries
@@ -49,7 +50,9 @@ struct HomeView: View {
                     case .timeline:
                         TimelineView(
                             entries: entries,
-                            onCreateEntry: createTestEntry
+                            onCreateEntry: {
+                                isShowingEntryEditor = true
+                            }
                         )
 
                     case .quickPick:
@@ -58,7 +61,9 @@ struct HomeView: View {
                             message: "Log at least 3 watches and QuickPick will start making suggestions.",
                             systemImage: "sparkles",
                             actionTitle: "Log a film now",
-                            action: createTestEntry
+                            action: {
+                                isShowingEntryEditor = true
+                            }
                         )
                     }
                 }
@@ -67,7 +72,7 @@ struct HomeView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        createTestEntry()
+                        isShowingEntryEditor = true
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 17, weight: .semibold))
@@ -76,66 +81,16 @@ struct HomeView: View {
                     .accessibilityLabel("New entry")
                 }
             }
+            .sheet(isPresented: $isShowingEntryEditor) {
+                EntryEditorView(
+                    user: user,
+                    profile: profile,
+                    hasCircleMembers: false
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
+            }
         }
-    }
-
-    private func createTestEntry() {
-        let repository = EntryRepository()
-
-        do {
-            _ = try repository.createLocalEntry(
-                ownerId: user.id,
-                title: sampleTitle(),
-                type: .movie,
-                mood: sampleMood(),
-                takeaway: sampleTakeaway(),
-                quote: nil,
-                tags: ["quiet", "memory", "cinema", "memory"],
-                intensity: Int.random(in: 1...5),
-                watchContext: Bool.random() ? .home : .cinema,
-                cinemaAudio: 4,
-                cinemaScreen: 5,
-                cinemaComfort: 4,
-                visibility: profile.defaultVisibility,
-                watchedAt: Date(),
-                modelContext: modelContext
-            )
-        } catch {
-            print("Failed to create test entry: \(error.localizedDescription)")
-        }
-    }
-
-    private func sampleTitle() -> String {
-        [
-            "Aftersun",
-            "Past Lives",
-            "Arrival",
-            "The Bear",
-            "Little Women",
-            "Her",
-            "Lost in Translation"
-        ].randomElement() ?? "Aftersun"
-    }
-
-    private func sampleMood() -> String {
-        [
-            "Melancholic",
-            "Soft",
-            "Inspired",
-            "Heavy",
-            "Comforted",
-            "Reflective"
-        ].randomElement() ?? "Reflective"
-    }
-
-    private func sampleTakeaway() -> String {
-        [
-            "Some memories hurt because they mattered.",
-            "It stayed with me more than I expected.",
-            "Quiet stories can hit the hardest.",
-            "A reminder that timing changes everything.",
-            "It felt like a conversation I needed today."
-        ].randomElement() ?? "It stayed with me."
     }
 }
 

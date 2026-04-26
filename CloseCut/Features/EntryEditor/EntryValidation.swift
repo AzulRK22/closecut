@@ -12,13 +12,13 @@ enum EntryValidation {
     static let maxMoodLength = 40
     static let maxTakeawayLength = 280
     static let maxQuoteLength = 240
-    static let maxTags = 8
+    static let maxTags = 5
     static let minIntensity = 1
     static let maxIntensity = 5
 
     static func validate(
         title: String,
-        mood: String,
+        mood: Mood?,
         takeaway: String,
         quote: String?,
         tags: [String],
@@ -31,7 +31,6 @@ enum EntryValidation {
         var errors: [String] = []
 
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cleanMood = mood.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanTakeaway = takeaway.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanQuote = quote?.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -43,16 +42,8 @@ enum EntryValidation {
             errors.append("Title must be \(maxTitleLength) characters or less.")
         }
 
-        if cleanMood.isEmpty {
-            errors.append("Mood is required.")
-        }
-
-        if cleanMood.count > maxMoodLength {
-            errors.append("Mood must be \(maxMoodLength) characters or less.")
-        }
-
-        if cleanTakeaway.isEmpty {
-            errors.append("Takeaway is required.")
+        if mood == nil {
+            errors.append("Choose a mood.")
         }
 
         if cleanTakeaway.count > maxTakeawayLength {
@@ -60,7 +51,7 @@ enum EntryValidation {
         }
 
         if let cleanQuote, cleanQuote.count > maxQuoteLength {
-            errors.append("Quote must be \(maxQuoteLength) characters or less.")
+            errors.append("Key moment must be \(maxQuoteLength) characters or less.")
         }
 
         if tags.count > maxTags {
