@@ -4,13 +4,50 @@
 //
 //  Created by Azul Ramirez Kuri on 25/04/26.
 //
-
 import SwiftUI
 import SwiftData
 
 struct RootView: View {
+    @EnvironmentObject private var authService: AuthService
+
+    var body: some View {
+        switch authService.authState {
+        case .loading:
+            LoadingAuthView()
+
+        case .signedOut:
+            AuthView()
+
+        case .signedIn(let user):
+            RootSignedInTestView(user: user)
+
+        case .error:
+            AuthView()
+        }
+    }
+}
+
+private struct LoadingAuthView: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+
+            Text("Preparing CloseCut")
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Preparing CloseCut")
+    }
+}
+
+private struct RootSignedInTestView: View {
+    @EnvironmentObject private var authService: AuthService
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \LocalEntry.watchedAt, order: .reverse) private var entries: [LocalEntry]
+
+    @Query(sort: \LocalEntry.watchedAt, order: .reverse)
+    private var entries: [LocalEntry]
+
+    let user: AuthUser
 
     var body: some View {
         NavigationStack {
@@ -19,6 +56,13 @@ struct RootView: View {
                     .font(.largeTitle)
                     .fontWeight(.semibold)
 
+                Text("Signed in as:")
+                    .foregroundStyle(.secondary)
+
+                Text(user.email ?? user.id)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
                 Text("Local entries: \(entries.count)")
                     .foregroundStyle(.secondary)
 
@@ -26,6 +70,11 @@ struct RootView: View {
                     createTestEntry()
                 }
                 .buttonStyle(.borderedProminent)
+
+                Button("Sign Out") {
+                    authService.signOut()
+                }
+                .buttonStyle(.bordered)
             }
             .padding()
             .navigationTitle("CloseCut")
@@ -34,7 +83,7 @@ struct RootView: View {
 
     private func createTestEntry() {
         let entry = LocalEntry(
-            ownerId: "local-test-user",
+            ownerId: user.id,
             title: "Aftersun",
             type: .movie,
             mood: "Melancholic",
@@ -59,6 +108,7 @@ struct RootView: View {
 
 #Preview {
     RootView()
+        .environmentObject(AuthService())
         .modelContainer(for: [
             LocalEntry.self,
             LocalReaction.self,

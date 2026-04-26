@@ -10,9 +10,12 @@ import SwiftData
 struct CloseCutApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
+    @StateObject private var authService = AuthService()
+
     var body: some Scene {
         WindowGroup {
             RootView()
+                .environmentObject(authService)
         }
         .modelContainer(for: [
             LocalEntry.self,
