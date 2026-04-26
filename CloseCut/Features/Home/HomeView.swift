@@ -29,59 +29,51 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                Picker("Home section", selection: $selectedSegment) {
-                    ForEach(HomeSegment.allCases) { segment in
-                        Text(segment.title)
-                            .tag(segment)
+            ZStack {
+                CloseCutColors.backgroundPrimary
+                    .ignoresSafeArea()
+
+                VStack(spacing: 0) {
+                    Picker("Home section", selection: $selectedSegment) {
+                        ForEach(HomeSegment.allCases) { segment in
+                            Text(segment.title)
+                                .tag(segment)
+                        }
                     }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-                .padding(.bottom, 8)
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 8)
 
-                switch selectedSegment {
-                case .timeline:
-                    TimelineView(
-                        entries: entries,
-                        onCreateEntry: createTestEntry
-                    )
+                    switch selectedSegment {
+                    case .timeline:
+                        TimelineView(
+                            entries: entries,
+                            onCreateEntry: createTestEntry
+                        )
 
-                case .quickPick:
-                    EmptyStateView(
-                        title: "QuickPick is coming",
-                        message: "Soon this will suggest what to watch using your history and Circle signals.",
-                        systemImage: "sparkles"
-                    )
+                    case .quickPick:
+                        EmptyStateView(
+                            title: "Not enough data yet",
+                            message: "Log at least 3 watches and QuickPick will start making suggestions.",
+                            systemImage: "sparkles",
+                            actionTitle: "Log a film now",
+                            action: createTestEntry
+                        )
+                    }
                 }
             }
             .navigationTitle("CloseCut")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Hi, \(profile.displayName)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         createTestEntry()
                     } label: {
                         Image(systemName: "plus")
+                            .font(.system(size: 17, weight: .semibold))
                     }
-                    .accessibilityLabel("Create test entry")
-                }
-
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        authService.signOut()
-                    } label: {
-                        Image(systemName: "rectangle.portrait.and.arrow.right")
-                    }
-                    .accessibilityLabel("Sign out")
+                    .frame(width: 44, height: 44)
+                    .accessibilityLabel("New entry")
                 }
             }
         }

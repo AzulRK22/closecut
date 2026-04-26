@@ -15,15 +15,15 @@ struct TimelineView: View {
         Group {
             if entries.isEmpty {
                 EmptyStateView(
-                    title: "No entries yet",
-                    message: "Start with the movie or series that stayed with you most recently.",
-                    systemImage: "film",
-                    actionTitle: "Create Entry",
+                    title: "Nothing here yet",
+                    message: "Tap + to log your first watch.",
+                    systemImage: "film.stack",
+                    actionTitle: "Log a film",
                     action: onCreateEntry
                 )
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 16) {
+                    LazyVStack(spacing: 12) {
                         ForEach(entries) { entry in
                             EntryCardView(entry: entry)
                         }
@@ -33,6 +33,7 @@ struct TimelineView: View {
                 }
             }
         }
+        .background(CloseCutColors.backgroundPrimary)
     }
 }
 

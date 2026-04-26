@@ -54,7 +54,7 @@ private struct SignedInSessionGate: View {
                 LoadingProfileView()
 
             case .ready(let profile):
-                HomeView(
+                MainTabView(
                     user: user,
                     profile: profile
                 )
