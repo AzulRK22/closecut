@@ -157,6 +157,22 @@ private struct RootSignedInTestView: View {
                 Text("Local entries: \(entries.count)")
                     .foregroundStyle(.secondary)
 
+                if let latestEntry = entries.first {
+                    VStack(spacing: 4) {
+                        Text("Latest: \(latestEntry.title)")
+                            .font(.footnote)
+
+                        Text("Tags: \(latestEntry.tags.joined(separator: ", "))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Text("Status: \(latestEntry.syncStatusRaw)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .multilineTextAlignment(.center)
+                }
+
                 Button("Create test entry") {
                     createTestEntry()
                 }
@@ -173,26 +189,28 @@ private struct RootSignedInTestView: View {
     }
 
     private func createTestEntry() {
-        let entry = LocalEntry(
-            ownerId: user.id,
-            title: "Aftersun",
-            type: .movie,
-            mood: "Melancholic",
-            takeaway: "Some memories hurt because they mattered.",
-            quote: nil,
-            tags: ["quiet", "memory", "fatherhood"],
-            intensity: 5,
-            watchContext: .home,
-            visibility: profile.defaultVisibility,
-            syncStatus: .pending
-        )
-
-        modelContext.insert(entry)
+        let repository = EntryRepository()
 
         do {
-            try modelContext.save()
+            _ = try repository.createLocalEntry(
+                ownerId: user.id,
+                title: "Aftersun",
+                type: .movie,
+                mood: "Melancholic",
+                takeaway: "Some memories hurt because they mattered.",
+                quote: nil,
+                tags: ["quiet", "memory", "fatherhood", "memory"],
+                intensity: 5,
+                watchContext: .home,
+                cinemaAudio: nil,
+                cinemaScreen: nil,
+                cinemaComfort: nil,
+                visibility: profile.defaultVisibility,
+                watchedAt: Date(),
+                modelContext: modelContext
+            )
         } catch {
-            print("Failed to save test entry: \(error)")
+            print("Failed to create test entry via repository: \(error.localizedDescription)")
         }
     }
 }
