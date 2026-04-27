@@ -50,6 +50,7 @@ struct HomeView: View {
                     case .timeline:
                         TimelineView(
                             entries: entries,
+                            profile: profile,
                             onCreateEntry: {
                                 isShowingEntryEditor = true
                             }

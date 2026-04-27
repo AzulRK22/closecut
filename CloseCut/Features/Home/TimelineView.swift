@@ -9,6 +9,7 @@ import SwiftUI
 
 struct TimelineView: View {
     let entries: [Entry]
+    let profile: UserProfile
     let onCreateEntry: () -> Void
 
     var body: some View {
@@ -25,7 +26,15 @@ struct TimelineView: View {
                 ScrollView {
                     LazyVStack(spacing: 12) {
                         ForEach(entries) { entry in
-                            EntryCardView(entry: entry)
+                            NavigationLink {
+                                EntryDetailView(
+                                    entry: entry,
+                                    profile: profile
+                                )
+                            } label: {
+                                EntryCardView(entry: entry)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.horizontal, 20)
@@ -40,6 +49,17 @@ struct TimelineView: View {
 #Preview {
     TimelineView(
         entries: [],
+        profile: UserProfile(
+            id: "preview-user",
+            displayName: "Preview",
+            email: "preview@closecut.dev",
+            photoURL: nil,
+            circleId: nil,
+            defaultVisibility: .privateOnly,
+            createdAt: Date(),
+            updatedAt: Date(),
+            syncStatus: .synced
+        ),
         onCreateEntry: {}
     )
 }
