@@ -17,6 +17,7 @@ struct EntryEditorView: View {
 
     let user: AuthUser
     let profile: UserProfile
+    var entryToEdit: Entry? = nil
     var hasCircleMembers: Bool = false
 
     @State private var showDiscardConfirmation = false
@@ -76,7 +77,7 @@ struct EntryEditorView: View {
                     .padding(.bottom, 24)
                 }
             }
-            .navigationTitle("New entry")
+            .navigationTitle(viewModel.navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -95,7 +96,7 @@ struct EntryEditorView: View {
                         if viewModel.isSaving {
                             ProgressView()
                         } else {
-                            Text("Save")
+                            Text(viewModel.saveButtonTitle)
                         }
                     }
                     .disabled(!viewModel.canSave)
@@ -119,7 +120,12 @@ struct EntryEditorView: View {
             Text("Your changes won't be saved.")
         }
         .onAppear {
-            focusedField = .title
+            if let entryToEdit {
+                viewModel.configureForEdit(entry: entryToEdit)
+            } else {
+                viewModel.configureForNewEntry()
+                focusedField = .title
+            }
         }
     }
 

@@ -27,9 +27,26 @@ final class EntryEditorViewModel: ObservableObject {
     @Published var errors: [String] = []
 
     private let repository = EntryRepository()
+    private(set) var editingEntry: Entry?
+
+    var isEditing: Bool {
+        editingEntry != nil
+    }
+
+    var navigationTitle: String {
+        isEditing ? "Edit entry" : "New entry"
+    }
+
+    var saveButtonTitle: String {
+        isEditing ? "Save changes" : "Save"
+    }
 
     var isDirty: Bool {
-        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+        if let editingEntry {
+            return hasChanges(comparedTo: editingEntry)
+        }
+
+        return !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
         selectedMood != nil ||
         !takeaway.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
         !keyMoment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
@@ -44,6 +61,28 @@ final class EntryEditorViewModel: ObservableObject {
 
     var shouldShowCinemaFields: Bool {
         watchContext == .cinema
+    }
+
+    func configureForNewEntry() {
+        editingEntry = nil
+    }
+
+    func configureForEdit(entry: Entry) {
+        editingEntry = entry
+
+        type = entry.type
+        title = entry.title
+        selectedMood = Mood.from(entry.mood)
+        takeaway = entry.takeaway
+        keyMoment = entry.quote ?? ""
+        intensity = entry.intensity
+        tags = entry.tags
+        watchContext = entry.watchContext
+        cinemaAudio = entry.cinemaAudio
+        cinemaScreen = entry.cinemaScreen
+        cinemaComfort = entry.cinemaComfort
+        isSharedWithCircle = entry.visibility == .circle
+        errors = []
     }
 
     func save(
@@ -72,37 +111,88 @@ final class EntryEditorViewModel: ObservableObject {
         isSaving = true
         defer { isSaving = false }
 
-        let visibility: EntryVisibility
-
-        if hasCircleMembers && isSharedWithCircle {
-            visibility = .circle
-        } else {
-            visibility = defaultVisibility == .circle && hasCircleMembers ? .circle : .privateOnly
-        }
+        let visibility = resolvedVisibility(
+            defaultVisibility: defaultVisibility,
+            hasCircleMembers: hasCircleMembers
+        )
 
         do {
-            _ = try repository.createLocalEntry(
-                ownerId: ownerId,
-                title: title,
-                type: type,
-                mood: selectedMood.label,
-                takeaway: takeaway,
-                quote: keyMoment,
-                tags: tags,
-                intensity: intensity,
-                watchContext: watchContext,
-                cinemaAudio: cinemaAudio,
-                cinemaScreen: cinemaScreen,
-                cinemaComfort: cinemaComfort,
-                visibility: visibility,
-                watchedAt: Date(),
-                modelContext: modelContext
-            )
+            if let editingEntry {
+                _ = try repository.updateLocalEntry(
+                    entryId: editingEntry.id,
+                    title: title,
+                    type: type,
+                    mood: selectedMood.label,
+                    takeaway: takeaway,
+                    quote: keyMoment,
+                    tags: tags,
+                    intensity: intensity,
+                    watchContext: watchContext,
+                    cinemaAudio: cinemaAudio,
+                    cinemaScreen: cinemaScreen,
+                    cinemaComfort: cinemaComfort,
+                    visibility: visibility,
+                    watchedAt: editingEntry.watchedAt,
+                    modelContext: modelContext
+                )
+            } else {
+                _ = try repository.createLocalEntry(
+                    ownerId: ownerId,
+                    title: title,
+                    type: type,
+                    mood: selectedMood.label,
+                    takeaway: takeaway,
+                    quote: keyMoment,
+                    tags: tags,
+                    intensity: intensity,
+                    watchContext: watchContext,
+                    cinemaAudio: cinemaAudio,
+                    cinemaScreen: cinemaScreen,
+                    cinemaComfort: cinemaComfort,
+                    visibility: visibility,
+                    watchedAt: Date(),
+                    modelContext: modelContext
+                )
+            }
 
             return true
         } catch {
             errors = [error.localizedDescription]
             return false
         }
+    }
+
+    private func resolvedVisibility(
+        defaultVisibility: EntryVisibility,
+        hasCircleMembers: Bool
+    ) -> EntryVisibility {
+        if hasCircleMembers && isSharedWithCircle {
+            return .circle
+        }
+
+        if editingEntry == nil,
+           defaultVisibility == .circle,
+           hasCircleMembers {
+            return .circle
+        }
+
+        return .privateOnly
+    }
+
+    private func hasChanges(comparedTo entry: Entry) -> Bool {
+        let currentMood = selectedMood?.label ?? ""
+
+        return type != entry.type ||
+        title != entry.title ||
+        currentMood != entry.mood ||
+        takeaway != entry.takeaway ||
+        keyMoment != (entry.quote ?? "") ||
+        intensity != entry.intensity ||
+        tags != entry.tags ||
+        watchContext != entry.watchContext ||
+        cinemaAudio != entry.cinemaAudio ||
+        cinemaScreen != entry.cinemaScreen ||
+        cinemaComfort != entry.cinemaComfort ||
+        isSharedWithCircle != (entry.visibility == .circle)
     }
 }

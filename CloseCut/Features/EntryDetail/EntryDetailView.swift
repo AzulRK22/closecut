@@ -72,8 +72,19 @@ struct EntryDetailView: View {
             }
         }
         .sheet(isPresented: $isShowingEditSheet) {
-            EditComingSoonView()
-                .presentationDetents([.medium])
+            EntryEditorView(
+                user: AuthUser(
+                    id: entry.ownerId,
+                    email: profile.email,
+                    displayName: profile.displayName,
+                    photoURL: nil
+                ),
+                profile: profile,
+                entryToEdit: entry,
+                hasCircleMembers: false
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.hidden)
         }
     }
 
@@ -226,36 +237,3 @@ struct EntryDetailView: View {
     }
 }
 
-private struct EditComingSoonView: View {
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        ZStack {
-            CloseCutColors.backgroundPrimary
-                .ignoresSafeArea()
-
-            VStack(spacing: 16) {
-                Image(systemName: "pencil")
-                    .font(.largeTitle)
-                    .foregroundStyle(CloseCutColors.accent)
-
-                Text("Edit entry is next")
-                    .font(.headline)
-                    .foregroundStyle(CloseCutColors.textPrimary)
-
-                Text("The detail screen is ready. Next we'll connect this button to the existing entry sheet in edit mode.")
-                    .font(.body)
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .multilineTextAlignment(.center)
-
-                Button("Done") {
-                    dismiss()
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(CloseCutColors.accent)
-            }
-            .padding(24)
-        }
-        .preferredColorScheme(.dark)
-    }
-}
