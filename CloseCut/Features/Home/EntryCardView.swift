@@ -19,6 +19,25 @@ struct EntryCardView: View {
     private var mood: Mood {
         Mood.from(entry.mood)
     }
+    private var cardSubtitle: String {
+        if entry.sourceType == .quickAdd {
+            if let quickSentiment = entry.quickSentiment {
+                return quickSentiment.displayName
+            }
+
+            return "Added to your history"
+        }
+
+        return entry.takeaway.isEmpty ? "No takeaway added yet." : entry.takeaway
+    }
+
+    private var footerDateText: String {
+        if let watchedDateApprox = entry.watchedDateApprox {
+            return watchedDateApprox.displayLabel
+        }
+
+        return entry.watchedAt.formatted(date: .abbreviated, time: .omitted)
+    }
 
     var body: some View {
         ZStack(alignment: .leading) {
@@ -49,9 +68,18 @@ struct EntryCardView: View {
                         size: .small,
                         showLabel: false
                     )
+                    if entry.sourceType == .quickAdd {
+                        Text("Quick Add")
+                            .font(.caption2)
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(CloseCutColors.input)
+                            .clipShape(Capsule())
+                    }
                 }
 
-                Text(entry.takeaway.isEmpty ? "No takeaway added yet." : entry.takeaway)
+                Text(cardSubtitle)
                     .font(.subheadline)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .lineLimit(2)
@@ -71,7 +99,7 @@ struct EntryCardView: View {
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textTertiary)
 
-                    Text(entry.watchedAt, style: .date)
+                    Text(footerDateText)
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textTertiary)
 

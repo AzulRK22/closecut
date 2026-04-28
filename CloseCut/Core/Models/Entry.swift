@@ -12,20 +12,26 @@ struct Entry: Identifiable, Codable, Equatable {
     var ownerId: String
 
     var title: String
+    var normalizedTitle: String
     var type: EntryType
+    var releaseYear: Int?
 
     var mood: String
+    var quickSentiment: QuickSentiment?
     var takeaway: String
     var quote: String?
     var tags: [String]
     var intensity: Int
 
     var watchContext: WatchContext
+    var watchedDateApprox: WatchedDateApprox?
+
     var cinemaAudio: Int?
     var cinemaScreen: Int?
     var cinemaComfort: Int?
 
     var visibility: EntryVisibility
+    var sourceType: EntrySourceType
 
     var watchedAt: Date
     var createdAt: Date
@@ -40,5 +46,13 @@ struct Entry: Identifiable, Codable, Equatable {
 
     var isDeleted: Bool {
         deletedAt != nil
+    }
+
+    var isQuickAdd: Bool {
+        sourceType == .quickAdd
+    }
+
+    var hasFullEmotionalDetails: Bool {
+        sourceType == .fullEntry && mood.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     }
 }

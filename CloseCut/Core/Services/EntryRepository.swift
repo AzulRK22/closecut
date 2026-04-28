@@ -17,36 +17,46 @@ final class EntryRepository {
         ownerId: String,
         title: String,
         type: EntryType,
+        releaseYear: Int? = nil,
         mood: String,
+        quickSentiment: QuickSentiment? = nil,
         takeaway: String,
         quote: String?,
         tags: [String],
         intensity: Int,
         watchContext: WatchContext,
+        watchedDateApprox: WatchedDateApprox? = nil,
         cinemaAudio: Int?,
         cinemaScreen: Int?,
         cinemaComfort: Int?,
         visibility: EntryVisibility,
+        sourceType: EntrySourceType = .fullEntry,
         watchedAt: Date,
         modelContext: ModelContext
     ) throws -> Entry {
         let now = Date()
+        let cleanedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let localEntry = LocalEntry(
             id: UUID().uuidString,
             ownerId: ownerId,
-            title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+            title: cleanedTitle,
+            normalizedTitle: cleanedTitle.normalizedTitleKey,
             type: type,
+            releaseYear: releaseYear,
             mood: mood.trimmingCharacters(in: .whitespacesAndNewlines),
+            quickSentiment: quickSentiment,
             takeaway: takeaway.trimmingCharacters(in: .whitespacesAndNewlines),
             quote: cleanOptionalText(quote),
             tags: cleanTags(tags),
             intensity: intensity,
             watchContext: watchContext,
+            watchedDateApprox: watchedDateApprox,
             cinemaAudio: watchContext == .cinema ? cinemaAudio : nil,
             cinemaScreen: watchContext == .cinema ? cinemaScreen : nil,
             cinemaComfort: watchContext == .cinema ? cinemaComfort : nil,
             visibility: visibility,
+            sourceType: sourceType,
             watchedAt: watchedAt,
             createdAt: now,
             updatedAt: now,
@@ -115,16 +125,20 @@ final class EntryRepository {
         entryId: String,
         title: String,
         type: EntryType,
+        releaseYear: Int? = nil,
         mood: String,
+        quickSentiment: QuickSentiment? = nil,
         takeaway: String,
         quote: String?,
         tags: [String],
         intensity: Int,
         watchContext: WatchContext,
+        watchedDateApprox: WatchedDateApprox? = nil,
         cinemaAudio: Int?,
         cinemaScreen: Int?,
         cinemaComfort: Int?,
         visibility: EntryVisibility,
+        sourceType: EntrySourceType = .fullEntry,
         watchedAt: Date,
         modelContext: ModelContext
     ) throws -> Entry {
@@ -135,18 +149,34 @@ final class EntryRepository {
             throw EntryRepositoryError.entryNotFound
         }
 
-        localEntry.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        localEntry.title = cleanedTitle
+        localEntry.normalizedTitle = cleanedTitle.normalizedTitleKey
         localEntry.typeRaw = type.rawValue
+        localEntry.releaseYear = releaseYear
+
         localEntry.mood = mood.trimmingCharacters(in: .whitespacesAndNewlines)
+        localEntry.quickSentimentRaw = quickSentiment?.rawValue
         localEntry.takeaway = takeaway.trimmingCharacters(in: .whitespacesAndNewlines)
         localEntry.quote = cleanOptionalText(quote)
         localEntry.tags = cleanTags(tags)
         localEntry.intensity = intensity
+
         localEntry.watchContextRaw = watchContext.rawValue
+        localEntry.watchedDateApproxKindRaw = watchedDateApprox?.kind.rawValue
+        localEntry.watchedDateApproxExactDate = watchedDateApprox?.exactDate
+        localEntry.watchedDateApproxMonth = watchedDateApprox?.month
+        localEntry.watchedDateApproxYear = watchedDateApprox?.year
+        localEntry.watchedDateApproxDisplayLabel = watchedDateApprox?.displayLabel
+
         localEntry.cinemaAudio = watchContext == .cinema ? cinemaAudio : nil
         localEntry.cinemaScreen = watchContext == .cinema ? cinemaScreen : nil
         localEntry.cinemaComfort = watchContext == .cinema ? cinemaComfort : nil
+
         localEntry.visibilityRaw = visibility.rawValue
+        localEntry.sourceTypeRaw = sourceType.rawValue
+
         localEntry.watchedAt = watchedAt
         localEntry.updatedAt = Date()
         localEntry.syncStatusRaw = SyncStatus.pending.rawValue

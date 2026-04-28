@@ -45,6 +45,9 @@ struct HomeView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
                     .padding(.bottom, 8)
+                    .font(.caption2)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .padding(.bottom, 8)
 
                     switch selectedSegment {
                     case .timeline:
