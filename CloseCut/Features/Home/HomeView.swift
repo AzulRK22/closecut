@@ -45,9 +45,6 @@ struct HomeView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
                     .padding(.bottom, 8)
-                    .font(.caption2)
-                    .foregroundStyle(CloseCutColors.textTertiary)
-                    .padding(.bottom, 8)
 
                     switch selectedSegment {
                     case .timeline:
@@ -76,6 +73,17 @@ struct HomeView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        createDebugQuickAdd()
+                    } label: {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .frame(width: 44, height: 44)
+                    .accessibilityLabel("Create debug quick add")
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
                         isShowingEntryEditor = true
                     } label: {
                         Image(systemName: "plus")
@@ -94,6 +102,31 @@ struct HomeView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
             }
+        }
+    }
+
+    private func createDebugQuickAdd() {
+        let repository = EntryRepository()
+
+        let draft = QuickAddDraft(
+            title: "Past Lives",
+            type: .movie,
+            releaseYear: 2023,
+            quickSentiment: .stayedWithMe,
+            watchedDateApprox: .recently
+        )
+
+        do {
+            let entry = try repository.createQuickAddEntry(
+                ownerId: user.id,
+                draft: draft,
+                visibility: .privateOnly,
+                modelContext: modelContext
+            )
+
+            print("⚡️ Quick Add saved or found:", entry.title, entry.sourceType.rawValue)
+        } catch {
+            print("❌ Failed debug quick add:", error.localizedDescription)
         }
     }
 }

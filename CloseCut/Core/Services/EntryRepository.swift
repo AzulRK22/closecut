@@ -69,6 +69,45 @@ final class EntryRepository {
 
         return localEntry.domain
     }
+    func createQuickAddEntry(
+        ownerId: String,
+        draft: QuickAddDraft,
+        visibility: EntryVisibility = .privateOnly,
+        modelContext: ModelContext
+    ) throws -> Entry {
+        if let duplicate = try findDuplicateLocalEntry(
+            ownerId: ownerId,
+            draft: draft,
+            modelContext: modelContext
+        ) {
+            return duplicate
+        }
+
+        let approxDate = draft.watchedDateApprox ?? .unknown
+        let watchedAt = approxDate.exactDate ?? Date()
+
+        return try createLocalEntry(
+            ownerId: ownerId,
+            title: draft.title,
+            type: draft.type,
+            releaseYear: draft.releaseYear,
+            mood: "",
+            quickSentiment: draft.quickSentiment,
+            takeaway: "",
+            quote: nil,
+            tags: [],
+            intensity: 3,
+            watchContext: .home,
+            watchedDateApprox: approxDate,
+            cinemaAudio: nil,
+            cinemaScreen: nil,
+            cinemaComfort: nil,
+            visibility: visibility,
+            sourceType: .quickAdd,
+            watchedAt: watchedAt,
+            modelContext: modelContext
+        )
+    }
 
     // MARK: - Read
 
@@ -117,6 +156,45 @@ final class EntryRepository {
         )
 
         return try modelContext.fetch(descriptor).first
+    }
+    // MARK: - Duplicate Detection
+
+    func findDuplicateLocalEntry(
+        ownerId: String,
+        title: String,
+        type: EntryType,
+        releaseYear: Int?,
+        modelContext: ModelContext
+    ) throws -> Entry? {
+        let entries = try fetchLocalEntries(
+            ownerId: ownerId,
+            includeDeleted: false,
+            modelContext: modelContext
+        )
+
+        return DuplicateDetector.findDuplicate(
+            title: title,
+            type: type,
+            releaseYear: releaseYear,
+            in: entries
+        )
+    }
+
+    func findDuplicateLocalEntry(
+        ownerId: String,
+        draft: QuickAddDraft,
+        modelContext: ModelContext
+    ) throws -> Entry? {
+        let entries = try fetchLocalEntries(
+            ownerId: ownerId,
+            includeDeleted: false,
+            modelContext: modelContext
+        )
+
+        return DuplicateDetector.findDuplicate(
+            draft: draft,
+            in: entries
+        )
     }
 
     // MARK: - Update
