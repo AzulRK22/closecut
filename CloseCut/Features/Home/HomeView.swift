@@ -143,6 +143,7 @@ struct HomeView: View {
         LocalComment.self,
         LocalCircle.self,
         LocalUserProfile.self,
+        LocalUserState.self,
         PendingAction.self
     ], inMemory: true)
 }

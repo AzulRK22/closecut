@@ -54,7 +54,7 @@ private struct SignedInSessionGate: View {
                 LoadingProfileView()
 
             case .ready(let profile):
-                MainTabView(
+                LaunchGateView(
                     user: user,
                     profile: profile
                 )
@@ -68,6 +68,51 @@ private struct SignedInSessionGate: View {
                         )
                     }
                 }
+            }
+        }
+    }
+}
+private struct LaunchGateView: View {
+    @Environment(\.modelContext) private var modelContext
+    @StateObject private var launchViewModel = LaunchViewModel()
+
+    let user: AuthUser
+    let profile: UserProfile
+
+    var body: some View {
+        Group {
+            if launchViewModel.isLoading {
+                LoadingProfileView()
+            } else {
+                switch launchViewModel.destination {
+                case .onboarding:
+                    OnboardingView(user: user) {
+                        launchViewModel.completeToMain()
+                    }
+
+                case .mainHome:
+                    MainTabView(
+                        user: user,
+                        profile: profile
+                    )
+
+                case .none:
+                    LoadingProfileView()
+                        .task {
+                            launchViewModel.resolve(
+                                userId: user.id,
+                                modelContext: modelContext
+                            )
+                        }
+                }
+            }
+        }
+        .onAppear {
+            if launchViewModel.destination == nil {
+                launchViewModel.resolve(
+                    userId: user.id,
+                    modelContext: modelContext
+                )
             }
         }
     }
@@ -135,6 +180,7 @@ private struct ProfileErrorView: View {
             LocalComment.self,
             LocalCircle.self,
             LocalUserProfile.self,
+            LocalUserState.self,
             PendingAction.self
         ], inMemory: true)
 }

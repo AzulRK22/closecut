@@ -25,6 +25,7 @@ struct CloseCutApp: App {
             LocalComment.self,
             LocalCircle.self,
             LocalUserProfile.self,
+            LocalUserState.self,
             PendingAction.self
         ])
     }
