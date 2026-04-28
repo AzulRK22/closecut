@@ -10,18 +10,28 @@ import SwiftUI
 struct TimelineView: View {
     let entries: [Entry]
     let profile: UserProfile
+    let onQuickAdd: () -> Void
     let onCreateEntry: () -> Void
 
     var body: some View {
         Group {
             if entries.isEmpty {
-                EmptyStateView(
-                    title: "Nothing here yet",
-                    message: "Tap + to log your first watch.",
-                    systemImage: "film.stack",
-                    actionTitle: "Log a film",
-                    action: onCreateEntry
-                )
+                VStack(spacing: 16) {
+                    EmptyStateView(
+                        title: "Start your taste history",
+                        message: "Add past watches fast or log what you just watched.",
+                        systemImage: "film.stack",
+                        actionTitle: "Add past watches",
+                        action: onQuickAdd
+                    )
+
+                    Button("Log a new watch") {
+                        onCreateEntry()
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .frame(minHeight: 44)
+                }
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {
@@ -60,6 +70,7 @@ struct TimelineView: View {
             updatedAt: Date(),
             syncStatus: .synced
         ),
+        onQuickAdd: {},
         onCreateEntry: {}
     )
 }

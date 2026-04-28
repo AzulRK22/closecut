@@ -20,6 +20,7 @@ struct HomeView: View {
 
     @State private var selectedSegment: HomeSegment = .timeline
     @State private var isShowingEntryEditor = false
+    @State private var isShowingQuickAdd = false
 
     private var entries: [Entry] {
         localEntries
@@ -51,6 +52,9 @@ struct HomeView: View {
                         TimelineView(
                             entries: entries,
                             profile: profile,
+                            onQuickAdd: {
+                                isShowingQuickAdd = true
+                            },
                             onCreateEntry: {
                                 isShowingEntryEditor = true
                             }
@@ -63,7 +67,7 @@ struct HomeView: View {
                             systemImage: "sparkles",
                             actionTitle: "Log a film now",
                             action: {
-                                isShowingEntryEditor = true
+                                isShowingQuickAdd = true
                             }
                         )
                     }
@@ -73,13 +77,13 @@ struct HomeView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        createDebugQuickAdd()
+                        isShowingQuickAdd = true
                     } label: {
                         Image(systemName: "bolt.fill")
                             .font(.system(size: 15, weight: .semibold))
                     }
                     .frame(width: 44, height: 44)
-                    .accessibilityLabel("Create debug quick add")
+                    .accessibilityLabel("Add past watches")
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
@@ -102,31 +106,12 @@ struct HomeView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
             }
-        }
-    }
+            .sheet(isPresented: $isShowingQuickAdd) {
 
-    private func createDebugQuickAdd() {
-        let repository = EntryRepository()
-
-        let draft = QuickAddDraft(
-            title: "Past Lives",
-            type: .movie,
-            releaseYear: 2023,
-            quickSentiment: .stayedWithMe,
-            watchedDateApprox: .recently
-        )
-
-        do {
-            let entry = try repository.createQuickAddEntry(
-                ownerId: user.id,
-                draft: draft,
-                visibility: .privateOnly,
-                modelContext: modelContext
-            )
-
-            print("⚡️ Quick Add saved or found:", entry.title, entry.sourceType.rawValue)
-        } catch {
-            print("❌ Failed debug quick add:", error.localizedDescription)
+                QuickAddPastWatchesView(user: user)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
         }
     }
 }
