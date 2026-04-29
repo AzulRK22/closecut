@@ -28,6 +28,16 @@ struct HomeView: View {
             .filter { $0.deletedAt == nil }
             .map { $0.domain }
     }
+    @Query(sort: \PendingAction.createdAt, order: .reverse)
+    private var pendingActions: [PendingAction]
+
+    private var currentUserPendingActions: [PendingAction] {
+        pendingActions.filter {
+            $0.userId == user.id &&
+            ($0.statusRaw == PendingActionStatus.pending.rawValue ||
+             $0.statusRaw == PendingActionStatus.failed.rawValue)
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -46,6 +56,12 @@ struct HomeView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
                     .padding(.bottom, 8)
+                    if !currentUserPendingActions.isEmpty {
+                        Text("Pending local actions: \(currentUserPendingActions.count)")
+                            .font(.caption2)
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                            .padding(.bottom, 8)
+                    }
 
                     switch selectedSegment {
                     case .timeline:

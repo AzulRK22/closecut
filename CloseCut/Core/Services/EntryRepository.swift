@@ -10,6 +10,7 @@ import SwiftData
 
 @MainActor
 final class EntryRepository {
+    private let pendingActionQueue = PendingActionQueue()
 
     // MARK: - Create
 
@@ -67,8 +68,18 @@ final class EntryRepository {
         modelContext.insert(localEntry)
         try modelContext.save()
 
-        return localEntry.domain
+        let entry = localEntry.domain
+
+        try enqueueEntryAction(
+            userId: ownerId,
+            actionType: PendingActionType.createEntry,
+            entry: entry,
+            modelContext: modelContext
+        )
+
+        return entry
     }
+
     func createQuickAddEntry(
         ownerId: String,
         draft: QuickAddDraft,
@@ -157,6 +168,7 @@ final class EntryRepository {
 
         return try modelContext.fetch(descriptor).first
     }
+
     // MARK: - Duplicate Detection
 
     func findDuplicateLocalEntry(
@@ -261,7 +273,16 @@ final class EntryRepository {
 
         try modelContext.save()
 
-        return localEntry.domain
+        let entry = localEntry.domain
+
+        try enqueueEntryAction(
+            userId: entry.ownerId,
+            actionType: PendingActionType.updateEntry,
+            entry: entry,
+            modelContext: modelContext
+        )
+
+        return entry
     }
 
     func updateLocalVisibility(
@@ -282,7 +303,16 @@ final class EntryRepository {
 
         try modelContext.save()
 
-        return localEntry.domain
+        let entry = localEntry.domain
+
+        try enqueueEntryAction(
+            userId: entry.ownerId,
+            actionType: PendingActionType.updateVisibility,
+            entry: entry,
+            modelContext: modelContext
+        )
+
+        return entry
     }
 
     func markLocalEntrySynced(
@@ -336,7 +366,16 @@ final class EntryRepository {
 
         try modelContext.save()
 
-        return localEntry.domain
+        let entry = localEntry.domain
+
+        try enqueueEntryAction(
+            userId: entry.ownerId,
+            actionType: PendingActionType.deleteEntry,
+            entry: entry,
+            modelContext: modelContext
+        )
+
+        return entry
     }
 
     func hardDeleteLocalEntry(
@@ -352,6 +391,48 @@ final class EntryRepository {
 
         modelContext.delete(localEntry)
         try modelContext.save()
+    }
+
+    // MARK: - Pending Actions
+
+    private func enqueueEntryAction(
+        userId: String,
+        actionType: PendingActionType,
+        entry: Entry,
+        modelContext: ModelContext
+    ) throws {
+        let payload = PendingEntryPayload(
+            entryId: entry.id,
+            ownerId: entry.ownerId,
+            title: entry.title,
+            sourceType: entry.sourceType.rawValue,
+            updatedAt: entry.updatedAt
+        )
+
+        let payloadData = try CodableHelpers.encode(payload)
+
+        let dedupeKey: String
+
+        switch actionType {
+        case PendingActionType.createEntry:
+            dedupeKey = "entry:create:\(entry.id)"
+        case PendingActionType.updateEntry:
+            dedupeKey = "entry:update:\(entry.id)"
+        case PendingActionType.deleteEntry:
+            dedupeKey = "entry:delete:\(entry.id)"
+        case PendingActionType.updateVisibility:
+            dedupeKey = "entry:visibility:\(entry.id)"
+        default:
+            dedupeKey = "entry:\(actionType.rawValue):\(entry.id)"
+        }
+
+        try pendingActionQueue.enqueue(
+            userId: userId,
+            actionType: actionType,
+            payloadData: payloadData,
+            dedupeKey: dedupeKey,
+            modelContext: modelContext
+        )
     }
 
     // MARK: - Helpers

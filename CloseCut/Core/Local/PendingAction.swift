@@ -12,61 +12,71 @@ import SwiftData
 final class PendingAction {
     @Attribute(.unique) var id: String
 
-    var typeRaw: String
-    var entityId: String
     var userId: String
+    var actionTypeRaw: String
+    var statusRaw: String
+    var payloadData: Data?
+    var dedupeKey: String?
 
-    var payloadData: Data
+    var attempts: Int
+    var lastErrorMessage: String?
 
     var createdAt: Date
-    var lastAttemptAt: Date?
-    var attemptCount: Int
-
-    var statusRaw: String
-    var dedupeKey: String?
+    var updatedAt: Date
 
     init(
         id: String = UUID().uuidString,
-        type: PendingActionType,
-        entityId: String,
         userId: String,
-        payloadData: Data,
+        actionType: PendingActionType,
+        status: PendingActionStatus = .pending,
+        payloadData: Data? = nil,
+        dedupeKey: String? = nil,
+        attempts: Int = 0,
+        lastErrorMessage: String? = nil,
         createdAt: Date = Date(),
-        lastAttemptAt: Date? = nil,
-        attemptCount: Int = 0,
-        status: SyncStatus = .pending,
-        dedupeKey: String? = nil
+        updatedAt: Date = Date()
     ) {
         self.id = id
-        self.typeRaw = type.rawValue
-        self.entityId = entityId
         self.userId = userId
-        self.payloadData = payloadData
-        self.createdAt = createdAt
-        self.lastAttemptAt = lastAttemptAt
-        self.attemptCount = attemptCount
+        self.actionTypeRaw = actionType.rawValue
         self.statusRaw = status.rawValue
+        self.payloadData = payloadData
         self.dedupeKey = dedupeKey
+        self.attempts = attempts
+        self.lastErrorMessage = lastErrorMessage
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
     }
 }
 
 extension PendingAction {
-    var type: PendingActionType {
-        PendingActionType(rawValue: typeRaw) ?? .updateEntry
+    var actionType: PendingActionType {
+        PendingActionType(rawValue: actionTypeRaw) ?? PendingActionType.createEntry
     }
 
-    var status: SyncStatus {
-        SyncStatus(rawValue: statusRaw) ?? .pending
+    var status: PendingActionStatus {
+        PendingActionStatus(rawValue: statusRaw) ?? PendingActionStatus.pending
     }
 
-    func markFailed() {
-        statusRaw = SyncStatus.failed.rawValue
-        lastAttemptAt = Date()
-        attemptCount += 1
+    func markPending() {
+        statusRaw = PendingActionStatus.pending.rawValue
+        updatedAt = Date()
     }
 
-    func markAttempted() {
-        lastAttemptAt = Date()
-        attemptCount += 1
+    func markSyncing() {
+        statusRaw = PendingActionStatus.syncing.rawValue
+        updatedAt = Date()
+    }
+
+    func markFailed(_ message: String) {
+        statusRaw = PendingActionStatus.failed.rawValue
+        lastErrorMessage = message
+        attempts += 1
+        updatedAt = Date()
+    }
+
+    func markCompleted() {
+        statusRaw = PendingActionStatus.completed.rawValue
+        updatedAt = Date()
     }
 }

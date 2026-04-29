@@ -105,15 +105,3 @@ enum ReactionType: String, Codable, CaseIterable, Identifiable {
         }
     }
 }
-
-enum PendingActionType: String, Codable, CaseIterable {
-    case createEntry
-    case updateEntry
-    case deleteEntry
-    case updateVisibility
-    case setReaction
-    case removeReaction
-    case createComment
-    case updateProfile
-    case joinCircle
-}
