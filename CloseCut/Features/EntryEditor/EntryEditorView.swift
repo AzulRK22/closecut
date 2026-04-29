@@ -37,6 +37,13 @@ struct EntryEditorView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
                         dragHandle
+                        
+                        if let helperMessage = viewModel.helperMessage {
+                            Text(helperMessage)
+                                .font(.subheadline)
+                                .foregroundStyle(CloseCutColors.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
 
                         TypeSelector(selectedType: $viewModel.type)
 

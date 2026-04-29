@@ -9,6 +9,7 @@ import SwiftUI
 
 struct TimelineView: View {
     let entries: [Entry]
+    let user: AuthUser
     let profile: UserProfile
     let onQuickAdd: () -> Void
     let onCreateEntry: () -> Void
@@ -82,6 +83,7 @@ struct TimelineView: View {
                         NavigationLink {
                             EntryDetailView(
                                 entry: entry,
+                                user: user,
                                 profile: profile
                             )
                         } label: {
@@ -100,6 +102,12 @@ struct TimelineView: View {
 #Preview {
     TimelineView(
         entries: [],
+        user: AuthUser(
+            id: "preview-user",
+            email: "preview@closecut.dev",
+            displayName: "Preview",
+            photoURL: nil
+        ),
         profile: UserProfile(
             id: "preview-user",
             displayName: "Preview",

@@ -51,6 +51,7 @@ struct HomeView: View {
                     case .timeline:
                         TimelineView(
                             entries: entries,
+                            user: user,
                             profile: profile,
                             onQuickAdd: {
                                 isShowingQuickAdd = true

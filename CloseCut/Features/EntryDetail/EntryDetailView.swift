@@ -9,6 +9,7 @@ import SwiftUI
 
 struct EntryDetailView: View {
     let entry: Entry
+    let user: AuthUser
     let profile: UserProfile
 
     @State private var isShowingEditSheet = false
@@ -64,7 +65,7 @@ struct EntryDetailView: View {
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Edit") {
+                Button(entry.sourceType == .quickAdd ? "Add details" : "Edit") {
                     isShowingEditSheet = true
                 }
                 .foregroundStyle(CloseCutColors.accent)
@@ -73,12 +74,7 @@ struct EntryDetailView: View {
         }
         .sheet(isPresented: $isShowingEditSheet) {
             EntryEditorView(
-                user: AuthUser(
-                    id: entry.ownerId,
-                    email: profile.email,
-                    displayName: profile.displayName,
-                    photoURL: nil
-                ),
+                user: user,
                 profile: profile,
                 entryToEdit: entry,
                 hasCircleMembers: false
@@ -98,9 +94,16 @@ struct EntryDetailView: View {
                     .padding(.vertical, 6)
                     .background(CloseCutColors.input)
                     .clipShape(Capsule())
-
+                if entry.sourceType == .quickAdd {
+                    Text("Quick Add")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.accentLight)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(CloseCutColors.input)
+                        .clipShape(Capsule())
+                }
                 Spacer()
-
                 MoodPill(
                     mood: mood,
                     size: .medium,
@@ -108,7 +111,6 @@ struct EntryDetailView: View {
                     showLabel: true
                 )
             }
-
             Text(entry.title)
                 .font(.title)
                 .fontWeight(.semibold)
@@ -142,7 +144,7 @@ struct EntryDetailView: View {
                     .lineSpacing(6)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("No takeaway added.")
+                Text(entry.sourceType == .quickAdd ? "No details yet. Add mood, takeaway, tags, and context when you're ready." : "No takeaway added.")
                     .font(.body)
                     .foregroundStyle(CloseCutColors.textTertiary)
             }

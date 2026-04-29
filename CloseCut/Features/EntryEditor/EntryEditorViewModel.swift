@@ -33,12 +33,36 @@ final class EntryEditorViewModel: ObservableObject {
         editingEntry != nil
     }
 
+    var isUpgradingQuickAdd: Bool {
+        editingEntry?.sourceType == .quickAdd
+    }
+
     var navigationTitle: String {
-        isEditing ? "Edit entry" : "New entry"
+        if isUpgradingQuickAdd {
+            return "Add details"
+        }
+
+        return isEditing ? "Edit entry" : "New entry"
     }
 
     var saveButtonTitle: String {
-        isEditing ? "Save changes" : "Save"
+        if isUpgradingQuickAdd {
+            return "Save details"
+        }
+
+        return isEditing ? "Save changes" : "Save"
+    }
+
+    var helperMessage: String? {
+        if isUpgradingQuickAdd {
+            return "Make this memory more yours."
+        }
+
+        if isEditing {
+            return "Update the details that changed."
+        }
+
+        return nil
     }
 
     var isDirty: Bool {
