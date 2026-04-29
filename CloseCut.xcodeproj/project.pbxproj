@@ -43,6 +43,10 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Tests/CloseCutTests/CloseCutTests.swift,
+				Tests/CloseCutTests/Domain/DuplicateDetectorTests.swift,
+				Tests/CloseCutTests/Recommendation/QuickPickEngineTests.swift,
+				Tests/CloseCutTests/Sync/PendingActionQueueTests.swift,
+				Tests/CloseCutTests/Validation/EntryValidationTests.swift,
 				Tests/CloseCutUITests/CloseCutUITests.swift,
 				Tests/CloseCutUITests/CloseCutUITestsLaunchTests.swift,
 			);
@@ -52,6 +56,10 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Tests/CloseCutTests/CloseCutTests.swift,
+				Tests/CloseCutTests/Domain/DuplicateDetectorTests.swift,
+				Tests/CloseCutTests/Recommendation/QuickPickEngineTests.swift,
+				Tests/CloseCutTests/Sync/PendingActionQueueTests.swift,
+				Tests/CloseCutTests/Validation/EntryValidationTests.swift,
 			);
 			target = 356EB3612F9D1C1B00E9C3FF /* CloseCutTests */;
 		};
