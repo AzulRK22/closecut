@@ -6,13 +6,19 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct EntryDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+
     let entry: Entry
     let user: AuthUser
     let profile: UserProfile
 
     @State private var isShowingEditSheet = false
+    @State private var showDeleteConfirmation = false
+    @State private var deleteErrorMessage: String?
 
     private var mood: Mood {
         Mood.from(entry.mood)
@@ -65,11 +71,27 @@ struct EntryDetailView: View {
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(entry.sourceType == .quickAdd ? "Add details" : "Edit") {
-                    isShowingEditSheet = true
+                Menu {
+                    Button {
+                        isShowingEditSheet = true
+                    } label: {
+                        Label(
+                            entry.sourceType == .quickAdd ? "Add details" : "Edit",
+                            systemImage: "pencil"
+                        )
+                    }
+
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Label("Delete entry", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(CloseCutColors.accent)
                 }
-                .foregroundStyle(CloseCutColors.accent)
-                .accessibilityLabel("Edit entry")
+                .accessibilityLabel("Entry actions")
             }
         }
         .sheet(isPresented: $isShowingEditSheet) {
@@ -81,6 +103,27 @@ struct EntryDetailView: View {
             )
             .presentationDetents([.large])
             .presentationDragIndicator(.hidden)
+        }
+        .confirmationDialog(
+            "Delete this entry?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete entry", role: .destructive) {
+                deleteEntry()
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will remove it from your timeline. The change will sync later if needed.")
+        }
+        .alert("Couldn’t delete entry", isPresented: Binding(
+            get: { deleteErrorMessage != nil },
+            set: { if !$0 { deleteErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(deleteErrorMessage ?? "Unknown error.")
         }
     }
 
@@ -236,6 +279,20 @@ struct EntryDetailView: View {
         guard let value else { return nil }
         let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return cleaned.isEmpty ? nil : cleaned
+    }
+    private func deleteEntry() {
+        let repository = EntryRepository()
+
+        do {
+            _ = try repository.softDeleteLocalEntry(
+                entryId: entry.id,
+                modelContext: modelContext
+            )
+
+            dismiss()
+        } catch {
+            deleteErrorMessage = error.localizedDescription
+        }
     }
 }
 
