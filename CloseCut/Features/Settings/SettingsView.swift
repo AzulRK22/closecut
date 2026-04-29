@@ -14,6 +14,7 @@ struct SettingsView: View {
 
     @State private var isSyncing = false
     @State private var lastSyncMessage: String?
+    @State private var lastSyncBannerStyle: SyncResultBannerStyle = .neutral
 
     @Query(sort: \PendingAction.updatedAt, order: .reverse)
     private var pendingActions: [PendingAction]
@@ -87,7 +88,8 @@ struct SettingsView: View {
         VStack(spacing: 10) {
             SyncStatusSummaryCard(
                 pendingCount: visiblePendingCount,
-                failedCount: currentUserFailedActions.count
+                failedCount: currentUserFailedActions.count,
+                isSyncing: isSyncing
             )
 
             if visiblePendingCount > 0 || currentUserFailedActions.isEmpty == false {
@@ -101,16 +103,16 @@ struct SettingsView: View {
                             ProgressView()
                                 .tint(.white)
                         } else {
-                            Image(systemName: "arrow.triangle.2.circlepath")
+                            Image(systemName: currentUserFailedActions.isEmpty ? "arrow.triangle.2.circlepath" : "exclamationmark.arrow.triangle.2.circlepath")
                         }
 
-                        Text(isSyncing ? "Syncing..." : "Sync now")
+                        Text(syncButtonTitle)
                     }
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 46)
-                    .background(CloseCutColors.accent)
+                    .background(currentUserFailedActions.isEmpty ? CloseCutColors.accent : CloseCutColors.failed)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(.plain)
@@ -118,10 +120,10 @@ struct SettingsView: View {
             }
 
             if let lastSyncMessage {
-                Text(lastSyncMessage)
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                SyncResultBanner(
+                    message: lastSyncMessage,
+                    style: lastSyncBannerStyle
+                )
             }
         }
     }
@@ -267,6 +269,7 @@ struct SettingsView: View {
 
     private func syncNow() async {
         isSyncing = true
+        lastSyncMessage = nil
         defer { isSyncing = false }
 
         let summary = await entrySyncService.syncPendingEntries(
@@ -275,9 +278,23 @@ struct SettingsView: View {
         )
 
         if summary.failedCount > 0 {
-            lastSyncMessage = "Synced \(summary.syncedCount). Failed \(summary.failedCount)."
-        } else {
+            lastSyncBannerStyle = .warning
+            lastSyncMessage = "Synced \(summary.syncedCount) changes. \(summary.failedCount) still need retry."
+        } else if summary.syncedCount > 0 {
+            lastSyncBannerStyle = .success
             lastSyncMessage = "Synced \(summary.syncedCount) local changes."
+        } else {
+            lastSyncBannerStyle = .neutral
+            lastSyncMessage = "Nothing new to sync."
         }
+    }
+    private var syncButtonTitle: String {
+        if isSyncing {
+            return "Syncing..."
+        }
+        if currentUserFailedActions.isEmpty == false {
+            return "Retry sync"
+        }
+        return "Sync now"
     }
 }

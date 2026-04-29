@@ -10,14 +10,26 @@ import SwiftUI
 struct SyncStatusSummaryCard: View {
     let pendingCount: Int
     let failedCount: Int
+    let isSyncing: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
-                Image(systemName: iconName)
-                    .font(.title3)
-                    .foregroundStyle(iconColor)
-                    .frame(width: 32, height: 32)
+                ZStack {
+                    SwiftUI.Circle()
+                        .fill(iconColor.opacity(0.16))
+                        .frame(width: 38, height: 38)
+
+                    if isSyncing {
+                        ProgressView()
+                            .scaleEffect(0.82)
+                            .tint(iconColor)
+                    } else {
+                        Image(systemName: iconName)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(iconColor)
+                    }
+                }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
@@ -37,7 +49,7 @@ struct SyncStatusSummaryCard: View {
                 VStack(spacing: 8) {
                     if pendingCount > 0 {
                         syncRow(
-                            label: "Pending actions",
+                            label: "Waiting to sync",
                             value: "\(pendingCount)",
                             color: CloseCutColors.pending
                         )
@@ -45,7 +57,7 @@ struct SyncStatusSummaryCard: View {
 
                     if failedCount > 0 {
                         syncRow(
-                            label: "Failed actions",
+                            label: "Needs retry",
                             value: "\(failedCount)",
                             color: CloseCutColors.failed
                         )
@@ -59,34 +71,42 @@ struct SyncStatusSummaryCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(CloseCutColors.separator, lineWidth: 0.5)
+                .stroke(borderColor, lineWidth: failedCount > 0 ? 1 : 0.5)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
     }
 
     private var title: String {
+        if isSyncing {
+            return "Syncing local changes"
+        }
+
         if failedCount > 0 {
-            return "Some changes need attention"
+            return "Some changes need retry"
         }
 
         if pendingCount > 0 {
-            return "Changes saved locally"
+            return "Changes saved on this device"
         }
 
-        return "All local changes are ready"
+        return "All changes are synced"
     }
 
     private var message: String {
+        if isSyncing {
+            return "CloseCut is sending your local changes to your private database."
+        }
+
         if failedCount > 0 {
-            return "Your data is still safe on this device. Failed actions can be retried when sync is connected."
+            return "Your data is still safe locally. Retry when your connection is stable."
         }
 
         if pendingCount > 0 {
-            return "CloseCut saved your changes offline. They are waiting for future sync."
+            return "You can keep using CloseCut. These changes will sync when you choose Sync now."
         }
 
-        return "Your local journal is up to date on this device."
+        return "Your journal is up to date across local storage and Firestore."
     }
 
     private var iconName: String {
@@ -113,8 +133,12 @@ struct SyncStatusSummaryCard: View {
         return CloseCutColors.synced
     }
 
+    private var borderColor: Color {
+        failedCount > 0 ? CloseCutColors.failed.opacity(0.65) : CloseCutColors.separator
+    }
+
     private var accessibilityLabel: String {
-        "\(title). \(pendingCount) pending actions. \(failedCount) failed actions."
+        "\(title). \(pendingCount) pending changes. \(failedCount) failed changes."
     }
 
     private func syncRow(

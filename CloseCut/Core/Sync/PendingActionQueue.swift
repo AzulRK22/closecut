@@ -109,4 +109,23 @@ final class PendingActionQueue {
 
         return try modelContext.fetch(descriptor).first
     }
+    func fetchSyncableActions(
+        userId: String,
+        modelContext: ModelContext
+    ) throws -> [PendingAction] {
+        let pendingRaw = PendingActionStatus.pending.rawValue
+        let failedRaw = PendingActionStatus.failed.rawValue
+
+        let descriptor = FetchDescriptor<PendingAction>(
+            predicate: #Predicate { action in
+                action.userId == userId &&
+                (action.statusRaw == pendingRaw || action.statusRaw == failedRaw)
+            },
+            sortBy: [
+                SortDescriptor(\PendingAction.createdAt, order: .forward)
+            ]
+        )
+
+        return try modelContext.fetch(descriptor)
+    }
 }

@@ -23,7 +23,7 @@ final class EntrySyncService {
         var failedCount = 0
 
         do {
-            let actions = try queue.fetchPendingActions(
+            let actions = try queue.fetchSyncableActions(
                 userId: userId,
                 modelContext: modelContext
             )
