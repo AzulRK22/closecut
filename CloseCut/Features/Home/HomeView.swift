@@ -64,13 +64,13 @@ struct HomeView: View {
                         )
 
                     case .quickPick:
-                        EmptyStateView(
-                            title: "QuickPick needs a little history",
-                            message: "Add 3 watches so CloseCut can understand your taste.",
-                            systemImage: "sparkles",
-                            actionTitle: "Add past watches",
-                            action: {
+                        QuickPickView(
+                            entries: entries,
+                            onQuickAdd: {
                                 isShowingQuickAdd = true
+                            },
+                            onCreateEntry: {
+                                isShowingEntryEditor = true
                             }
                         )
                     }
