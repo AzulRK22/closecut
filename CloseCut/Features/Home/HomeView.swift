@@ -57,15 +57,18 @@ struct HomeView: View {
                             },
                             onCreateEntry: {
                                 isShowingEntryEditor = true
+                            },
+                            onOpenQuickPick: {
+                                selectedSegment = .quickPick
                             }
                         )
 
                     case .quickPick:
                         EmptyStateView(
-                            title: "Not enough data yet",
-                            message: "Log at least 3 watches and QuickPick will start making suggestions.",
+                            title: "QuickPick needs a little history",
+                            message: "Add 3 watches so CloseCut can understand your taste.",
                             systemImage: "sparkles",
-                            actionTitle: "Log a film now",
+                            actionTitle: "Add past watches",
                             action: {
                                 isShowingQuickAdd = true
                             }
