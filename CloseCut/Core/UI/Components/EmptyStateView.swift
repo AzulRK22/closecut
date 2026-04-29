@@ -17,7 +17,7 @@ struct EmptyStateView: View {
     init(
         title: String,
         message: String,
-        systemImage: String = "film",
+        systemImage: String,
         actionTitle: String? = nil,
         action: (() -> Void)? = nil
     ) {
@@ -29,43 +29,59 @@ struct EmptyStateView: View {
     }
 
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: systemImage)
-                .font(.system(size: 42, weight: .regular))
-                .foregroundStyle(.secondary)
+        VStack(spacing: 18) {
+            ZStack {
+                SwiftUI.Circle()
+                    .fill(CloseCutColors.card)
+                    .frame(width: 92, height: 92)
 
-            VStack(spacing: 6) {
-                Text(title)
-                    .font(.title3)
-                    .fontWeight(.semibold)
-
-                Text(message)
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
+                Image(systemName: systemImage)
+                    .font(.system(size: 34, weight: .semibold))
+                    .foregroundStyle(CloseCutColors.accentLight)
             }
 
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 12)
+
             if let actionTitle, let action {
-                Button(actionTitle) {
+                Button {
                     action()
+                } label: {
+                    Text(actionTitle)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 48)
+                        .background(CloseCutColors.accent)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .padding(.top, 4)
+                .buttonStyle(.plain)
+                .padding(.horizontal, 20)
+                .padding(.top, 2)
             }
         }
         .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
+        .background(CloseCutColors.card.opacity(0.55))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(CloseCutColors.separator, lineWidth: 0.5)
+        }
         .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title). \(message)")
     }
-}
-
-#Preview {
-    EmptyStateView(
-        title: "No entries yet",
-        message: "Log your first movie or series memory.",
-        actionTitle: "Create Entry",
-        action: {}
-    )
 }

@@ -120,11 +120,26 @@ private struct LaunchGateView: View {
 
 private struct LoadingAuthView: View {
     var body: some View {
-        VStack(spacing: 16) {
-            ProgressView()
+        ZStack {
+            CloseCutColors.backgroundPrimary
+                .ignoresSafeArea()
 
-            Text("Preparing CloseCut")
-                .foregroundStyle(.secondary)
+            VStack(spacing: 18) {
+                CloseCutLogoMark(size: 76)
+
+                VStack(spacing: 6) {
+                    Text("CloseCut")
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
+
+                    Text("Preparing your taste journal")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                }
+
+                ProgressView()
+                    .padding(.top, 4)
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Preparing CloseCut")
@@ -133,11 +148,19 @@ private struct LoadingAuthView: View {
 
 private struct LoadingProfileView: View {
     var body: some View {
-        VStack(spacing: 16) {
-            ProgressView()
+        ZStack {
+            CloseCutColors.backgroundPrimary
+                .ignoresSafeArea()
 
-            Text("Preparing your profile")
-                .foregroundStyle(.secondary)
+            VStack(spacing: 16) {
+                CloseCutLogoMark(size: 64)
+
+                Text("Preparing your profile")
+                    .font(.subheadline)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+
+                ProgressView()
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Preparing your profile")

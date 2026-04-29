@@ -36,6 +36,14 @@ struct HomeView: View {
                     .ignoresSafeArea()
 
                 VStack(spacing: 0) {
+                    CloseCutHeroHeader(
+                        title: "Your taste history",
+                        subtitle: "Memories, moods, and picks shaped by what you watch.",
+                        systemImage: "sparkles"
+                    )
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 12)
                     Picker("Home section", selection: $selectedSegment) {
                         ForEach(HomeSegment.allCases) { segment in
                             Text(segment.title)

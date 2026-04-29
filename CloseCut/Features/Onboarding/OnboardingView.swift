@@ -110,11 +110,15 @@ struct OnboardingView: View {
             ZStack {
                 SwiftUI.Circle()
                     .fill(CloseCutColors.card)
-                    .frame(width: 180, height: 180)
+                    .frame(width: 188, height: 188)
 
-                Image(systemName: systemImage)
-                    .font(.system(size: 64, weight: .regular))
-                    .foregroundStyle(CloseCutColors.accentLight)
+                if index == 0 {
+                    CloseCutLogoMark(size: 104)
+                } else {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 64, weight: .regular))
+                        .foregroundStyle(CloseCutColors.accentLight)
+                }
             }
 
             VStack(spacing: 12) {
