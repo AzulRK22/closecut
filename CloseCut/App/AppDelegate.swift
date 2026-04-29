@@ -5,6 +5,7 @@
 //  Created by Azul Ramirez Kuri on 25/04/26.
 //
 
+import UIKit
 import FirebaseCore
 import FirebaseFirestore
 

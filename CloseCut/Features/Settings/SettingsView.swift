@@ -135,15 +135,18 @@ struct SettingsView: View {
                     title: "Version",
                     value: appVersion
                 )
+
+                settingsRow(
+                    icon: "shippingbox",
+                    title: "Bundle",
+                    value: AppBuildInfo.bundleIdentifier
+                )
             }
         }
     }
 
     private var appVersion: String {
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
-
-        return "\(version) (\(build))"
+        AppBuildInfo.displayVersion
     }
 
     private func settingsSection<Content: View>(
