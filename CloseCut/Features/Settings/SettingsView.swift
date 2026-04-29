@@ -10,12 +10,21 @@ import SwiftData
 
 struct SettingsView: View {
     @EnvironmentObject private var authService: AuthService
+    @Environment(\.modelContext) private var modelContext
+
+    @State private var isSyncing = false
+    @State private var lastSyncMessage: String?
 
     @Query(sort: \PendingAction.updatedAt, order: .reverse)
     private var pendingActions: [PendingAction]
 
+    @Query(sort: \LocalEntry.updatedAt, order: .reverse)
+    private var localEntries: [LocalEntry]
+
     let user: AuthUser
     let profile: UserProfile
+
+    private let entrySyncService = EntrySyncService()
 
     private var currentUserPendingActions: [PendingAction] {
         pendingActions.filter {
@@ -31,6 +40,17 @@ struct SettingsView: View {
         }
     }
 
+    private var currentUserPendingEntries: [LocalEntry] {
+        localEntries.filter {
+            $0.ownerId == user.id &&
+            $0.syncStatusRaw == SyncStatus.pending.rawValue
+        }
+    }
+
+    private var visiblePendingCount: Int {
+        max(currentUserPendingActions.count, currentUserPendingEntries.count)
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -44,10 +64,7 @@ struct SettingsView: View {
                             profile: profile
                         )
 
-                        SyncStatusSummaryCard(
-                            pendingCount: currentUserPendingActions.count,
-                            failedCount: currentUserFailedActions.count
-                        )
+                        syncSection
 
                         privacySection
 
@@ -63,6 +80,49 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .preferredColorScheme(.dark)
+        }
+    }
+
+    private var syncSection: some View {
+        VStack(spacing: 10) {
+            SyncStatusSummaryCard(
+                pendingCount: visiblePendingCount,
+                failedCount: currentUserFailedActions.count
+            )
+
+            if visiblePendingCount > 0 || currentUserFailedActions.isEmpty == false {
+                Button {
+                    Task {
+                        await syncNow()
+                    }
+                } label: {
+                    HStack {
+                        if isSyncing {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                        }
+
+                        Text(isSyncing ? "Syncing..." : "Sync now")
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+                    .background(CloseCutColors.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(isSyncing)
+            }
+
+            if let lastSyncMessage {
+                Text(lastSyncMessage)
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
 
@@ -92,7 +152,13 @@ struct SettingsView: View {
                     value: "Enabled"
                 )
 
-                Text("You can add and edit memories offline. Sync actions are tracked locally and will be used when backend sync is connected.")
+                settingsRow(
+                    icon: "clock.fill",
+                    title: "Pending local entries",
+                    value: "\(currentUserPendingEntries.count)"
+                )
+
+                Text("You can add and edit memories offline. Sync actions are tracked locally and pending entries can be pushed when sync is available.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -197,5 +263,21 @@ struct SettingsView: View {
                 .lineLimit(1)
         }
         .frame(minHeight: 32)
+    }
+
+    private func syncNow() async {
+        isSyncing = true
+        defer { isSyncing = false }
+
+        let summary = await entrySyncService.syncPendingEntries(
+            userId: user.id,
+            modelContext: modelContext
+        )
+
+        if summary.failedCount > 0 {
+            lastSyncMessage = "Synced \(summary.syncedCount). Failed \(summary.failedCount)."
+        } else {
+            lastSyncMessage = "Synced \(summary.syncedCount) local changes."
+        }
     }
 }
