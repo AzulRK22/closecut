@@ -47,7 +47,6 @@
 				Tests/CloseCutTests/Sync/PendingActionQueueTests.swift,
 				Tests/CloseCutTests/Validation/EntryValidationTests.swift,
 				Tests/CloseCutUITests/CloseCutUITests.swift,
-				Tests/CloseCutUITests/CloseCutUITestsLaunchTests.swift,
 			);
 			target = 356EB3522F9D1C1A00E9C3FF /* CloseCut */;
 		};
@@ -65,7 +64,6 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Tests/CloseCutUITests/CloseCutUITests.swift,
-				Tests/CloseCutUITests/CloseCutUITestsLaunchTests.swift,
 			);
 			target = 356EB36B2F9D1C1B00E9C3FF /* CloseCutUITests */;
 		};
