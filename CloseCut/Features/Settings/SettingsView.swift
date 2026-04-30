@@ -10,6 +10,7 @@ import SwiftData
 
 struct SettingsView: View {
     @EnvironmentObject private var authService: AuthService
+    @EnvironmentObject private var sessionSyncViewModel: SessionSyncViewModel
     @Environment(\.modelContext) private var modelContext
 
     @State private var isSyncing = false
@@ -91,6 +92,12 @@ struct SettingsView: View {
 
     private var syncSection: some View {
         VStack(spacing: 10) {
+            if sessionSyncViewModel.isInitialCloudRefreshRunning {
+                SyncResultBanner(
+                    message: "Refreshing your cloud entries…",
+                    style: .neutral
+                )
+            }
             SyncStatusSummaryCard(
                 pendingCount: visiblePendingCount,
                 failedCount: currentUserFailedActions.count,

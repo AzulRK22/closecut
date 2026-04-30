@@ -11,6 +11,7 @@ import SwiftData
 struct RootView: View {
     @EnvironmentObject private var authService: AuthService
     @EnvironmentObject private var sessionViewModel: SessionViewModel
+    @EnvironmentObject private var sessionSyncViewModel: SessionSyncViewModel
 
     var body: some View {
         switch authService.authState {
@@ -21,6 +22,7 @@ struct RootView: View {
             AuthView()
                 .onAppear {
                     sessionViewModel.reset()
+                    sessionSyncViewModel.reset()
                 }
 
         case .signedIn(let user):
@@ -197,6 +199,7 @@ private struct ProfileErrorView: View {
     RootView()
         .environmentObject(AuthService())
         .environmentObject(SessionViewModel())
+        .environmentObject(SessionSyncViewModel())
         .modelContainer(for: [
             LocalEntry.self,
             LocalReaction.self,

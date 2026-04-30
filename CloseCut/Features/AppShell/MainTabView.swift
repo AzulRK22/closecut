@@ -6,8 +6,12 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct MainTabView: View {
+    @EnvironmentObject private var sessionSyncViewModel: SessionSyncViewModel
+    @Environment(\.modelContext) private var modelContext
+    
     let user: AuthUser
     let profile: UserProfile
 
@@ -30,5 +34,11 @@ struct MainTabView: View {
         }
         .tint(CloseCutColors.accent)
         .preferredColorScheme(.dark)
+        .task {
+            await sessionSyncViewModel.runInitialCloudRefreshIfNeeded(
+                userId: user.id,
+                modelContext: modelContext
+            )
+        }
     }
 }
