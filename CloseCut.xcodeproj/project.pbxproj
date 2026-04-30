@@ -44,6 +44,7 @@
 			membershipExceptions = (
 				Tests/CloseCutTests/Domain/DuplicateDetectorTests.swift,
 				Tests/CloseCutTests/Recommendation/QuickPickEngineTests.swift,
+				Tests/CloseCutTests/Sync/EntryConflictPolicyTests.swift,
 				Tests/CloseCutTests/Sync/PendingActionQueueTests.swift,
 				Tests/CloseCutTests/Validation/EntryValidationTests.swift,
 				Tests/CloseCutUITests/CloseCutUITests.swift,
@@ -55,6 +56,7 @@
 			membershipExceptions = (
 				Tests/CloseCutTests/Domain/DuplicateDetectorTests.swift,
 				Tests/CloseCutTests/Recommendation/QuickPickEngineTests.swift,
+				Tests/CloseCutTests/Sync/EntryConflictPolicyTests.swift,
 				Tests/CloseCutTests/Sync/PendingActionQueueTests.swift,
 				Tests/CloseCutTests/Validation/EntryValidationTests.swift,
 			);

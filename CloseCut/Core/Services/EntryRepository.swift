@@ -174,55 +174,74 @@ final class EntryRepository {
         _ remoteEntry: Entry,
         modelContext: ModelContext
     ) throws -> Entry {
-        if let existingLocalEntry = try fetchLocalEntryModel(
+        let existingLocalModel = try fetchLocalEntryModel(
             id: remoteEntry.id,
             modelContext: modelContext
-        ) {
-            let localSyncStatus = SyncStatus(rawValue: existingLocalEntry.syncStatusRaw) ?? .synced
-
-            // Do not overwrite local changes waiting to sync.
-            if localSyncStatus == .pending || localSyncStatus == .failed {
-                return existingLocalEntry.domain
-            }
-
-            existingLocalEntry.update(from: remoteEntry)
-            existingLocalEntry.syncStatusRaw = SyncStatus.synced.rawValue
-
-            try modelContext.save()
-            return existingLocalEntry.domain
-        }
-
-        let localEntry = LocalEntry(
-            id: remoteEntry.id,
-            ownerId: remoteEntry.ownerId,
-            title: remoteEntry.title,
-            normalizedTitle: remoteEntry.normalizedTitle,
-            type: remoteEntry.type,
-            releaseYear: remoteEntry.releaseYear,
-            mood: remoteEntry.mood,
-            quickSentiment: remoteEntry.quickSentiment,
-            takeaway: remoteEntry.takeaway,
-            quote: remoteEntry.quote,
-            tags: remoteEntry.tags,
-            intensity: remoteEntry.intensity,
-            watchContext: remoteEntry.watchContext,
-            watchedDateApprox: remoteEntry.watchedDateApprox,
-            cinemaAudio: remoteEntry.cinemaAudio,
-            cinemaScreen: remoteEntry.cinemaScreen,
-            cinemaComfort: remoteEntry.cinemaComfort,
-            visibility: remoteEntry.visibility,
-            sourceType: remoteEntry.sourceType,
-            watchedAt: remoteEntry.watchedAt,
-            createdAt: remoteEntry.createdAt,
-            updatedAt: remoteEntry.updatedAt,
-            deletedAt: remoteEntry.deletedAt,
-            syncStatus: .synced
         )
 
-        modelContext.insert(localEntry)
-        try modelContext.save()
+        let existingLocalEntry = existingLocalModel?.domain
 
-        return localEntry.domain
+        let decision = EntryConflictPolicy.decide(
+            localEntry: existingLocalEntry,
+            remoteEntry: remoteEntry
+        )
+
+        switch decision {
+        case .insertRemote:
+            let localEntry = LocalEntry(
+                id: remoteEntry.id,
+                ownerId: remoteEntry.ownerId,
+                title: remoteEntry.title,
+                normalizedTitle: remoteEntry.normalizedTitle,
+                type: remoteEntry.type,
+                releaseYear: remoteEntry.releaseYear,
+                mood: remoteEntry.mood,
+                quickSentiment: remoteEntry.quickSentiment,
+                takeaway: remoteEntry.takeaway,
+                quote: remoteEntry.quote,
+                tags: remoteEntry.tags,
+                intensity: remoteEntry.intensity,
+                watchContext: remoteEntry.watchContext,
+                watchedDateApprox: remoteEntry.watchedDateApprox,
+                cinemaAudio: remoteEntry.cinemaAudio,
+                cinemaScreen: remoteEntry.cinemaScreen,
+                cinemaComfort: remoteEntry.cinemaComfort,
+                visibility: remoteEntry.visibility,
+                sourceType: remoteEntry.sourceType,
+                watchedAt: remoteEntry.watchedAt,
+                createdAt: remoteEntry.createdAt,
+                updatedAt: remoteEntry.updatedAt,
+                deletedAt: remoteEntry.deletedAt,
+                syncStatus: .synced
+            )
+
+            modelContext.insert(localEntry)
+            try modelContext.save()
+
+            return localEntry.domain
+
+        case .applyRemote:
+            guard let existingLocalModel else {
+                throw EntryRepositoryError.entryNotFound
+            }
+
+            var syncedRemoteEntry = remoteEntry
+            syncedRemoteEntry.syncStatus = .synced
+
+            existingLocalModel.update(from: syncedRemoteEntry)
+            existingLocalModel.syncStatusRaw = SyncStatus.synced.rawValue
+
+            try modelContext.save()
+
+            return existingLocalModel.domain
+
+        case .keepLocal, .keepLocalPending:
+            guard let existingLocalEntry else {
+                throw EntryRepositoryError.entryNotFound
+            }
+
+            return existingLocalEntry
+        }
     }
 
     // MARK: - Duplicate Detection
