@@ -467,26 +467,11 @@ final class EntryRepository {
 
         let payloadData = try CodableHelpers.encode(payload)
 
-        let dedupeKey: String
-
-        switch actionType {
-        case PendingActionType.createEntry:
-            dedupeKey = "entry:create:\(entry.id)"
-        case PendingActionType.updateEntry:
-            dedupeKey = "entry:update:\(entry.id)"
-        case PendingActionType.deleteEntry:
-            dedupeKey = "entry:delete:\(entry.id)"
-        case PendingActionType.updateVisibility:
-            dedupeKey = "entry:visibility:\(entry.id)"
-        default:
-            dedupeKey = "entry:\(actionType.rawValue):\(entry.id)"
-        }
-
-        try pendingActionQueue.enqueue(
+        try pendingActionQueue.enqueueEntryAction(
             userId: userId,
+            entryId: entry.id,
             actionType: actionType,
             payloadData: payloadData,
-            dedupeKey: dedupeKey,
             modelContext: modelContext
         )
     }

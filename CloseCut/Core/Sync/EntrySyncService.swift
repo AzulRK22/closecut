@@ -51,6 +51,16 @@ final class EntrySyncService {
             syncedCount += orphanSummary.syncedCount
             failedCount += orphanSummary.failedCount
 
+            do {
+                _ = try queue.cleanupCompletedActions(
+                    modelContext: modelContext
+                )
+            } catch {
+                #if DEBUG
+                print("⚠️ Completed action cleanup failed:", error.localizedDescription)
+                #endif
+            }
+
             return EntrySyncSummary(
                 syncedCount: syncedCount,
                 failedCount: failedCount

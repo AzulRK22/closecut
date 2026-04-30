@@ -20,6 +20,7 @@ struct SettingsView: View {
 
     @Query(sort: \PendingAction.updatedAt, order: .reverse)
     private var pendingActions: [PendingAction]
+    
 
     @Query(sort: \LocalEntry.updatedAt, order: .reverse)
     private var localEntries: [LocalEntry]
@@ -28,6 +29,7 @@ struct SettingsView: View {
     let profile: UserProfile
 
     private let entrySyncService = EntrySyncService()
+    private let pendingActionQueue = PendingActionQueue()
 
     private var currentUserPendingActions: [PendingAction] {
         pendingActions.filter {
@@ -40,6 +42,12 @@ struct SettingsView: View {
         pendingActions.filter {
             $0.userId == user.id &&
             $0.statusRaw == PendingActionStatus.failed.rawValue
+        }
+    }
+    private var currentUserCompletedActions: [PendingAction] {
+        pendingActions.filter {
+            $0.userId == user.id &&
+            $0.statusRaw == PendingActionStatus.completed.rawValue
         }
     }
 
@@ -202,11 +210,30 @@ struct SettingsView: View {
                     title: "Queued actions",
                     value: "\(currentUserPendingActions.count)"
                 )
+                settingsRow(
+                    icon: "checkmark.circle.fill",
+                    title: "Completed sync actions",
+                    value: "\(currentUserCompletedActions.count)"
+                )
 
                 Text("You can add and edit memories offline. Sync actions are tracked locally, and pending entries can be pushed when sync is available.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+                if currentUserCompletedActions.isEmpty == false {
+                    Button {
+                        cleanupCompletedActions()
+                    } label: {
+                        Text("Clear completed sync history")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textSecondary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 38)
+                            .background(CloseCutColors.input)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
     }
@@ -341,6 +368,20 @@ struct SettingsView: View {
         } else {
             lastSyncBannerStyle = .neutral
             lastSyncMessage = "Nothing new to sync."
+        }
+    }
+    private func cleanupCompletedActions() {
+        do {
+            let deletedCount = try pendingActionQueue.cleanupAllCompletedActions(
+                userId: user.id,
+                modelContext: modelContext
+            )
+
+            lastSyncBannerStyle = .success
+            lastSyncMessage = "Cleared \(deletedCount) completed sync actions."
+        } catch {
+            lastSyncBannerStyle = .warning
+            lastSyncMessage = "Couldn’t clear completed sync history."
         }
     }
 

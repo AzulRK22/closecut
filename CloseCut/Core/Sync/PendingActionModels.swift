@@ -33,3 +33,6 @@ struct PendingEntryPayload: Codable, Equatable {
     let sourceType: String
     let updatedAt: Date
 }
+enum PendingActionCleanupPolicy {
+    static let completedActionRetentionDays: Int = 7
+}
