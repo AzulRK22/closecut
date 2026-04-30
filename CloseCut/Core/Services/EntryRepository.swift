@@ -168,6 +168,62 @@ final class EntryRepository {
 
         return try modelContext.fetch(descriptor).first
     }
+    // MARK: - Remote Merge
+
+    func upsertRemoteEntry(
+        _ remoteEntry: Entry,
+        modelContext: ModelContext
+    ) throws -> Entry {
+        if let existingLocalEntry = try fetchLocalEntryModel(
+            id: remoteEntry.id,
+            modelContext: modelContext
+        ) {
+            let localSyncStatus = SyncStatus(rawValue: existingLocalEntry.syncStatusRaw) ?? .synced
+
+            // Do not overwrite local changes waiting to sync.
+            if localSyncStatus == .pending || localSyncStatus == .failed {
+                return existingLocalEntry.domain
+            }
+
+            existingLocalEntry.update(from: remoteEntry)
+            existingLocalEntry.syncStatusRaw = SyncStatus.synced.rawValue
+
+            try modelContext.save()
+            return existingLocalEntry.domain
+        }
+
+        let localEntry = LocalEntry(
+            id: remoteEntry.id,
+            ownerId: remoteEntry.ownerId,
+            title: remoteEntry.title,
+            normalizedTitle: remoteEntry.normalizedTitle,
+            type: remoteEntry.type,
+            releaseYear: remoteEntry.releaseYear,
+            mood: remoteEntry.mood,
+            quickSentiment: remoteEntry.quickSentiment,
+            takeaway: remoteEntry.takeaway,
+            quote: remoteEntry.quote,
+            tags: remoteEntry.tags,
+            intensity: remoteEntry.intensity,
+            watchContext: remoteEntry.watchContext,
+            watchedDateApprox: remoteEntry.watchedDateApprox,
+            cinemaAudio: remoteEntry.cinemaAudio,
+            cinemaScreen: remoteEntry.cinemaScreen,
+            cinemaComfort: remoteEntry.cinemaComfort,
+            visibility: remoteEntry.visibility,
+            sourceType: remoteEntry.sourceType,
+            watchedAt: remoteEntry.watchedAt,
+            createdAt: remoteEntry.createdAt,
+            updatedAt: remoteEntry.updatedAt,
+            deletedAt: remoteEntry.deletedAt,
+            syncStatus: .synced
+        )
+
+        modelContext.insert(localEntry)
+        try modelContext.save()
+
+        return localEntry.domain
+    }
 
     // MARK: - Duplicate Detection
 

@@ -45,4 +45,22 @@ final class EntryRemoteDataSource {
             .document(entry.id)
             .setData(from: dto, merge: true)
     }
+
+    func fetchEntries(
+        ownerId: String
+    ) async throws -> [Entry] {
+        let snapshot = try await db
+            .collection("entries")
+            .whereField("ownerId", isEqualTo: ownerId)
+            .order(by: "updatedAt", descending: true)
+            .getDocuments()
+
+        return try snapshot.documents.map { document in
+            let dto = try document.data(as: FirestoreEntryDTO.self)
+            return dto.domain(
+                id: document.documentID,
+                syncStatus: .synced
+            )
+        }
+    }
 }

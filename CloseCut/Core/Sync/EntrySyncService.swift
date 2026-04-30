@@ -62,6 +62,39 @@ final class EntrySyncService {
             )
         }
     }
+    func pullRemoteEntries(
+        userId: String,
+        modelContext: ModelContext
+    ) async -> EntrySyncSummary {
+        do {
+            let remoteEntries = try await remote.fetchEntries(
+                ownerId: userId
+            )
+
+            var pulledCount = 0
+
+            for remoteEntry in remoteEntries {
+                _ = try repository.upsertRemoteEntry(
+                    remoteEntry,
+                    modelContext: modelContext
+                )
+
+                pulledCount += 1
+            }
+
+            return EntrySyncSummary(
+                syncedCount: 0,
+                failedCount: 0,
+                pulledCount: pulledCount
+            )
+        } catch {
+            return EntrySyncSummary(
+                syncedCount: 0,
+                failedCount: 1,
+                pulledCount: 0
+            )
+        }
+    }
 
     private func sync(
         action: PendingAction,
@@ -194,6 +227,17 @@ final class EntrySyncService {
 struct EntrySyncSummary: Equatable {
     let syncedCount: Int
     let failedCount: Int
+    let pulledCount: Int
+
+    init(
+        syncedCount: Int,
+        failedCount: Int,
+        pulledCount: Int = 0
+    ) {
+        self.syncedCount = syncedCount
+        self.failedCount = failedCount
+        self.pulledCount = pulledCount
+    }
 }
 
 enum EntrySyncError: LocalizedError {

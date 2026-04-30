@@ -13,6 +13,7 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var isSyncing = false
+    @State private var isPullingFromCloud = false
     @State private var lastSyncMessage: String?
     @State private var lastSyncBannerStyle: SyncResultBannerStyle = .neutral
 
@@ -50,6 +51,10 @@ struct SettingsView: View {
 
     private var visiblePendingCount: Int {
         max(currentUserPendingActions.count, currentUserPendingEntries.count)
+    }
+
+    private var hasPendingOrFailedWork: Bool {
+        visiblePendingCount > 0 || currentUserFailedActions.isEmpty == false
     }
 
     var body: some View {
@@ -92,7 +97,7 @@ struct SettingsView: View {
                 isSyncing: isSyncing
             )
 
-            if visiblePendingCount > 0 || currentUserFailedActions.isEmpty == false {
+            if hasPendingOrFailedWork {
                 Button {
                     Task {
                         await syncNow()
@@ -116,8 +121,33 @@ struct SettingsView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(.plain)
-                .disabled(isSyncing)
+                .disabled(isSyncing || isPullingFromCloud)
             }
+
+            Button {
+                Task {
+                    await pullFromCloud()
+                }
+            } label: {
+                HStack {
+                    if isPullingFromCloud {
+                        ProgressView()
+                            .tint(CloseCutColors.textSecondary)
+                    } else {
+                        Image(systemName: "icloud.and.arrow.down")
+                    }
+
+                    Text(isPullingFromCloud ? "Refreshing..." : "Refresh from cloud")
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textSecondary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 46)
+                .background(CloseCutColors.input)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(isPullingFromCloud || isSyncing)
 
             if let lastSyncMessage {
                 SyncResultBanner(
@@ -160,7 +190,13 @@ struct SettingsView: View {
                     value: "\(currentUserPendingEntries.count)"
                 )
 
-                Text("You can add and edit memories offline. Sync actions are tracked locally and pending entries can be pushed when sync is available.")
+                settingsRow(
+                    icon: "tray.full.fill",
+                    title: "Queued actions",
+                    value: "\(currentUserPendingActions.count)"
+                )
+
+                Text("You can add and edit memories offline. Sync actions are tracked locally, and pending entries can be pushed when sync is available.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -215,6 +251,18 @@ struct SettingsView: View {
 
     private var appVersion: String {
         AppBuildInfo.displayVersion
+    }
+
+    private var syncButtonTitle: String {
+        if isSyncing {
+            return "Syncing..."
+        }
+
+        if currentUserFailedActions.isEmpty == false {
+            return "Retry sync"
+        }
+
+        return "Sync now"
     }
 
     private func settingsSection<Content: View>(
@@ -288,13 +336,26 @@ struct SettingsView: View {
             lastSyncMessage = "Nothing new to sync."
         }
     }
-    private var syncButtonTitle: String {
-        if isSyncing {
-            return "Syncing..."
+
+    private func pullFromCloud() async {
+        isPullingFromCloud = true
+        lastSyncMessage = nil
+        defer { isPullingFromCloud = false }
+
+        let summary = await entrySyncService.pullRemoteEntries(
+            userId: user.id,
+            modelContext: modelContext
+        )
+
+        if summary.failedCount > 0 {
+            lastSyncBannerStyle = .warning
+            lastSyncMessage = "Couldn’t refresh from cloud. Check your connection and Firestore rules."
+        } else if summary.pulledCount > 0 {
+            lastSyncBannerStyle = .success
+            lastSyncMessage = "Refreshed \(summary.pulledCount) entries from cloud."
+        } else {
+            lastSyncBannerStyle = .neutral
+            lastSyncMessage = "No cloud entries found yet."
         }
-        if currentUserFailedActions.isEmpty == false {
-            return "Retry sync"
-        }
-        return "Sync now"
     }
 }
