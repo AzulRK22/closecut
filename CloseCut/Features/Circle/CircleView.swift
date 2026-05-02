@@ -69,6 +69,14 @@ struct CircleView: View {
             return (circle, membership)
         }
     }
+    private var membershipRefreshKey: String {
+        localMemberships
+            .filter { $0.userId == user.id }
+            .map { membership in
+                "\(membership.id)-\(membership.statusRaw)-\(membership.updatedAt.timeIntervalSince1970)"
+            }
+            .joined(separator: "|")
+    }
 
     var body: some View {
         NavigationStack {
@@ -146,7 +154,7 @@ struct CircleView: View {
             } message: {
                 Text(circleErrorMessage ?? "Unknown error.")
             }
-            .task {
+            .task(id: membershipRefreshKey) {
                 await refreshLocalCirclesFromRemote()
             }
         }
@@ -522,7 +530,6 @@ struct CircleView: View {
             circleErrorMessage = error.localizedDescription
         }
     }
-
     private func refreshLocalCirclesFromRemote() async {
         guard isRefreshingCircles == false else {
             return

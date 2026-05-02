@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 private enum CircleDetailSegment: String, CaseIterable, Identifiable {
     case timeline
@@ -27,18 +28,27 @@ private enum CircleDetailSegment: String, CaseIterable, Identifiable {
 }
 
 struct CircleDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+
     let circle: CloseCircle
     let membership: CircleMembership
     let currentUserId: String
 
     @State private var selectedSegment: CircleDetailSegment = .timeline
     @State private var copiedInviteCode = false
+
     @State private var isRefreshing = false
     @State private var refreshedCircle: CloseCircle?
     @State private var members: [CircleMember] = []
     @State private var refreshErrorMessage: String?
 
+    @State private var showLeaveConfirmation = false
+    @State private var isLeavingCircle = false
+    @State private var circleActionErrorMessage: String?
+
     private let circleRemoteDataSource = CircleRemoteDataSource()
+    private let circleService = CircleService()
 
     private var displayedCircle: CloseCircle {
         refreshedCircle ?? circle
@@ -78,6 +88,13 @@ struct CircleDetailView: View {
                         )
                     }
 
+                    if let refreshErrorMessage {
+                        SyncResultBanner(
+                            message: refreshErrorMessage,
+                            style: .warning
+                        )
+                    }
+
                     Picker("Circle detail section", selection: $selectedSegment) {
                         ForEach(CircleDetailSegment.allCases) { segment in
                             Text(segment.title)
@@ -102,6 +119,58 @@ struct CircleDetailView: View {
         }
         .refreshable {
             await refreshCircleDetail()
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    if membership.isOwner {
+                        Button {
+                            // Owner edit/delete comes next.
+                        } label: {
+                            Label("Manage Circle", systemImage: "slider.horizontal.3")
+                        }
+                        .disabled(true)
+                    } else {
+                        Button(role: .destructive) {
+                            showLeaveConfirmation = true
+                        } label: {
+                            Label(
+                                isLeavingCircle ? "Leaving..." : "Leave Circle",
+                                systemImage: "rectangle.portrait.and.arrow.right"
+                            )
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 17, weight: .semibold))
+                }
+                .accessibilityLabel("Circle actions")
+                .disabled(isLeavingCircle)
+            }
+        }
+        .confirmationDialog(
+            "Leave Circle?",
+            isPresented: $showLeaveConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Leave Circle", role: .destructive) {
+                Task {
+                    await leaveCircle()
+                }
+            }
+            .disabled(isLeavingCircle)
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You’ll stop seeing this Circle in your list. Entries shared with this Circle will no longer appear in your Circle space.")
+        }
+        .alert("Circle action failed", isPresented: Binding(
+            get: { circleActionErrorMessage != nil },
+            set: { if !$0 { circleActionErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(circleActionErrorMessage ?? "Unknown error.")
         }
     }
 
@@ -181,21 +250,7 @@ struct CircleDetailView: View {
             Spacer()
 
             Button {
-                UIPasteboard.general.string = displayedCircle.inviteCode
-
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    copiedInviteCode = true
-                }
-
-                Task {
-                    try? await Task.sleep(nanoseconds: 1_500_000_000)
-
-                    await MainActor.run {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            copiedInviteCode = false
-                        }
-                    }
-                }
+                copyInviteCode()
             } label: {
                 Image(systemName: copiedInviteCode ? "checkmark" : "doc.on.doc")
                     .font(.subheadline.weight(.semibold))
@@ -279,6 +334,24 @@ struct CircleDetailView: View {
         }
     }
 
+    private func copyInviteCode() {
+        UIPasteboard.general.string = displayedCircle.inviteCode
+
+        withAnimation(.easeInOut(duration: 0.2)) {
+            copiedInviteCode = true
+        }
+
+        Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    copiedInviteCode = false
+                }
+            }
+        }
+    }
+
     private func refreshCircleDetail() async {
         guard isRefreshing == false else {
             return
@@ -306,6 +379,38 @@ struct CircleDetailView: View {
 
             #if DEBUG
             print("⚠️ Failed to refresh Circle detail:", error.localizedDescription)
+            #endif
+        }
+    }
+
+    private func leaveCircle() async {
+        guard isLeavingCircle == false else {
+            return
+        }
+
+        isLeavingCircle = true
+        circleActionErrorMessage = nil
+
+        do {
+            try await circleService.leaveCircle(
+                circle: displayedCircle,
+                membership: membership,
+                modelContext: modelContext
+            )
+
+            isLeavingCircle = false
+
+            try? await Task.sleep(nanoseconds: 250_000_000)
+
+            await MainActor.run {
+                dismiss()
+            }
+        } catch {
+            isLeavingCircle = false
+            circleActionErrorMessage = error.localizedDescription
+
+            #if DEBUG
+            print("❌ Failed to leave Circle:", error.localizedDescription)
             #endif
         }
     }

@@ -172,6 +172,26 @@ final class CircleService {
         )
         return localCircle
     }
+    func leaveCircle(
+        circle: CloseCircle,
+        membership: CircleMembership,
+        modelContext: ModelContext
+    ) async throws {
+        guard membership.role != .owner else {
+            throw CircleServiceError.ownerCannotLeaveCircle
+        }
+
+        try await circleRemoteDataSource.leaveCircle(
+            circleId: circle.id,
+            userId: membership.userId
+        )
+
+        try circleRepository.markLocalMembershipRemoved(
+            circleId: circle.id,
+            userId: membership.userId,
+            modelContext: modelContext
+        )
+    }
     private func generateUniqueInviteCode(
         circleName: String,
         ownerDisplayName: String
@@ -197,6 +217,7 @@ final class CircleService {
         case invalidInviteCode
         case circleNotFound
         case inviteCodeUnavailable
+        case ownerCannotLeaveCircle
 
         var errorDescription: String? {
             switch self {
@@ -206,6 +227,8 @@ final class CircleService {
                 return "No Circle was found with that invite code."
             case .inviteCodeUnavailable:
                 return "Couldn’t generate a unique invite code. Please try again."
+            case .ownerCannotLeaveCircle:
+                return "Owners can’t leave their own Circle. You can edit or delete the Circle instead."
             }
         }
     }

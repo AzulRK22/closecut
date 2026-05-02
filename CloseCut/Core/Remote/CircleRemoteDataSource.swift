@@ -156,4 +156,36 @@ final class CircleRemoteDataSource {
             return dto.domain()
         }
     }
+    func leaveCircle(
+        circleId: String,
+        userId: String
+    ) async throws {
+        let circleRef = db
+            .collection("circles")
+            .document(circleId)
+
+        let memberRef = circleRef
+            .collection("members")
+            .document(userId)
+
+        let batch = db.batch()
+
+        batch.updateData(
+            [
+                "status": CircleMemberStatus.removed.rawValue,
+                "updatedAt": Timestamp(date: Date())
+            ],
+            forDocument: memberRef
+        )
+
+        batch.updateData(
+            [
+                "memberIds": FieldValue.arrayRemove([userId]),
+                "updatedAt": Timestamp(date: Date())
+            ],
+            forDocument: circleRef
+        )
+
+        try await batch.commit()
+    }
 }

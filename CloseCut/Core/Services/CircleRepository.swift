@@ -255,6 +255,25 @@ final class CircleRepository {
 
         return membership.domain
     }
+    func markLocalMembershipRemoved(
+        circleId: String,
+        userId: String,
+        modelContext: ModelContext
+    ) throws {
+        guard let membership = try fetchLocalMembershipModel(
+            circleId: circleId,
+            userId: userId,
+            modelContext: modelContext
+        ) else {
+            throw CircleRepositoryError.membershipNotFound
+        }
+
+        membership.statusRaw = CircleMemberStatus.removed.rawValue
+        membership.updatedAt = Date()
+        membership.syncStatusRaw = SyncStatus.synced.rawValue
+
+        try modelContext.save()
+    }
 
     // MARK: - Helpers
 
@@ -269,11 +288,14 @@ final class CircleRepository {
 
 enum CircleRepositoryError: LocalizedError {
     case circleNotFound
+    case membershipNotFound
 
     var errorDescription: String? {
         switch self {
         case .circleNotFound:
             return "Circle was not found."
+        case .membershipNotFound:
+            return "Circle membership was not found."
         }
     }
 }
