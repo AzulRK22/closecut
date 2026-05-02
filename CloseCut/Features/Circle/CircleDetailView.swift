@@ -29,9 +29,38 @@ private enum CircleDetailSegment: String, CaseIterable, Identifiable {
 struct CircleDetailView: View {
     let circle: CloseCircle
     let membership: CircleMembership
+    let currentUserId: String
 
     @State private var selectedSegment: CircleDetailSegment = .timeline
     @State private var copiedInviteCode = false
+    @State private var isRefreshing = false
+    @State private var refreshedCircle: CloseCircle?
+    @State private var members: [CircleMember] = []
+    @State private var refreshErrorMessage: String?
+
+    private let circleRemoteDataSource = CircleRemoteDataSource()
+
+    private var displayedCircle: CloseCircle {
+        refreshedCircle ?? circle
+    }
+
+    private var sortedMembers: [CircleMember] {
+        members.sorted { first, second in
+            if first.role != second.role {
+                return first.role == .owner
+            }
+
+            if first.userId == currentUserId {
+                return true
+            }
+
+            if second.userId == currentUserId {
+                return false
+            }
+
+            return first.displayName.localizedCaseInsensitiveCompare(second.displayName) == .orderedAscending
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -41,6 +70,13 @@ struct CircleDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     header
+
+                    if isRefreshing {
+                        SyncResultBanner(
+                            message: "Refreshing Circle…",
+                            style: .neutral
+                        )
+                    }
 
                     Picker("Circle detail section", selection: $selectedSegment) {
                         ForEach(CircleDetailSegment.allCases) { segment in
@@ -58,20 +94,27 @@ struct CircleDetailView: View {
                 .padding(.vertical, 16)
             }
         }
-        .navigationTitle(circle.name)
+        .navigationTitle(displayedCircle.name)
         .navigationBarTitleDisplayMode(.inline)
         .preferredColorScheme(.dark)
+        .task {
+            await refreshCircleDetail()
+        }
+        .refreshable {
+            await refreshCircleDetail()
+        }
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(circle.name)
+                    Text(displayedCircle.name)
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                    if let description = circle.description,
+                    if let description = displayedCircle.description,
                        description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
                         Text(description)
                             .font(.subheadline)
@@ -96,7 +139,7 @@ struct CircleDetailView: View {
             }
 
             HStack(spacing: 8) {
-                Label("\(circle.memberIds.count) members", systemImage: "person.2.fill")
+                Label("\(displayedCircle.memberIds.count) members", systemImage: "person.2.fill")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textTertiary)
 
@@ -104,33 +147,13 @@ struct CircleDetailView: View {
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textTertiary)
 
-                Text("Owner: \(circle.ownerDisplayName)")
+                Text("Owner: \(displayedCircle.ownerDisplayName)")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textTertiary)
+                    .lineLimit(1)
             }
 
-            HStack {
-                Text(circle.inviteCode)
-                    .font(.subheadline.monospaced().weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textPrimary)
-
-                Spacer()
-
-                Button {
-                    UIPasteboard.general.string = circle.inviteCode
-                    copiedInviteCode = true
-                } label: {
-                    Image(systemName: copiedInviteCode ? "checkmark" : "doc.on.doc")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.accentLight)
-                        .frame(width: 36, height: 36)
-                }
-                .accessibilityLabel("Copy invite code")
-            }
-            .padding(.horizontal, 14)
-            .frame(height: 50)
-            .background(CloseCutColors.input)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            inviteCodeBlock
         }
         .padding(16)
         .background(CloseCutColors.card)
@@ -141,46 +164,149 @@ struct CircleDetailView: View {
         }
     }
 
+    private var inviteCodeBlock: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Invite code")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .textCase(.uppercase)
+                    .tracking(0.8)
+
+                Text(displayedCircle.inviteCode)
+                    .font(.subheadline.monospaced().weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+            }
+
+            Spacer()
+
+            Button {
+                UIPasteboard.general.string = displayedCircle.inviteCode
+
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    copiedInviteCode = true
+                }
+
+                Task {
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+
+                    await MainActor.run {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            copiedInviteCode = false
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: copiedInviteCode ? "checkmark" : "doc.on.doc")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.accentLight)
+                    .frame(width: 40, height: 40)
+            }
+            .accessibilityLabel("Copy invite code")
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 58)
+        .background(CloseCutColors.input)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
     @ViewBuilder
     private var selectedContent: some View {
         switch selectedSegment {
         case .timeline:
-            EmptyStateView(
-                title: "Nothing shared yet",
-                message: "Shared entries for this Circle will appear here.",
-                systemImage: "film.stack",
-                actionTitle: nil,
-                action: nil
-            )
+            timelinePlaceholder
 
         case .quickPick:
-            EmptyStateView(
-                title: "Not enough group history yet",
-                message: "Group QuickPick will use entries shared with this Circle.",
-                systemImage: "sparkles",
-                actionTitle: nil,
-                action: nil
-            )
+            quickPickPlaceholder
 
         case .members:
-            DetailSectionCard(title: "Members") {
-                VStack(spacing: 8) {
-                    DetailInfoRow(
-                        label: "Owner",
-                        value: circle.ownerDisplayName
-                    )
+            membersSection
+        }
+    }
 
-                    DetailInfoRow(
-                        label: "Total members",
-                        value: "\(circle.memberIds.count)"
-                    )
+    private var timelinePlaceholder: some View {
+        EmptyStateView(
+            title: "Nothing shared yet",
+            message: "Entries intentionally shared with this Circle will appear here.",
+            systemImage: "film.stack",
+            actionTitle: nil,
+            action: nil
+        )
+    }
 
-                    Text("Full member list and management will be connected next.")
+    private var quickPickPlaceholder: some View {
+        EmptyStateView(
+            title: "Not enough group history yet",
+            message: "Group QuickPick will use entries shared with this Circle, separate from your private archive.",
+            systemImage: "sparkles",
+            actionTitle: nil,
+            action: nil
+        )
+    }
+
+    private var membersSection: some View {
+        DetailSectionCard(title: "Members") {
+            VStack(spacing: 12) {
+                if members.isEmpty && isRefreshing {
+                    HStack(spacing: 10) {
+                        ProgressView()
+
+                        Text("Loading members…")
+                            .font(.caption)
+                            .foregroundStyle(CloseCutColors.textSecondary)
+
+                        Spacer()
+                    }
+                } else if members.isEmpty {
+                    Text("Members will appear here once Circle membership is refreshed.")
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    ForEach(sortedMembers) { member in
+                        CircleMemberRowView(
+                            member: member,
+                            currentUserId: currentUserId
+                        )
+
+                        if member.id != sortedMembers.last?.id {
+                            Divider()
+                                .overlay(CloseCutColors.separator)
+                        }
+                    }
                 }
             }
+        }
+    }
+
+    private func refreshCircleDetail() async {
+        guard isRefreshing == false else {
+            return
+        }
+
+        isRefreshing = true
+        refreshErrorMessage = nil
+        defer { isRefreshing = false }
+
+        do {
+            async let circleTask = circleRemoteDataSource.fetchCircle(
+                circleId: displayedCircle.id
+            )
+
+            async let membersTask = circleRemoteDataSource.fetchMembers(
+                circleId: displayedCircle.id
+            )
+
+            let (remoteCircle, remoteMembers) = try await (circleTask, membersTask)
+
+            refreshedCircle = remoteCircle
+            members = remoteMembers
+        } catch {
+            refreshErrorMessage = error.localizedDescription
+
+            #if DEBUG
+            print("⚠️ Failed to refresh Circle detail:", error.localizedDescription)
+            #endif
         }
     }
 }

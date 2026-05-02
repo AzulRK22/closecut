@@ -188,7 +188,8 @@ struct CircleView: View {
                     NavigationLink {
                         CircleDetailView(
                             circle: row.circle,
-                            membership: row.membership
+                            membership: row.membership,
+                            currentUserId: user.id
                         )
                     } label: {
                         CircleCardView(
