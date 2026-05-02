@@ -123,22 +123,37 @@ final class UserProfileRepository {
     func updateLocalCircleId(
         userId: String,
         circleId: String?,
+        fallbackProfile: UserProfile? = nil,
         modelContext: ModelContext
     ) throws -> UserProfile {
-        guard let localProfile = try fetchLocalProfile(
+        if let localProfile = try fetchLocalProfile(
             userId: userId,
             modelContext: modelContext
-        ) else {
+        ) {
+            localProfile.circleId = circleId
+            localProfile.updatedAt = Date()
+            localProfile.syncStatusRaw = SyncStatus.pending.rawValue
+
+            try modelContext.save()
+
+            return localProfile.domain
+        }
+
+        guard let fallbackProfile else {
             throw UserProfileRepositoryError.profileNotFound
         }
 
-        localProfile.circleId = circleId
-        localProfile.updatedAt = Date()
-        localProfile.syncStatusRaw = SyncStatus.pending.rawValue
+        var newProfile = fallbackProfile
+        newProfile.circleId = circleId
+        newProfile.updatedAt = Date()
+        newProfile.syncStatus = .pending
 
-        try modelContext.save()
+        try upsertLocalProfile(
+            newProfile,
+            modelContext: modelContext
+        )
 
-        return localProfile.domain
+        return newProfile
     }
 
     func updateRemoteCircleId(

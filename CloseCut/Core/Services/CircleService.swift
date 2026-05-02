@@ -47,6 +47,11 @@ final class CircleService {
             closeCircle: circle,
             ownerMember: ownerMember
         )
+        _ = try circleRepository.upsertLocalMembership(
+            circle: circle,
+            member: ownerMember,
+            modelContext: modelContext
+        )
 
         try await userProfileRepository.updateRemoteCircleId(
             userId: user.id,
@@ -56,6 +61,7 @@ final class CircleService {
         _ = try userProfileRepository.updateLocalCircleId(
             userId: user.id,
             circleId: circle.id,
+            fallbackProfile: profile,
             modelContext: modelContext
         )
 
@@ -63,12 +69,6 @@ final class CircleService {
             circleId: circle.id,
             modelContext: modelContext
         )
-
-        try userProfileRepository.markProfileSynced(
-            userId: user.id,
-            modelContext: modelContext
-        )
-
         return circle
     }
     func joinCircle(
@@ -102,7 +102,6 @@ final class CircleService {
             joinedAt: Date(),
             updatedAt: Date()
         )
-
         try await circleRemoteDataSource.joinCircle(
             circle: remoteCircle,
             member: member
@@ -125,18 +124,17 @@ final class CircleService {
             updatedCircle,
             modelContext: modelContext
         )
-
+        _ = try circleRepository.upsertLocalMembership(
+            circle: updatedCircle,
+            member: member,
+            modelContext: modelContext
+        )
         _ = try userProfileRepository.updateLocalCircleId(
             userId: user.id,
             circleId: remoteCircle.id,
+            fallbackProfile: profile,
             modelContext: modelContext
         )
-
-        try userProfileRepository.markProfileSynced(
-            userId: user.id,
-            modelContext: modelContext
-        )
-
         return localCircle
     }
     enum CircleServiceError: LocalizedError {

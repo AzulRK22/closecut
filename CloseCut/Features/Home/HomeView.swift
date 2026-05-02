@@ -154,6 +154,7 @@ struct HomeView: View {
         LocalReaction.self,
         LocalComment.self,
         LocalCircle.self,
+        LocalCircleMembership.self,
         LocalUserProfile.self,
         LocalUserState.self,
         PendingAction.self

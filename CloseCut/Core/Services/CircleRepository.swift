@@ -29,6 +29,7 @@ final class CircleRepository {
             id: circleId,
             name: circleName.trimmingCharacters(in: .whitespacesAndNewlines),
             ownerId: ownerId,
+            ownerDisplayName: ownerDisplayName,
             inviteCode: inviteCode,
             inviteCodeNormalized: inviteCode.normalizedInviteCode,
             memberIds: [ownerId],
@@ -87,6 +88,7 @@ final class CircleRepository {
             id: remoteCircle.id,
             name: remoteCircle.name,
             ownerId: remoteCircle.ownerId,
+            ownerDisplayName: remoteCircle.ownerDisplayName,
             inviteCode: remoteCircle.inviteCode,
             inviteCodeNormalized: remoteCircle.inviteCodeNormalized,
             memberIds: remoteCircle.memberIds,
@@ -139,6 +141,109 @@ final class CircleRepository {
         circle.syncStatusRaw = SyncStatus.synced.rawValue
         circle.updatedAt = Date()
         try modelContext.save()
+    }
+    // MARK: - Memberships
+
+    func fetchLocalMemberships(
+        userId: String,
+        includeRemoved: Bool = false,
+        modelContext: ModelContext
+    ) throws -> [CircleMembership] {
+        let descriptor = FetchDescriptor<LocalCircleMembership>(
+            predicate: #Predicate { membership in
+                membership.userId == userId
+            },
+            sortBy: [
+                SortDescriptor(\LocalCircleMembership.updatedAt, order: .reverse)
+            ]
+        )
+
+        return try modelContext.fetch(descriptor)
+            .filter {
+                includeRemoved ||
+                $0.statusRaw == CircleMemberStatus.active.rawValue
+            }
+            .map { $0.domain }
+    }
+
+    func fetchLocalMembershipModel(
+        circleId: String,
+        userId: String,
+        modelContext: ModelContext
+    ) throws -> LocalCircleMembership? {
+        let membershipId = "\(circleId)_\(userId)"
+
+        let descriptor = FetchDescriptor<LocalCircleMembership>(
+            predicate: #Predicate { membership in
+                membership.id == membershipId
+            }
+        )
+
+        return try modelContext.fetch(descriptor).first
+    }
+
+    func upsertLocalMembership(
+        circle: CloseCircle,
+        member: CircleMember,
+        modelContext: ModelContext
+    ) throws -> CircleMembership {
+        if let existing = try fetchLocalMembershipModel(
+            circleId: circle.id,
+            userId: member.userId,
+            modelContext: modelContext
+        ) {
+            existing.update(
+                circle: circle,
+                member: member,
+                syncStatus: .synced
+            )
+
+            try modelContext.save()
+            return existing.domain
+        }
+
+        let membership = LocalCircleMembership(
+            circleId: circle.id,
+            userId: member.userId,
+            circleName: circle.name,
+            circleDescription: circle.description,
+            ownerId: circle.ownerId,
+            ownerDisplayName: circle.ownerDisplayName,
+            role: member.role,
+            status: member.status,
+            joinedAt: member.joinedAt,
+            updatedAt: member.updatedAt,
+            syncStatus: .synced
+        )
+
+        modelContext.insert(membership)
+        try modelContext.save()
+
+        return membership.domain
+    }
+
+    func fetchLocalCirclesForUser(
+        userId: String,
+        modelContext: ModelContext
+    ) throws -> [CloseCircle] {
+        let memberships = try fetchLocalMemberships(
+            userId: userId,
+            includeRemoved: false,
+            modelContext: modelContext
+        )
+
+        let circleIds = Set(memberships.map { $0.circleId })
+
+        let descriptor = FetchDescriptor<LocalCircle>(
+            sortBy: [
+                SortDescriptor(\LocalCircle.updatedAt, order: .reverse)
+            ]
+        )
+
+        return try modelContext.fetch(descriptor)
+            .filter { circleIds.contains($0.id) }
+            .filter { $0.deletedAt == nil }
+            .map { $0.domain }
     }
 }
 

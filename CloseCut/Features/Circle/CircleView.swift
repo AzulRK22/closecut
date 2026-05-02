@@ -26,11 +26,14 @@ struct CircleView: View {
 
     @State private var isCreatingCircle = false
     @State private var isJoiningCircle = false
+    @State private var isRefreshingCircle = false
 
     @State private var circleErrorMessage: String?
     @State private var activeCircleOverride: CloseCircle?
 
     private let circleService = CircleService()
+    private let circleRepository = CircleRepository()
+    private let circleRemoteDataSource = CircleRemoteDataSource()
 
     private var currentCircle: CloseCircle? {
         if let activeCircleOverride {
@@ -105,6 +108,9 @@ struct CircleView: View {
             } message: {
                 Text(circleErrorMessage ?? "Unknown error.")
             }
+            .task {
+                await refreshCurrentCircleIfNeeded()
+            }
         }
     }
 
@@ -148,8 +154,21 @@ struct CircleView: View {
 
                     DetailInfoRow(
                         label: "Owner",
-                        value: profile.displayName
+                        value: circle.ownerDisplayName
                     )
+
+                    if isRefreshingCircle {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .scaleEffect(0.8)
+
+                            Text("Refreshing Circle…")
+                                .font(.caption)
+                                .foregroundStyle(CloseCutColors.textSecondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 4)
+                    }
                 }
             }
         }
@@ -319,6 +338,7 @@ struct CircleView: View {
                     if isCreatingCircle {
                         HStack(spacing: 10) {
                             ProgressView()
+
                             Text("Creating Circle…")
                                 .font(.caption)
                                 .foregroundStyle(CloseCutColors.textSecondary)
@@ -352,6 +372,7 @@ struct CircleView: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }
+
     private var joinCircleSheet: some View {
         NavigationStack {
             ZStack {
@@ -377,7 +398,11 @@ struct CircleView: View {
                         .background(CloseCutColors.input)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .onChange(of: inviteCodeToJoin) { _, newValue in
-                            inviteCodeToJoin = newValue.normalizedInviteCode
+                            let normalized = newValue.normalizedInviteCode
+
+                            if normalized != newValue {
+                                inviteCodeToJoin = normalized
+                            }
                         }
 
                     Text("Example: AZULR-12345")
@@ -439,6 +464,7 @@ struct CircleView: View {
             }
         }
     }
+
     private func createCircle() async {
         isCreatingCircle = true
         circleErrorMessage = nil
@@ -454,10 +480,13 @@ struct CircleView: View {
 
             activeCircleOverride = circle
             showCreateCircleSheet = false
+
+            await refreshCurrentCircleIfNeeded()
         } catch {
             circleErrorMessage = error.localizedDescription
         }
     }
+
     private func joinCircle() async {
         isJoiningCircle = true
         circleErrorMessage = nil
@@ -473,8 +502,48 @@ struct CircleView: View {
 
             activeCircleOverride = circle
             showJoinCircleSheet = false
+
+            await refreshCurrentCircleIfNeeded()
         } catch {
             circleErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func refreshCurrentCircleIfNeeded() async {
+        guard isRefreshingCircle == false else {
+            return
+        }
+
+        let circleId: String?
+
+        if let activeCircleOverride {
+            circleId = activeCircleOverride.id
+        } else {
+            circleId = profile.circleId
+        }
+
+        guard let circleId else {
+            return
+        }
+
+        isRefreshingCircle = true
+        defer { isRefreshingCircle = false }
+
+        do {
+            let remoteCircle = try await circleRemoteDataSource.fetchCircle(
+                circleId: circleId
+            )
+
+            let localCircle = try circleRepository.upsertRemoteCircle(
+                remoteCircle,
+                modelContext: modelContext
+            )
+
+            activeCircleOverride = localCircle
+        } catch {
+            #if DEBUG
+            print("⚠️ Failed to refresh Circle:", error.localizedDescription)
+            #endif
         }
     }
 }
@@ -504,6 +573,7 @@ struct CircleView: View {
         LocalReaction.self,
         LocalComment.self,
         LocalCircle.self,
+        LocalCircleMembership.self,
         LocalUserProfile.self,
         LocalUserState.self,
         PendingAction.self

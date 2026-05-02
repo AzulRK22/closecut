@@ -10,7 +10,9 @@ import Foundation
 struct CloseCircle: Identifiable, Codable, Equatable {
     let id: String
     var name: String
+    var description: String?
     var ownerId: String
+    var ownerDisplayName: String
     var inviteCode: String
     var inviteCodeNormalized: String
     var memberIds: [String]

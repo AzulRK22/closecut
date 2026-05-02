@@ -13,7 +13,9 @@ final class LocalCircle {
     @Attribute(.unique) var id: String
 
     var name: String
+    var circleDescription: String?
     var ownerId: String
+    var ownerDisplayName: String
     var inviteCode: String
     var inviteCodeNormalized: String
     var memberIds: [String]
@@ -28,6 +30,8 @@ final class LocalCircle {
         id: String = UUID().uuidString,
         name: String,
         ownerId: String,
+        circleDescription: String? = nil,
+        ownerDisplayName: String,
         inviteCode: String,
         inviteCodeNormalized: String? = nil,
         memberIds: [String] = [],
@@ -39,6 +43,8 @@ final class LocalCircle {
         self.id = id
         self.name = name
         self.ownerId = ownerId
+        self.circleDescription = circleDescription
+        self.ownerDisplayName = ownerDisplayName
         self.inviteCode = inviteCode
         self.inviteCodeNormalized = inviteCodeNormalized ?? inviteCode.normalizedInviteCode
         self.memberIds = memberIds
@@ -54,7 +60,9 @@ extension LocalCircle {
         CloseCircle(
             id: id,
             name: name,
+            description: circleDescription,
             ownerId: ownerId,
+            ownerDisplayName: ownerDisplayName,
             inviteCode: inviteCode,
             inviteCodeNormalized: inviteCodeNormalized,
             memberIds: memberIds,
@@ -67,6 +75,8 @@ extension LocalCircle {
     func update(from circle: CloseCircle, syncStatus: SyncStatus = .synced) {
         name = circle.name
         ownerId = circle.ownerId
+        circleDescription = circle.description
+        ownerDisplayName = circle.ownerDisplayName
         inviteCode = circle.inviteCode
         inviteCodeNormalized = circle.inviteCodeNormalized
         memberIds = circle.memberIds

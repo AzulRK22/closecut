@@ -10,10 +10,12 @@ import FirebaseFirestore
 
 struct FirestoreCircleDTO: Codable {
     var name: String
+    var description: String?
     var ownerId: String
+    var ownerDisplayName: String?
     var inviteCode: String
     var inviteCodeNormalized: String
-    var memberIds: [String]
+    var memberIds: [String]?
     var createdAt: Timestamp
     var updatedAt: Timestamp
     var deletedAt: Timestamp?
@@ -22,7 +24,9 @@ struct FirestoreCircleDTO: Codable {
 extension FirestoreCircleDTO {
     init(closeCircle: CloseCircle) {
         self.name = closeCircle.name
+        self.description = closeCircle.description
         self.ownerId = closeCircle.ownerId
+        self.ownerDisplayName = closeCircle.ownerDisplayName
         self.inviteCode = closeCircle.inviteCode
         self.inviteCodeNormalized = closeCircle.inviteCodeNormalized
         self.memberIds = closeCircle.memberIds
@@ -35,10 +39,12 @@ extension FirestoreCircleDTO {
         CloseCircle(
             id: id,
             name: name,
+            description: description,
             ownerId: ownerId,
+            ownerDisplayName: ownerDisplayName ?? "Circle Owner",
             inviteCode: inviteCode,
             inviteCodeNormalized: inviteCodeNormalized,
-            memberIds: memberIds,
+            memberIds: memberIds ?? [ownerId],
             createdAt: createdAt.dateValue(),
             updatedAt: updatedAt.dateValue(),
             deletedAt: deletedAt?.dateValue()
