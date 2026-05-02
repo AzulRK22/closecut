@@ -18,6 +18,7 @@ final class CircleService {
         user: AuthUser,
         profile: UserProfile,
         circleName: String,
+        circleDescription: String? = nil,
         modelContext: ModelContext
     ) async throws -> CloseCircle {
         let cleanedName = circleName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -30,6 +31,7 @@ final class CircleService {
             ownerId: user.id,
             ownerDisplayName: profile.displayName,
             circleName: resolvedName,
+            circleDescription: circleDescription,
             modelContext: modelContext
         )
 

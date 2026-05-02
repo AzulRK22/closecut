@@ -17,45 +17,55 @@ struct CircleView: View {
     @Query(sort: \LocalCircle.updatedAt, order: .reverse)
     private var localCircles: [LocalCircle]
 
-    @State private var copiedInviteCode = false
+    @Query(sort: \LocalCircleMembership.updatedAt, order: .reverse)
+    private var localMemberships: [LocalCircleMembership]
+
+    @State private var showCircleActions = false
     @State private var showCreateCircleSheet = false
     @State private var showJoinCircleSheet = false
 
     @State private var circleName = ""
+    @State private var circleDescription = ""
     @State private var inviteCodeToJoin = ""
 
     @State private var isCreatingCircle = false
     @State private var isJoiningCircle = false
-    @State private var isRefreshingCircle = false
+    @State private var isRefreshingCircles = false
 
     @State private var circleErrorMessage: String?
-    @State private var activeCircleOverride: CloseCircle?
 
     private let circleService = CircleService()
     private let circleRepository = CircleRepository()
     private let circleRemoteDataSource = CircleRemoteDataSource()
 
-    private var currentCircle: CloseCircle? {
-        if let activeCircleOverride {
-            return activeCircleOverride
-        }
+    private var memberships: [CircleMembership] {
+        localMemberships
+            .filter { $0.userId == user.id }
+            .map { $0.domain }
+            .filter { $0.isActive }
+            .sorted { first, second in
+                if first.isOwner != second.isOwner {
+                    return first.isOwner && !second.isOwner
+                }
 
-        guard let circleId = profile.circleId else {
-            return nil
-        }
-
-        return localCircles.first { $0.id == circleId }?.domain
+                return first.updatedAt > second.updatedAt
+            }
     }
 
-    private var fallbackInviteCode: String {
-        CircleInviteCodeGenerator.generate(
-            displayName: profile.displayName,
-            userId: user.id
+    private var circlesById: [String: CloseCircle] {
+        Dictionary(
+            uniqueKeysWithValues: localCircles.map { ($0.id, $0.domain) }
         )
     }
 
-    private var displayedInviteCode: String {
-        currentCircle?.inviteCode ?? fallbackInviteCode
+    private var circleRows: [(circle: CloseCircle, membership: CircleMembership)] {
+        memberships.compactMap { membership in
+            guard let circle = circlesById[membership.circleId] else {
+                return nil
+            }
+
+            return (circle, membership)
+        }
     }
 
     var body: some View {
@@ -68,18 +78,20 @@ struct CircleView: View {
                     VStack(alignment: .leading, spacing: 18) {
                         heroSection
 
-                        if let currentCircle {
-                            activeCircleSection(currentCircle)
-                        } else {
-                            createCircleSection
+                        if isRefreshingCircles {
+                            SyncResultBanner(
+                                message: "Refreshing your Circles…",
+                                style: .neutral
+                            )
                         }
 
-                        if copiedInviteCode {
-                            Text("Invite code copied")
-                                .font(.caption)
-                                .foregroundStyle(CloseCutColors.synced)
-                                .padding(.horizontal, 4)
-                                .transition(.opacity)
+                        if circleRows.isEmpty {
+                            CircleEmptyStateView(
+                                onCreateCircle: openCreateCircle,
+                                onJoinCircle: openJoinCircle
+                            )
+                        } else {
+                            circlesListSection
                         }
 
                         CirclePrivacyCard()
@@ -94,6 +106,30 @@ struct CircleView: View {
             }
             .navigationTitle("Circle")
             .preferredColorScheme(.dark)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showCircleActions = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 17, weight: .semibold))
+                            .frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel("Add Circle")
+                }
+            }
+            .sheet(isPresented: $showCircleActions) {
+                CircleActionSheet(
+                    onCreate: {
+                        showCircleActions = false
+                        openCreateCircle()
+                    },
+                    onJoin: {
+                        showCircleActions = false
+                        openJoinCircle()
+                    }
+                )
+            }
             .sheet(isPresented: $showCreateCircleSheet) {
                 createCircleSheet
             }
@@ -109,7 +145,7 @@ struct CircleView: View {
                 Text(circleErrorMessage ?? "Unknown error.")
             }
             .task {
-                await refreshCurrentCircleIfNeeded()
+                await refreshLocalCirclesFromRemote()
             }
         }
     }
@@ -121,7 +157,7 @@ struct CircleView: View {
                 .foregroundStyle(CloseCutColors.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("Your Circle is a small private space for reactions and short comments on selected entries.")
+            Text("Create private spaces for friends, family, your partner, or movie clubs. Your personal history stays private unless you choose to share.")
                 .font(.subheadline)
                 .foregroundStyle(CloseCutColors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -129,126 +165,38 @@ struct CircleView: View {
         .padding(.top, 4)
     }
 
-    private func activeCircleSection(_ circle: CloseCircle) -> some View {
+    private var circlesListSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            CircleInviteCard(
-                inviteCode: circle.inviteCode,
-                onCopy: copyInviteCode,
-                onJoin: {
-                    inviteCodeToJoin = ""
-                    showJoinCircleSheet = true
-                }
-            )
-
-            DetailSectionCard(title: "Circle") {
-                VStack(spacing: 8) {
-                    DetailInfoRow(
-                        label: "Name",
-                        value: circle.name
-                    )
-
-                    DetailInfoRow(
-                        label: "Members",
-                        value: "\(circle.memberIds.count)"
-                    )
-
-                    DetailInfoRow(
-                        label: "Owner",
-                        value: circle.ownerDisplayName
-                    )
-
-                    if isRefreshingCircle {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                                .scaleEffect(0.8)
-
-                            Text("Refreshing Circle…")
-                                .font(.caption)
-                                .foregroundStyle(CloseCutColors.textSecondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 4)
-                    }
-                }
-            }
-        }
-    }
-
-    private var createCircleSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Create your private Circle")
-                    .font(.headline)
-                    .foregroundStyle(CloseCutColors.textPrimary)
-
-                Text("Start with yourself. You’ll get an invite code and connect join flow later.")
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Text("Suggested invite code")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(CloseCutColors.textTertiary)
-                .textCase(.uppercase)
-                .tracking(0.8)
-
             HStack {
-                Text(fallbackInviteCode)
-                    .font(.title3.monospaced().weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textPrimary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Your Circles")
+                        .font(.headline)
+                        .foregroundStyle(CloseCutColors.textPrimary)
+
+                    Text("\(circleRows.count) private spaces")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                }
 
                 Spacer()
+            }
 
-                Button {
-                    copyInviteCode()
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.accentLight)
-                        .frame(width: 40, height: 40)
+            LazyVStack(spacing: 12) {
+                ForEach(circleRows, id: \.membership.id) { row in
+                    NavigationLink {
+                        CircleDetailView(
+                            circle: row.circle,
+                            membership: row.membership
+                        )
+                    } label: {
+                        CircleCardView(
+                            circle: row.circle,
+                            membership: row.membership
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
-                .accessibilityLabel("Copy suggested invite code")
             }
-            .padding(.horizontal, 14)
-            .frame(height: 54)
-            .background(CloseCutColors.input)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-            Button {
-                circleName = "\(profile.displayName)'s Circle"
-                showCreateCircleSheet = true
-            } label: {
-                Text("Create my Circle")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 46)
-                    .background(CloseCutColors.accent)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                inviteCodeToJoin = ""
-                showJoinCircleSheet = true
-            } label: {
-                Text("Join a Circle")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 44)
-                    .background(CloseCutColors.input)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(16)
-        .background(CloseCutColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
     }
 
@@ -263,27 +211,27 @@ struct CircleView: View {
 
             VStack(alignment: .leading, spacing: 16) {
                 CircleComingSoonRow(
+                    icon: "film.stack.fill",
+                    title: "Shared timeline",
+                    message: "Each Circle will have its own shared movie and series history."
+                )
+
+                Divider()
+                    .overlay(CloseCutColors.separator)
+
+                CircleComingSoonRow(
+                    icon: "sparkles",
+                    title: "Group QuickPick",
+                    message: "Recommendations based on what that group shares, not your private archive."
+                )
+
+                Divider()
+                    .overlay(CloseCutColors.separator)
+
+                CircleComingSoonRow(
                     icon: "heart.circle.fill",
-                    title: "One active reaction",
-                    message: "Each friend will have one current reaction per entry. Changing it replaces the previous one."
-                )
-
-                Divider()
-                    .overlay(CloseCutColors.separator)
-
-                CircleComingSoonRow(
-                    icon: "text.bubble.fill",
-                    title: "Short comments",
-                    message: "Small notes, not a chat thread. The goal is memory, not noise."
-                )
-
-                Divider()
-                    .overlay(CloseCutColors.separator)
-
-                CircleComingSoonRow(
-                    icon: "clock.badge.exclamationmark.fill",
-                    title: "Pending sync",
-                    message: "Social actions will be saved locally first and synced when available."
+                    title: "Reactions and comments",
+                    message: "Small trusted signals from the people in that Circle."
                 )
             }
             .padding(16)
@@ -307,30 +255,38 @@ struct CircleView: View {
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
 
-                    Text("Keep it small and personal. You can invite trusted friends later.")
+                    Text("Keep it small and personal. You decide what gets shared.")
                         .font(.subheadline)
                         .foregroundStyle(CloseCutColors.textSecondary)
 
-                    TextField("Circle name", text: $circleName)
-                        .font(.body)
-                        .foregroundStyle(CloseCutColors.textPrimary)
-                        .textInputAutocapitalization(.words)
-                        .padding(14)
-                        .background(CloseCutColors.input)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Invite code")
+                        Text("Circle name")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(CloseCutColors.textTertiary)
                             .textCase(.uppercase)
                             .tracking(0.8)
 
-                        Text(fallbackInviteCode)
-                            .font(.title3.monospaced().weight(.semibold))
+                        TextField("Friends, Family, Movie Club…", text: $circleName)
+                            .font(.body)
                             .foregroundStyle(CloseCutColors.textPrimary)
+                            .textInputAutocapitalization(.words)
                             .padding(14)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(CloseCutColors.input)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Description optional")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                            .textCase(.uppercase)
+                            .tracking(0.8)
+
+                        TextField("What is this Circle for?", text: $circleDescription)
+                            .font(.body)
+                            .foregroundStyle(CloseCutColors.textPrimary)
+                            .textInputAutocapitalization(.sentences)
+                            .padding(14)
                             .background(CloseCutColors.input)
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
@@ -365,7 +321,7 @@ struct CircleView: View {
                             await createCircle()
                         }
                     }
-                    .disabled(isCreatingCircle)
+                    .disabled(isCreatingCircle || circleName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }
@@ -384,7 +340,7 @@ struct CircleView: View {
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
 
-                    Text("Enter the invite code from someone you trust. CloseCut Circles are small and private.")
+                    Text("Enter the invite code from someone you trust. You’ll see a preview before joining in the next iteration.")
                         .font(.subheadline)
                         .foregroundStyle(CloseCutColors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -447,22 +403,15 @@ struct CircleView: View {
         .presentationDragIndicator(.visible)
     }
 
-    private func copyInviteCode() {
-        UIPasteboard.general.string = displayedInviteCode
+    private func openCreateCircle() {
+        circleName = ""
+        circleDescription = ""
+        showCreateCircleSheet = true
+    }
 
-        withAnimation(.easeInOut(duration: 0.2)) {
-            copiedInviteCode = true
-        }
-
-        Task {
-            try? await Task.sleep(nanoseconds: 1_800_000_000)
-
-            await MainActor.run {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    copiedInviteCode = false
-                }
-            }
-        }
+    private func openJoinCircle() {
+        inviteCodeToJoin = ""
+        showJoinCircleSheet = true
     }
 
     private func createCircle() async {
@@ -471,17 +420,16 @@ struct CircleView: View {
         defer { isCreatingCircle = false }
 
         do {
-            let circle = try await circleService.createCircle(
+            _ = try await circleService.createCircle(
                 user: user,
                 profile: profile,
                 circleName: circleName,
+                circleDescription: circleDescription,
                 modelContext: modelContext
             )
 
-            activeCircleOverride = circle
             showCreateCircleSheet = false
-
-            await refreshCurrentCircleIfNeeded()
+            await refreshLocalCirclesFromRemote()
         } catch {
             circleErrorMessage = error.localizedDescription
         }
@@ -493,56 +441,42 @@ struct CircleView: View {
         defer { isJoiningCircle = false }
 
         do {
-            let circle = try await circleService.joinCircle(
+            _ = try await circleService.joinCircle(
                 user: user,
                 profile: profile,
                 inviteCode: inviteCodeToJoin,
                 modelContext: modelContext
             )
 
-            activeCircleOverride = circle
             showJoinCircleSheet = false
-
-            await refreshCurrentCircleIfNeeded()
+            await refreshLocalCirclesFromRemote()
         } catch {
             circleErrorMessage = error.localizedDescription
         }
     }
 
-    private func refreshCurrentCircleIfNeeded() async {
-        guard isRefreshingCircle == false else {
+    private func refreshLocalCirclesFromRemote() async {
+        guard isRefreshingCircles == false else {
             return
         }
 
-        let circleId: String?
-
-        if let activeCircleOverride {
-            circleId = activeCircleOverride.id
-        } else {
-            circleId = profile.circleId
-        }
-
-        guard let circleId else {
-            return
-        }
-
-        isRefreshingCircle = true
-        defer { isRefreshingCircle = false }
+        isRefreshingCircles = true
+        defer { isRefreshingCircles = false }
 
         do {
-            let remoteCircle = try await circleRemoteDataSource.fetchCircle(
-                circleId: circleId
-            )
+            for membership in memberships {
+                let remoteCircle = try await circleRemoteDataSource.fetchCircle(
+                    circleId: membership.circleId
+                )
 
-            let localCircle = try circleRepository.upsertRemoteCircle(
-                remoteCircle,
-                modelContext: modelContext
-            )
-
-            activeCircleOverride = localCircle
+                _ = try circleRepository.upsertRemoteCircle(
+                    remoteCircle,
+                    modelContext: modelContext
+                )
+            }
         } catch {
             #if DEBUG
-            print("⚠️ Failed to refresh Circle:", error.localizedDescription)
+            print("⚠️ Failed to refresh Circles:", error.localizedDescription)
             #endif
         }
     }

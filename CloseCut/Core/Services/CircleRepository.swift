@@ -11,14 +11,20 @@ import SwiftData
 @MainActor
 final class CircleRepository {
 
+    // MARK: - Circle Create
+
     func createLocalCircle(
         ownerId: String,
         ownerDisplayName: String,
         circleName: String,
+        circleDescription: String? = nil,
         modelContext: ModelContext
     ) throws -> CloseCircle {
         let now = Date()
         let circleId = UUID().uuidString
+
+        let cleanedName = circleName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedName = cleanedName.isEmpty ? "\(ownerDisplayName)'s Circle" : cleanedName
 
         let inviteCode = CircleInviteCodeGenerator.generate(
             displayName: ownerDisplayName,
@@ -27,8 +33,9 @@ final class CircleRepository {
 
         let circle = LocalCircle(
             id: circleId,
-            name: circleName.trimmingCharacters(in: .whitespacesAndNewlines),
+            name: resolvedName,
             ownerId: ownerId,
+            circleDescription: cleanOptionalText(circleDescription),
             ownerDisplayName: ownerDisplayName,
             inviteCode: inviteCode,
             inviteCodeNormalized: inviteCode.normalizedInviteCode,
@@ -44,6 +51,8 @@ final class CircleRepository {
 
         return circle.domain
     }
+
+    // MARK: - Circle Read
 
     func fetchLocalCircle(
         id: String,
@@ -71,6 +80,32 @@ final class CircleRepository {
         return try modelContext.fetch(descriptor).first
     }
 
+    func fetchLocalCirclesForUser(
+        userId: String,
+        modelContext: ModelContext
+    ) throws -> [CloseCircle] {
+        let memberships = try fetchLocalMemberships(
+            userId: userId,
+            includeRemoved: false,
+            modelContext: modelContext
+        )
+
+        let circleIds = Set(memberships.map { $0.circleId })
+
+        let descriptor = FetchDescriptor<LocalCircle>(
+            sortBy: [
+                SortDescriptor(\LocalCircle.updatedAt, order: .reverse)
+            ]
+        )
+
+        return try modelContext.fetch(descriptor)
+            .filter { circleIds.contains($0.id) }
+            .filter { $0.deletedAt == nil }
+            .map { $0.domain }
+    }
+
+    // MARK: - Circle Upsert / Update
+
     func upsertRemoteCircle(
         _ remoteCircle: CloseCircle,
         modelContext: ModelContext
@@ -88,6 +123,7 @@ final class CircleRepository {
             id: remoteCircle.id,
             name: remoteCircle.name,
             ownerId: remoteCircle.ownerId,
+            circleDescription: remoteCircle.description,
             ownerDisplayName: remoteCircle.ownerDisplayName,
             inviteCode: remoteCircle.inviteCode,
             inviteCodeNormalized: remoteCircle.inviteCodeNormalized,
@@ -103,6 +139,7 @@ final class CircleRepository {
 
         return localCircle.domain
     }
+
     func updateLocalCircleMembership(
         circleId: String,
         userId: String,
@@ -142,6 +179,7 @@ final class CircleRepository {
         circle.updatedAt = Date()
         try modelContext.save()
     }
+
     // MARK: - Memberships
 
     func fetchLocalMemberships(
@@ -222,28 +260,14 @@ final class CircleRepository {
         return membership.domain
     }
 
-    func fetchLocalCirclesForUser(
-        userId: String,
-        modelContext: ModelContext
-    ) throws -> [CloseCircle] {
-        let memberships = try fetchLocalMemberships(
-            userId: userId,
-            includeRemoved: false,
-            modelContext: modelContext
-        )
+    // MARK: - Helpers
 
-        let circleIds = Set(memberships.map { $0.circleId })
+    private func cleanOptionalText(_ value: String?) -> String? {
+        guard let value else { return nil }
 
-        let descriptor = FetchDescriptor<LocalCircle>(
-            sortBy: [
-                SortDescriptor(\LocalCircle.updatedAt, order: .reverse)
-            ]
-        )
+        let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        return try modelContext.fetch(descriptor)
-            .filter { circleIds.contains($0.id) }
-            .filter { $0.deletedAt == nil }
-            .map { $0.domain }
+        return cleaned.isEmpty ? nil : cleaned
     }
 }
 
