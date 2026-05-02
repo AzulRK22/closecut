@@ -18,6 +18,7 @@ final class CircleRepository {
         ownerDisplayName: String,
         circleName: String,
         circleDescription: String? = nil,
+        inviteCode: String,
         modelContext: ModelContext
     ) throws -> CloseCircle {
         let now = Date()
@@ -25,11 +26,6 @@ final class CircleRepository {
 
         let cleanedName = circleName.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedName = cleanedName.isEmpty ? "\(ownerDisplayName)'s Circle" : cleanedName
-
-        let inviteCode = CircleInviteCodeGenerator.generate(
-            displayName: ownerDisplayName,
-            userId: ownerId
-        )
 
         let circle = LocalCircle(
             id: circleId,

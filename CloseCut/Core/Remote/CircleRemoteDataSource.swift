@@ -128,4 +128,32 @@ final class CircleRemoteDataSource {
 
         return dto.domain()
     }
+    func isInviteCodeAvailable(
+        inviteCode: String
+    ) async throws -> Bool {
+        let normalizedCode = inviteCode.normalizedInviteCode
+
+        let snapshot = try await db
+            .collection("circles")
+            .whereField("inviteCodeNormalized", isEqualTo: normalizedCode)
+            .limit(to: 1)
+            .getDocuments()
+
+        return snapshot.documents.isEmpty
+    }
+    func fetchMembers(
+        circleId: String
+    ) async throws -> [CircleMember] {
+        let snapshot = try await db
+            .collection("circles")
+            .document(circleId)
+            .collection("members")
+            .whereField("status", isEqualTo: CircleMemberStatus.active.rawValue)
+            .getDocuments()
+
+        return try snapshot.documents.map { document in
+            let dto = try document.data(as: FirestoreCircleMemberDTO.self)
+            return dto.domain()
+        }
+    }
 }

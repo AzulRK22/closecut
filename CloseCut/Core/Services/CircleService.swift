@@ -26,15 +26,19 @@ final class CircleService {
         let resolvedName = cleanedName.isEmpty
             ? "\(profile.displayName)'s Circle"
             : cleanedName
-
+        
+        let inviteCode = try await generateUniqueInviteCode(
+            circleName: resolvedName,
+            ownerDisplayName: profile.displayName
+        )
         let circle = try circleRepository.createLocalCircle(
             ownerId: user.id,
             ownerDisplayName: profile.displayName,
             circleName: resolvedName,
             circleDescription: circleDescription,
+            inviteCode: inviteCode,
             modelContext: modelContext
         )
-
         let ownerMember = CircleMember(
             userId: user.id,
             displayName: profile.displayName,
@@ -44,7 +48,6 @@ final class CircleService {
             joinedAt: Date(),
             updatedAt: Date()
         )
-
         try await circleRemoteDataSource.createCircle(
             closeCircle: circle,
             ownerMember: ownerMember
@@ -169,9 +172,31 @@ final class CircleService {
         )
         return localCircle
     }
+    private func generateUniqueInviteCode(
+        circleName: String,
+        ownerDisplayName: String
+    ) async throws -> String {
+        for _ in 0..<8 {
+            let candidate = CircleInviteCodeGenerator.generateCandidate(
+                circleName: circleName,
+                ownerDisplayName: ownerDisplayName
+            )
+
+            let isAvailable = try await circleRemoteDataSource.isInviteCodeAvailable(
+                inviteCode: candidate
+            )
+
+            if isAvailable {
+                return candidate
+            }
+        }
+
+        throw CircleServiceError.inviteCodeUnavailable
+    }
     enum CircleServiceError: LocalizedError {
         case invalidInviteCode
         case circleNotFound
+        case inviteCodeUnavailable
 
         var errorDescription: String? {
             switch self {
@@ -179,6 +204,8 @@ final class CircleService {
                 return "Enter a valid invite code."
             case .circleNotFound:
                 return "No Circle was found with that invite code."
+            case .inviteCodeUnavailable:
+                return "Couldn’t generate a unique invite code. Please try again."
             }
         }
     }
