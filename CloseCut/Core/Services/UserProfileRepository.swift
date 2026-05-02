@@ -118,6 +118,59 @@ final class UserProfileRepository {
         try modelContext.save()
     }
 
+    // MARK: - Circle Linking
+
+    func updateLocalCircleId(
+        userId: String,
+        circleId: String?,
+        modelContext: ModelContext
+    ) throws -> UserProfile {
+        guard let localProfile = try fetchLocalProfile(
+            userId: userId,
+            modelContext: modelContext
+        ) else {
+            throw UserProfileRepositoryError.profileNotFound
+        }
+
+        localProfile.circleId = circleId
+        localProfile.updatedAt = Date()
+        localProfile.syncStatusRaw = SyncStatus.pending.rawValue
+
+        try modelContext.save()
+
+        return localProfile.domain
+    }
+
+    func updateRemoteCircleId(
+        userId: String,
+        circleId: String?
+    ) async throws {
+        try await FirestorePaths
+            .user(userId)
+            .setData(
+                [
+                    "circleId": circleId as Any,
+                    "updatedAt": Timestamp(date: Date())
+                ],
+                merge: true
+            )
+    }
+
+    func markProfileSynced(
+        userId: String,
+        modelContext: ModelContext
+    ) throws {
+        guard let localProfile = try fetchLocalProfile(
+            userId: userId,
+            modelContext: modelContext
+        ) else {
+            throw UserProfileRepositoryError.profileNotFound
+        }
+
+        localProfile.syncStatusRaw = SyncStatus.synced.rawValue
+        try modelContext.save()
+    }
+
     private func defaultDisplayName(from authUser: AuthUser) -> String {
         if let displayName = authUser.displayName,
            !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -130,5 +183,16 @@ final class UserProfileRepository {
         }
 
         return "CloseCut User"
+    }
+}
+
+enum UserProfileRepositoryError: LocalizedError {
+    case profileNotFound
+
+    var errorDescription: String? {
+        switch self {
+        case .profileNotFound:
+            return "User profile was not found."
+        }
     }
 }

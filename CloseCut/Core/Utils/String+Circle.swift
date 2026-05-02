@@ -6,3 +6,12 @@
 //
 
 import Foundation
+
+extension String {
+    var normalizedInviteCode: String {
+        trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .joined()
+    }
+}

@@ -17,6 +17,7 @@ enum PendingActionType: String, Codable, CaseIterable {
     case setReaction
     case removeReaction
     case createComment
+    case createCircle
 }
 
 enum PendingActionStatus: String, Codable, CaseIterable {
