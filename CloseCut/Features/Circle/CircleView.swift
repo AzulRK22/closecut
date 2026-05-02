@@ -155,6 +155,10 @@ struct CircleView: View {
                 Text(circleErrorMessage ?? "Unknown error.")
             }
             .task(id: membershipRefreshKey) {
+                if memberships.isEmpty {
+                    await pullRemoteCirclesForCurrentUser()
+                }
+
                 await refreshLocalCirclesFromRemote()
             }
         }
@@ -593,6 +597,37 @@ struct CircleView: View {
             || message.contains("couldn’t be read")
             || message.contains("couldn't be read")
             || message.contains("incomplete")
+    }
+    private func pullRemoteCirclesForCurrentUser() async {
+        guard isRefreshingCircles == false else {
+            return
+        }
+
+        isRefreshingCircles = true
+        defer { isRefreshingCircles = false }
+
+        do {
+            let remoteMemberships = try await circleRemoteDataSource.fetchMembershipsForUser(
+                userId: user.id
+            )
+
+            for item in remoteMemberships {
+                let circle = try circleRepository.upsertRemoteCircle(
+                    item.circle,
+                    modelContext: modelContext
+                )
+
+                _ = try circleRepository.upsertLocalMembership(
+                    circle: circle,
+                    member: item.member,
+                    modelContext: modelContext
+                )
+            }
+        } catch {
+            #if DEBUG
+            print("⚠️ Failed to pull remote Circles:", error.localizedDescription)
+            #endif
+        }
     }
 }
 

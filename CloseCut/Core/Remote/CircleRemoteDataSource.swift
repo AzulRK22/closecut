@@ -353,6 +353,43 @@ final class CircleRemoteDataSource {
             .document(activity.id)
             .setData(from: dto, merge: true)
     }
+    func fetchMembershipsForUser(
+        userId: String
+    ) async throws -> [(circle: CloseCircle, member: CircleMember)] {
+        let snapshot = try await db
+            .collectionGroup("members")
+            .whereField("userId", isEqualTo: userId)
+            .getDocuments()
+
+        var results: [(circle: CloseCircle, member: CircleMember)] = []
+
+        for document in snapshot.documents {
+            let dto = try document.data(as: FirestoreCircleMemberDTO.self)
+            let member = dto.domain()
+
+            guard member.status == .active else {
+                continue
+            }
+
+            guard let circleId = document.reference.parent.parent?.documentID else {
+                continue
+            }
+
+            do {
+                let circle = try await fetchCircle(circleId: circleId)
+
+                if circle.deletedAt == nil {
+                    results.append((circle, member))
+                }
+            } catch {
+                #if DEBUG
+                print("⚠️ Skipped remote Circle membership during pull:", error.localizedDescription)
+                #endif
+            }
+        }
+
+        return results
+    }
 
     // MARK: - Helpers
 
