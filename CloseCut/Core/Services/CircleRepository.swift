@@ -175,6 +175,71 @@ final class CircleRepository {
         circle.updatedAt = Date()
         try modelContext.save()
     }
+    func updateLocalCircleDetails(
+        circleId: String,
+        name: String,
+        description: String?,
+        modelContext: ModelContext
+    ) throws -> CloseCircle {
+        guard let circle = try fetchLocalCircleModel(
+            id: circleId,
+            modelContext: modelContext
+        ) else {
+            throw CircleRepositoryError.circleNotFound
+        }
+
+        circle.name = name
+        circle.circleDescription = cleanOptionalText(description)
+        circle.updatedAt = Date()
+        circle.syncStatusRaw = SyncStatus.synced.rawValue
+
+        try modelContext.save()
+
+        return circle.domain
+    }
+
+    func markLocalCircleDeleted(
+        circleId: String,
+        modelContext: ModelContext
+    ) throws {
+        guard let circle = try fetchLocalCircleModel(
+            id: circleId,
+            modelContext: modelContext
+        ) else {
+            throw CircleRepositoryError.circleNotFound
+        }
+
+        let now = Date()
+
+        circle.deletedAt = now
+        circle.updatedAt = now
+        circle.syncStatusRaw = SyncStatus.synced.rawValue
+
+        try modelContext.save()
+    }
+
+    func markLocalMembershipsRemovedForCircle(
+        circleId: String,
+        modelContext: ModelContext
+    ) throws {
+        let descriptor = FetchDescriptor<LocalCircleMembership>(
+            predicate: #Predicate { membership in
+                membership.circleId == circleId
+            }
+        )
+
+        let memberships = try modelContext.fetch(descriptor)
+
+        for membership in memberships {
+            membership.statusRaw = CircleMemberStatus.removed.rawValue
+            membership.updatedAt = Date()
+            membership.syncStatusRaw = SyncStatus.synced.rawValue
+        }
+
+        if memberships.isEmpty == false {
+            try modelContext.save()
+        }
+    }
 
     // MARK: - Memberships
 

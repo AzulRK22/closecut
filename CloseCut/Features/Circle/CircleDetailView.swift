@@ -45,6 +45,10 @@ struct CircleDetailView: View {
 
     @State private var showLeaveConfirmation = false
     @State private var isLeavingCircle = false
+    @State private var showEditCircleSheet = false
+    @State private var showDeleteConfirmation = false
+    @State private var isSavingCircle = false
+    @State private var isDeletingCircle = false
     @State private var circleActionErrorMessage: String?
 
     private let circleRemoteDataSource = CircleRemoteDataSource()
@@ -125,11 +129,19 @@ struct CircleDetailView: View {
                 Menu {
                     if membership.isOwner {
                         Button {
-                            // Owner edit/delete comes next.
+                            showEditCircleSheet = true
                         } label: {
-                            Label("Manage Circle", systemImage: "slider.horizontal.3")
+                            Label("Edit Circle", systemImage: "pencil")
                         }
-                        .disabled(true)
+
+                        Button(role: .destructive) {
+                            showDeleteConfirmation = true
+                        } label: {
+                            Label(
+                                isDeletingCircle ? "Deleting..." : "Delete Circle",
+                                systemImage: "trash"
+                            )
+                        }
                     } else {
                         Button(role: .destructive) {
                             showLeaveConfirmation = true
@@ -145,7 +157,7 @@ struct CircleDetailView: View {
                         .font(.system(size: 17, weight: .semibold))
                 }
                 .accessibilityLabel("Circle actions")
-                .disabled(isLeavingCircle)
+                .disabled(isLeavingCircle || isSavingCircle || isDeletingCircle)
             }
         }
         .confirmationDialog(
@@ -171,6 +183,39 @@ struct CircleDetailView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(circleActionErrorMessage ?? "Unknown error.")
+        }
+        .sheet(isPresented: $showEditCircleSheet) {
+            CircleEditSheet(
+                circle: displayedCircle,
+                isSaving: isSavingCircle,
+                onCancel: {
+                    showEditCircleSheet = false
+                },
+                onSave: { name, description in
+                    Task {
+                        await updateCircleDetails(
+                            name: name,
+                            description: description
+                        )
+                    }
+                }
+            )
+        }
+        .confirmationDialog(
+            "Delete Circle?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Circle", role: .destructive) {
+                Task {
+                    await deleteCircle()
+                }
+            }
+            .disabled(isDeletingCircle)
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will archive the Circle and remove it from members’ active Circle lists. Personal entries remain private and are not deleted.")
         }
     }
 
@@ -411,6 +456,72 @@ struct CircleDetailView: View {
 
             #if DEBUG
             print("❌ Failed to leave Circle:", error.localizedDescription)
+            #endif
+        }
+    }
+    private func updateCircleDetails(
+        name: String,
+        description: String?
+    ) async {
+        guard isSavingCircle == false else {
+            return
+        }
+
+        isSavingCircle = true
+        circleActionErrorMessage = nil
+
+        do {
+            let updatedCircle = try await circleService.updateCircleDetails(
+                circle: displayedCircle,
+                membership: membership,
+                name: name,
+                description: description,
+                modelContext: modelContext
+            )
+
+            refreshedCircle = updatedCircle
+            showEditCircleSheet = false
+            isSavingCircle = false
+
+            await refreshCircleDetail()
+        } catch {
+            isSavingCircle = false
+            circleActionErrorMessage = error.localizedDescription
+
+            #if DEBUG
+            print("❌ Failed to update Circle:", error.localizedDescription)
+            #endif
+        }
+    }
+
+    private func deleteCircle() async {
+        guard isDeletingCircle == false else {
+            return
+        }
+
+        isDeletingCircle = true
+        circleActionErrorMessage = nil
+
+        do {
+            try await circleService.deleteCircle(
+                circle: displayedCircle,
+                membership: membership,
+                modelContext: modelContext
+            )
+
+            isDeletingCircle = false
+
+            try? await Task.sleep(nanoseconds: 250_000_000)
+
+            await MainActor.run {
+                dismiss()
+            }
+        } catch {
+            isDeletingCircle = false
+            circleActionErrorMessage = error.localizedDescription
+
+            #if DEBUG
+            print("❌ Failed to delete Circle:", error.localizedDescription)
             #endif
         }
     }

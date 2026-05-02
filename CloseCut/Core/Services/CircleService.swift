@@ -192,6 +192,70 @@ final class CircleService {
             modelContext: modelContext
         )
     }
+    func updateCircleDetails(
+        circle: CloseCircle,
+        membership: CircleMembership,
+        name: String,
+        description: String?,
+        modelContext: ModelContext
+    ) async throws -> CloseCircle {
+        guard membership.role == .owner else {
+            throw CircleServiceError.ownerOnlyAction
+        }
+
+        let cleanedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard cleanedName.isEmpty == false else {
+            throw CircleServiceError.invalidCircleName
+        }
+
+        let cleanedDescription = cleanOptionalText(description)
+
+        try await circleRemoteDataSource.updateCircleDetails(
+            circleId: circle.id,
+            name: cleanedName,
+            description: cleanedDescription
+        )
+
+        return try circleRepository.updateLocalCircleDetails(
+            circleId: circle.id,
+            name: cleanedName,
+            description: cleanedDescription,
+            modelContext: modelContext
+        )
+    }
+
+    func deleteCircle(
+        circle: CloseCircle,
+        membership: CircleMembership,
+        modelContext: ModelContext
+    ) async throws {
+        guard membership.role == .owner else {
+            throw CircleServiceError.ownerOnlyAction
+        }
+
+        try await circleRemoteDataSource.deleteCircle(
+            circleId: circle.id
+        )
+
+        try circleRepository.markLocalCircleDeleted(
+            circleId: circle.id,
+            modelContext: modelContext
+        )
+
+        try circleRepository.markLocalMembershipsRemovedForCircle(
+            circleId: circle.id,
+            modelContext: modelContext
+        )
+    }
+
+    private func cleanOptionalText(_ value: String?) -> String? {
+        guard let value else { return nil }
+
+        let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return cleaned.isEmpty ? nil : cleaned
+    }
     private func generateUniqueInviteCode(
         circleName: String,
         ownerDisplayName: String
@@ -218,6 +282,8 @@ final class CircleService {
         case circleNotFound
         case inviteCodeUnavailable
         case ownerCannotLeaveCircle
+        case ownerOnlyAction
+        case invalidCircleName
 
         var errorDescription: String? {
             switch self {
@@ -229,6 +295,10 @@ final class CircleService {
                 return "Couldn’t generate a unique invite code. Please try again."
             case .ownerCannotLeaveCircle:
                 return "Owners can’t leave their own Circle. You can edit or delete the Circle instead."
+            case .ownerOnlyAction:
+                return "Only the Circle owner can perform this action."
+            case .invalidCircleName:
+                return "Circle name is required."
             }
         }
     }

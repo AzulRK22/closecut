@@ -188,4 +188,30 @@ final class CircleRemoteDataSource {
 
         try await batch.commit()
     }
+    func updateCircleDetails(
+        circleId: String,
+        name: String,
+        description: String?
+    ) async throws {
+        try await db
+            .collection("circles")
+            .document(circleId)
+            .updateData([
+                "name": name,
+                "description": description as Any,
+                "updatedAt": Timestamp(date: Date())
+            ])
+    }
+
+    func deleteCircle(
+        circleId: String
+    ) async throws {
+        try await db
+            .collection("circles")
+            .document(circleId)
+            .updateData([
+                "deletedAt": Timestamp(date: Date()),
+                "updatedAt": Timestamp(date: Date())
+            ])
+    }
 }
