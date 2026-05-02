@@ -10,7 +10,12 @@ import FirebaseFirestore
 
 struct FirestoreEntryDTO: Codable {
     var ownerId: String
+
+    // Legacy field. Keep for backward compatibility for now.
     var circleId: String?
+
+    // New multi-circle field.
+    var sharedCircleIds: [String]?
 
     var title: String
     var normalizedTitle: String
@@ -47,7 +52,12 @@ struct FirestoreEntryDTO: Codable {
 extension FirestoreEntryDTO {
     init(entry: Entry, circleId: String? = nil) {
         self.ownerId = entry.ownerId
-        self.circleId = circleId
+
+        // Legacy compatibility:
+        // If caller passes circleId, use it. Otherwise use first shared circle if any.
+        self.circleId = circleId ?? entry.sharedCircleIds.first
+
+        self.sharedCircleIds = entry.sharedCircleIds
 
         self.title = entry.title
         self.normalizedTitle = entry.normalizedTitle
@@ -97,6 +107,16 @@ extension FirestoreEntryDTO {
             approxDate = nil
         }
 
+        let resolvedSharedCircleIds: [String]
+
+        if let sharedCircleIds {
+            resolvedSharedCircleIds = sharedCircleIds
+        } else if let circleId {
+            resolvedSharedCircleIds = [circleId]
+        } else {
+            resolvedSharedCircleIds = []
+        }
+
         return Entry(
             id: id,
             ownerId: ownerId,
@@ -116,6 +136,7 @@ extension FirestoreEntryDTO {
             cinemaScreen: cinemaScreen,
             cinemaComfort: cinemaComfort,
             visibility: EntryVisibility(rawValue: visibility) ?? .privateOnly,
+            sharedCircleIds: resolvedSharedCircleIds,
             sourceType: EntrySourceType(rawValue: sourceType) ?? .fullEntry,
             watchedAt: watchedAt.dateValue(),
             createdAt: createdAt.dateValue(),

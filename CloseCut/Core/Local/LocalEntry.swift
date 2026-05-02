@@ -27,7 +27,7 @@ final class LocalEntry {
     var intensity: Int
 
     var watchContextRaw: String
-    
+
     var watchedDateApproxKindRaw: String?
     var watchedDateApproxExactDate: Date?
     var watchedDateApproxMonth: Int?
@@ -39,6 +39,8 @@ final class LocalEntry {
     var cinemaComfort: Int?
 
     var visibilityRaw: String
+    var sharedCircleIds: [String]
+
     var sourceTypeRaw: String
 
     var watchedAt: Date
@@ -67,6 +69,7 @@ final class LocalEntry {
         cinemaScreen: Int? = nil,
         cinemaComfort: Int? = nil,
         visibility: EntryVisibility = .privateOnly,
+        sharedCircleIds: [String] = [],
         sourceType: EntrySourceType = .fullEntry,
         watchedAt: Date = Date(),
         createdAt: Date = Date(),
@@ -76,6 +79,7 @@ final class LocalEntry {
     ) {
         self.id = id
         self.ownerId = ownerId
+
         self.title = title
         self.normalizedTitle = normalizedTitle ?? title.normalizedTitleKey
         self.typeRaw = type.rawValue
@@ -89,17 +93,19 @@ final class LocalEntry {
         self.intensity = intensity
 
         self.watchContextRaw = watchContext.rawValue
-        
+
         self.watchedDateApproxKindRaw = watchedDateApprox?.kind.rawValue
         self.watchedDateApproxExactDate = watchedDateApprox?.exactDate
         self.watchedDateApproxMonth = watchedDateApprox?.month
         self.watchedDateApproxYear = watchedDateApprox?.year
         self.watchedDateApproxDisplayLabel = watchedDateApprox?.displayLabel
+
         self.cinemaAudio = cinemaAudio
         self.cinemaScreen = cinemaScreen
         self.cinemaComfort = cinemaComfort
 
         self.visibilityRaw = visibility.rawValue
+        self.sharedCircleIds = sharedCircleIds
         self.sourceTypeRaw = sourceType.rawValue
 
         self.watchedAt = watchedAt
@@ -147,6 +153,7 @@ extension LocalEntry {
             cinemaScreen: cinemaScreen,
             cinemaComfort: cinemaComfort,
             visibility: EntryVisibility(rawValue: visibilityRaw) ?? .privateOnly,
+            sharedCircleIds: sharedCircleIds,
             sourceType: EntrySourceType(rawValue: sourceTypeRaw) ?? .fullEntry,
             watchedAt: watchedAt,
             createdAt: createdAt,
@@ -158,6 +165,7 @@ extension LocalEntry {
 
     func update(from entry: Entry) {
         ownerId = entry.ownerId
+
         title = entry.title
         normalizedTitle = entry.normalizedTitle
         typeRaw = entry.type.rawValue
@@ -176,11 +184,13 @@ extension LocalEntry {
         watchedDateApproxMonth = entry.watchedDateApprox?.month
         watchedDateApproxYear = entry.watchedDateApprox?.year
         watchedDateApproxDisplayLabel = entry.watchedDateApprox?.displayLabel
+
         cinemaAudio = entry.cinemaAudio
         cinemaScreen = entry.cinemaScreen
         cinemaComfort = entry.cinemaComfort
 
         visibilityRaw = entry.visibility.rawValue
+        sharedCircleIds = entry.sharedCircleIds
         sourceTypeRaw = entry.sourceType.rawValue
 
         watchedAt = entry.watchedAt

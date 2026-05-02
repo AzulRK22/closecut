@@ -31,6 +31,8 @@ struct Entry: Identifiable, Codable, Equatable {
     var cinemaComfort: Int?
 
     var visibility: EntryVisibility
+    var sharedCircleIds: [String]
+
     var sourceType: EntrySourceType
 
     var watchedAt: Date
@@ -41,7 +43,7 @@ struct Entry: Identifiable, Codable, Equatable {
     var syncStatus: SyncStatus
 
     var isSharedWithCircle: Bool {
-        visibility == .circle
+        visibility == .circle || sharedCircleIds.isEmpty == false
     }
 
     var isDeleted: Bool {
@@ -53,6 +55,7 @@ struct Entry: Identifiable, Codable, Equatable {
     }
 
     var hasFullEmotionalDetails: Bool {
-        sourceType == .fullEntry && mood.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        sourceType == .fullEntry &&
+        mood.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     }
 }

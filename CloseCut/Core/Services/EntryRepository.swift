@@ -31,13 +31,16 @@ final class EntryRepository {
         cinemaScreen: Int?,
         cinemaComfort: Int?,
         visibility: EntryVisibility,
+        sharedCircleIds: [String] = [],
         sourceType: EntrySourceType = .fullEntry,
         watchedAt: Date,
         modelContext: ModelContext
     ) throws -> Entry {
         let now = Date()
         let cleanedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-
+        let cleanedSharedCircleIds = cleanCircleIds(sharedCircleIds)
+        let resolvedVisibility: EntryVisibility = cleanedSharedCircleIds.isEmpty ? .privateOnly : .circle
+        
         let localEntry = LocalEntry(
             id: UUID().uuidString,
             ownerId: ownerId,
@@ -56,7 +59,8 @@ final class EntryRepository {
             cinemaAudio: watchContext == .cinema ? cinemaAudio : nil,
             cinemaScreen: watchContext == .cinema ? cinemaScreen : nil,
             cinemaComfort: watchContext == .cinema ? cinemaComfort : nil,
-            visibility: visibility,
+            visibility: resolvedVisibility,
+            sharedCircleIds: cleanedSharedCircleIds,
             sourceType: sourceType,
             watchedAt: watchedAt,
             createdAt: now,
@@ -114,6 +118,7 @@ final class EntryRepository {
             cinemaScreen: nil,
             cinemaComfort: nil,
             visibility: visibility,
+            sharedCircleIds: [],
             sourceType: .quickAdd,
             watchedAt: watchedAt,
             modelContext: modelContext
@@ -207,6 +212,7 @@ final class EntryRepository {
                 cinemaScreen: remoteEntry.cinemaScreen,
                 cinemaComfort: remoteEntry.cinemaComfort,
                 visibility: remoteEntry.visibility,
+                sharedCircleIds: remoteEntry.sharedCircleIds,
                 sourceType: remoteEntry.sourceType,
                 watchedAt: remoteEntry.watchedAt,
                 createdAt: remoteEntry.createdAt,
@@ -303,6 +309,7 @@ final class EntryRepository {
         cinemaScreen: Int?,
         cinemaComfort: Int?,
         visibility: EntryVisibility,
+        sharedCircleIds: [String] = [],
         sourceType: EntrySourceType = .fullEntry,
         watchedAt: Date,
         modelContext: ModelContext
@@ -315,7 +322,9 @@ final class EntryRepository {
         }
 
         let cleanedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-
+        let cleanedSharedCircleIds = cleanCircleIds(sharedCircleIds)
+        let resolvedVisibility: EntryVisibility = cleanedSharedCircleIds.isEmpty ? .privateOnly : .circle
+        
         localEntry.title = cleanedTitle
         localEntry.normalizedTitle = cleanedTitle.normalizedTitleKey
         localEntry.typeRaw = type.rawValue
@@ -339,7 +348,8 @@ final class EntryRepository {
         localEntry.cinemaScreen = watchContext == .cinema ? cinemaScreen : nil
         localEntry.cinemaComfort = watchContext == .cinema ? cinemaComfort : nil
 
-        localEntry.visibilityRaw = visibility.rawValue
+        localEntry.visibilityRaw = resolvedVisibility.rawValue
+        localEntry.sharedCircleIds = cleanedSharedCircleIds
         localEntry.sourceTypeRaw = sourceType.rawValue
 
         localEntry.watchedAt = watchedAt
@@ -372,7 +382,17 @@ final class EntryRepository {
             throw EntryRepositoryError.entryNotFound
         }
 
-        localEntry.visibilityRaw = visibility.rawValue
+        if visibility == .privateOnly {
+            localEntry.sharedCircleIds = []
+            localEntry.visibilityRaw = EntryVisibility.privateOnly.rawValue
+        } else {
+            let cleanedSharedCircleIds = cleanCircleIds(localEntry.sharedCircleIds)
+            localEntry.sharedCircleIds = cleanedSharedCircleIds
+            localEntry.visibilityRaw = cleanedSharedCircleIds.isEmpty
+                ? EntryVisibility.privateOnly.rawValue
+                : EntryVisibility.circle.rawValue
+        }
+
         localEntry.updatedAt = Date()
         localEntry.syncStatusRaw = SyncStatus.pending.rawValue
 
@@ -389,7 +409,41 @@ final class EntryRepository {
 
         return entry
     }
+    func updateLocalSharedCircles(
+        entryId: String,
+        sharedCircleIds: [String],
+        modelContext: ModelContext
+    ) throws -> Entry {
+        guard let localEntry = try fetchLocalEntryModel(
+            id: entryId,
+            modelContext: modelContext
+        ) else {
+            throw EntryRepositoryError.entryNotFound
+        }
 
+        let cleanedSharedCircleIds = cleanCircleIds(sharedCircleIds)
+
+        localEntry.sharedCircleIds = cleanedSharedCircleIds
+        localEntry.visibilityRaw = cleanedSharedCircleIds.isEmpty
+            ? EntryVisibility.privateOnly.rawValue
+            : EntryVisibility.circle.rawValue
+
+        localEntry.updatedAt = Date()
+        localEntry.syncStatusRaw = SyncStatus.pending.rawValue
+
+        try modelContext.save()
+
+        let entry = localEntry.domain
+
+        try enqueueEntryAction(
+            userId: entry.ownerId,
+            actionType: PendingActionType.updateVisibility,
+            entry: entry,
+            modelContext: modelContext
+        )
+
+        return entry
+    }
     func markLocalEntrySynced(
         entryId: String,
         modelContext: ModelContext
@@ -508,6 +562,12 @@ final class EntryRepository {
     private func cleanTags(_ tags: [String]) -> [String] {
         tags
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty }
+            .uniqued()
+    }
+    private func cleanCircleIds(_ ids: [String]) -> [String] {
+        ids
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .uniqued()
     }
