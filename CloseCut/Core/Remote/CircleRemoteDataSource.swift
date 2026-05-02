@@ -8,17 +8,30 @@
 import Foundation
 import FirebaseFirestore
 
+enum CircleRemoteDataSourceError: LocalizedError {
+    case circleDocumentMissing
+    case circleDocumentIncomplete
+
+    var errorDescription: String? {
+        switch self {
+        case .circleDocumentMissing:
+            return "Circle document is missing."
+        case .circleDocumentIncomplete:
+            return "Circle document is incomplete."
+        }
+    }
+}
+
 @MainActor
 final class CircleRemoteDataSource {
     private let db = Firestore.firestore()
+
+    // MARK: - Create
 
     func createCircle(
         closeCircle: CloseCircle,
         ownerMember: CircleMember
     ) async throws {
-        let circleDTO = FirestoreCircleDTO(closeCircle: closeCircle)
-        let memberDTO = FirestoreCircleMemberDTO(member: ownerMember)
-
         let circleRef = db
             .collection("circles")
             .document(closeCircle.id)
@@ -29,20 +42,32 @@ final class CircleRemoteDataSource {
 
         let batch = db.batch()
 
-        try batch.setData(
-            from: circleDTO,
-            forDocument: circleRef,
-            merge: true
-        )
+        var circleData: [String: Any] = [
+            "name": closeCircle.name,
+            "ownerId": closeCircle.ownerId,
+            "ownerDisplayName": closeCircle.ownerDisplayName,
+            "inviteCode": closeCircle.inviteCode,
+            "inviteCodeNormalized": closeCircle.inviteCodeNormalized,
+            "memberIds": closeCircle.memberIds,
+            "createdAt": Timestamp(date: closeCircle.createdAt),
+            "updatedAt": Timestamp(date: closeCircle.updatedAt)
+        ]
 
-        try batch.setData(
-            from: memberDTO,
-            forDocument: memberRef,
-            merge: true
-        )
+        circleData["description"] = closeCircle.description ?? ""
+
+        if let deletedAt = closeCircle.deletedAt {
+            circleData["deletedAt"] = Timestamp(date: deletedAt)
+        }
+
+        let memberData = memberPayload(ownerMember)
+
+        batch.setData(circleData, forDocument: circleRef, merge: true)
+        batch.setData(memberData, forDocument: memberRef, merge: true)
 
         try await batch.commit()
     }
+
+    // MARK: - Read
 
     func fetchCircle(
         circleId: String
@@ -52,8 +77,20 @@ final class CircleRemoteDataSource {
             .document(circleId)
             .getDocument()
 
-        let dto = try document.data(as: FirestoreCircleDTO.self)
+        guard document.exists else {
+            throw CircleRemoteDataSourceError.circleDocumentMissing
+        }
 
+        guard let data = document.data(),
+              data["name"] != nil,
+              data["ownerId"] != nil,
+              data["inviteCode"] != nil,
+              data["inviteCodeNormalized"] != nil,
+              data["memberIds"] != nil else {
+            throw CircleRemoteDataSourceError.circleDocumentIncomplete
+        }
+
+        let dto = try document.data(as: FirestoreCircleDTO.self)
         return dto.domain(id: document.documentID)
     }
 
@@ -65,48 +102,32 @@ final class CircleRemoteDataSource {
         let snapshot = try await db
             .collection("circles")
             .whereField("inviteCodeNormalized", isEqualTo: normalizedCode)
-            .limit(to: 1)
+            .limit(to: 5)
             .getDocuments()
 
-        guard let document = snapshot.documents.first else {
-            return nil
+        for document in snapshot.documents {
+            guard document.exists else {
+                continue
+            }
+
+            guard let data = document.data() as [String: Any]?,
+                  data["name"] != nil,
+                  data["ownerId"] != nil,
+                  data["inviteCode"] != nil,
+                  data["inviteCodeNormalized"] != nil,
+                  data["memberIds"] != nil else {
+                continue
+            }
+
+            let dto = try document.data(as: FirestoreCircleDTO.self)
+            let circle = dto.domain(id: document.documentID)
+
+            if circle.deletedAt == nil {
+                return circle
+            }
         }
 
-        let dto = try document.data(as: FirestoreCircleDTO.self)
-
-        return dto.domain(id: document.documentID)
-    }
-    func joinCircle(
-        circle: CloseCircle,
-        member: CircleMember
-    ) async throws {
-        let memberDTO = FirestoreCircleMemberDTO(member: member)
-
-        let circleRef = db
-            .collection("circles")
-            .document(circle.id)
-
-        let memberRef = circleRef
-            .collection("members")
-            .document(member.userId)
-
-        let batch = db.batch()
-
-        try batch.setData(
-            from: memberDTO,
-            forDocument: memberRef,
-            merge: true
-        )
-
-        batch.updateData(
-            [
-                "memberIds": FieldValue.arrayUnion([member.userId]),
-                "updatedAt": Timestamp(date: Date())
-            ],
-            forDocument: circleRef
-        )
-
-        try await batch.commit()
+        return nil
     }
 
     func fetchMember(
@@ -125,22 +146,9 @@ final class CircleRemoteDataSource {
         }
 
         let dto = try document.data(as: FirestoreCircleMemberDTO.self)
-
         return dto.domain()
     }
-    func isInviteCodeAvailable(
-        inviteCode: String
-    ) async throws -> Bool {
-        let normalizedCode = inviteCode.normalizedInviteCode
 
-        let snapshot = try await db
-            .collection("circles")
-            .whereField("inviteCodeNormalized", isEqualTo: normalizedCode)
-            .limit(to: 1)
-            .getDocuments()
-
-        return snapshot.documents.isEmpty
-    }
     func fetchMembers(
         circleId: String
     ) async throws -> [CircleMember] {
@@ -156,6 +164,74 @@ final class CircleRemoteDataSource {
             return dto.domain()
         }
     }
+
+    func fetchActivities(
+        circleId: String,
+        limit: Int = 30
+    ) async throws -> [CircleActivity] {
+        let snapshot = try await db
+            .collection("circles")
+            .document(circleId)
+            .collection("activity")
+            .order(by: "createdAt", descending: true)
+            .limit(to: limit)
+            .getDocuments()
+
+        return try snapshot.documents.map { document in
+            let dto = try document.data(as: FirestoreCircleActivityDTO.self)
+            return dto.domain(id: document.documentID)
+        }
+    }
+
+    // MARK: - Invite Code
+
+    func isInviteCodeAvailable(
+        inviteCode: String
+    ) async throws -> Bool {
+        let normalizedCode = inviteCode.normalizedInviteCode
+
+        let snapshot = try await db
+            .collection("circles")
+            .whereField("inviteCodeNormalized", isEqualTo: normalizedCode)
+            .limit(to: 1)
+            .getDocuments()
+
+        return snapshot.documents.isEmpty
+    }
+
+    // MARK: - Join / Leave
+
+    func joinCircle(
+        circle: CloseCircle,
+        member: CircleMember
+    ) async throws {
+        let circleRef = db
+            .collection("circles")
+            .document(circle.id)
+
+        let memberRef = circleRef
+            .collection("members")
+            .document(member.userId)
+
+        let batch = db.batch()
+
+        batch.setData(
+            memberPayload(member),
+            forDocument: memberRef,
+            merge: true
+        )
+
+        batch.updateData(
+            [
+                "memberIds": FieldValue.arrayUnion([member.userId]),
+                "updatedAt": Timestamp(date: Date())
+            ],
+            forDocument: circleRef
+        )
+
+        try await batch.commit()
+    }
+
     func leaveCircle(
         circleId: String,
         userId: String
@@ -168,39 +244,62 @@ final class CircleRemoteDataSource {
             .collection("members")
             .document(userId)
 
-        let batch = db.batch()
+        try await memberRef.updateData([
+            "status": CircleMemberStatus.removed.rawValue,
+            "updatedAt": Timestamp(date: Date())
+        ])
 
-        batch.updateData(
-            [
-                "status": CircleMemberStatus.removed.rawValue,
-                "updatedAt": Timestamp(date: Date())
-            ],
-            forDocument: memberRef
-        )
+        do {
+            let circleSnapshot = try await circleRef.getDocument()
 
-        batch.updateData(
-            [
+            guard circleSnapshot.exists else {
+                throw CircleRemoteDataSourceError.circleDocumentMissing
+            }
+
+            guard let memberIds = circleSnapshot.data()?["memberIds"] as? [String],
+                  memberIds.contains(userId) else {
+                #if DEBUG
+                print("ℹ️ User was not listed in circle.memberIds. Skipping arrayRemove.")
+                #endif
+                return
+            }
+
+            try await circleRef.updateData([
                 "memberIds": FieldValue.arrayRemove([userId]),
                 "updatedAt": Timestamp(date: Date())
-            ],
-            forDocument: circleRef
-        )
-
-        try await batch.commit()
+            ])
+        } catch CircleRemoteDataSourceError.circleDocumentMissing {
+            throw CircleRemoteDataSourceError.circleDocumentMissing
+        } catch {
+            #if DEBUG
+            print("⚠️ Failed to remove user from circle.memberIds:", error.localizedDescription)
+            #endif
+        }
     }
+
+    // MARK: - Update / Delete
+
     func updateCircleDetails(
         circleId: String,
         name: String,
         description: String?
     ) async throws {
+        var payload: [String: Any] = [
+            "name": name,
+            "updatedAt": Timestamp(date: Date())
+        ]
+
+        if let description,
+           description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            payload["description"] = description
+        } else {
+            payload["description"] = FieldValue.delete()
+        }
+
         try await db
             .collection("circles")
             .document(circleId)
-            .updateData([
-                "name": name,
-                "description": description as Any,
-                "updatedAt": Timestamp(date: Date())
-            ])
+            .updateData(payload)
     }
 
     func deleteCircle(
@@ -213,5 +312,59 @@ final class CircleRemoteDataSource {
                 "deletedAt": Timestamp(date: Date()),
                 "updatedAt": Timestamp(date: Date())
             ])
+    }
+
+    // MARK: - Activity
+
+    func createActivity(
+        circleId: String,
+        type: CircleActivityType,
+        actorId: String,
+        actorDisplayName: String,
+        message: String
+    ) async throws {
+        let circleDocument = try await db
+            .collection("circles")
+            .document(circleId)
+            .getDocument()
+
+        guard circleDocument.exists,
+              let data = circleDocument.data(),
+              data["name"] != nil else {
+            throw CircleRemoteDataSourceError.circleDocumentMissing
+        }
+
+        let activity = CircleActivity(
+            id: UUID().uuidString,
+            circleId: circleId,
+            type: type,
+            actorId: actorId,
+            actorDisplayName: actorDisplayName,
+            message: message,
+            createdAt: Date()
+        )
+
+        let dto = FirestoreCircleActivityDTO(activity: activity)
+
+        try db
+            .collection("circles")
+            .document(circleId)
+            .collection("activity")
+            .document(activity.id)
+            .setData(from: dto, merge: true)
+    }
+
+    // MARK: - Helpers
+
+    private func memberPayload(_ member: CircleMember) -> [String: Any] {
+        [
+            "userId": member.userId,
+            "displayName": member.displayName,
+            "email": member.email ?? "",
+            "role": member.role.rawValue,
+            "status": member.status.rawValue,
+            "joinedAt": Timestamp(date: member.joinedAt),
+            "updatedAt": Timestamp(date: member.updatedAt)
+        ]
     }
 }

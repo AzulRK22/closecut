@@ -339,6 +339,28 @@ final class CircleRepository {
 
         try modelContext.save()
     }
+    func removeLocalCircleCompletely(
+        circleId: String,
+        userId: String,
+        modelContext: ModelContext
+    ) throws {
+        if let membership = try fetchLocalMembershipModel(
+            circleId: circleId,
+            userId: userId,
+            modelContext: modelContext
+        ) {
+            modelContext.delete(membership)
+        }
+
+        if let circle = try fetchLocalCircleModel(
+            id: circleId,
+            modelContext: modelContext
+        ) {
+            modelContext.delete(circle)
+        }
+
+        try modelContext.save()
+    }
 
     // MARK: - Helpers
 

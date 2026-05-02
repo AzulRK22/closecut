@@ -12,6 +12,7 @@ private enum CircleDetailSegment: String, CaseIterable, Identifiable {
     case timeline
     case quickPick
     case members
+    case activity
 
     var id: String { rawValue }
 
@@ -23,6 +24,8 @@ private enum CircleDetailSegment: String, CaseIterable, Identifiable {
             return "QuickPick"
         case .members:
             return "Members"
+        case .activity:
+            return "Activity"
         }
     }
 }
@@ -34,6 +37,7 @@ struct CircleDetailView: View {
     let circle: CloseCircle
     let membership: CircleMembership
     let currentUserId: String
+    let currentUserDisplayName: String
 
     @State private var selectedSegment: CircleDetailSegment = .timeline
     @State private var copiedInviteCode = false
@@ -41,23 +45,33 @@ struct CircleDetailView: View {
     @State private var isRefreshing = false
     @State private var refreshedCircle: CloseCircle?
     @State private var members: [CircleMember] = []
+    @State private var activities: [CircleActivity] = []
     @State private var refreshErrorMessage: String?
 
     @State private var showLeaveConfirmation = false
     @State private var isLeavingCircle = false
+
     @State private var showEditCircleSheet = false
     @State private var showDeleteConfirmation = false
     @State private var isSavingCircle = false
     @State private var isDeletingCircle = false
+
     @State private var circleActionErrorMessage: String?
 
     private let circleRemoteDataSource = CircleRemoteDataSource()
     private let circleService = CircleService()
+    private let circleRepository = CircleRepository()
 
     private var displayedCircle: CloseCircle {
         refreshedCircle ?? circle
     }
+    private var displayedMemberCount: Int {
+        if members.isEmpty == false {
+            return members.count
+        }
 
+        return displayedCircle.memberIds.count
+    }
     private var sortedMembers: [CircleMember] {
         members.sorted { first, second in
             if first.role != second.role {
@@ -176,14 +190,6 @@ struct CircleDetailView: View {
         } message: {
             Text("You’ll stop seeing this Circle in your list. Entries shared with this Circle will no longer appear in your Circle space.")
         }
-        .alert("Circle action failed", isPresented: Binding(
-            get: { circleActionErrorMessage != nil },
-            set: { if !$0 { circleActionErrorMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(circleActionErrorMessage ?? "Unknown error.")
-        }
         .sheet(isPresented: $showEditCircleSheet) {
             CircleEditSheet(
                 circle: displayedCircle,
@@ -216,6 +222,14 @@ struct CircleDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will archive the Circle and remove it from members’ active Circle lists. Personal entries remain private and are not deleted.")
+        }
+        .alert("Circle action failed", isPresented: Binding(
+            get: { circleActionErrorMessage != nil },
+            set: { if !$0 { circleActionErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(circleActionErrorMessage ?? "Unknown error.")
         }
     }
 
@@ -253,8 +267,7 @@ struct CircleDetailView: View {
             }
 
             HStack(spacing: 8) {
-                Label("\(displayedCircle.memberIds.count) members", systemImage: "person.2.fill")
-                    .font(.caption)
+                Label("\(displayedMemberCount) members", systemImage: "person.2.fill")         .font(.caption)
                     .foregroundStyle(CloseCutColors.textTertiary)
 
                 Text("•")
@@ -315,12 +328,12 @@ struct CircleDetailView: View {
         switch selectedSegment {
         case .timeline:
             timelinePlaceholder
-
         case .quickPick:
             quickPickPlaceholder
-
         case .members:
             membersSection
+        case .activity:
+            activitySection
         }
     }
 
@@ -379,6 +392,38 @@ struct CircleDetailView: View {
         }
     }
 
+    private var activitySection: some View {
+        DetailSectionCard(title: "Activity") {
+            VStack(spacing: 12) {
+                if activities.isEmpty && isRefreshing {
+                    HStack(spacing: 10) {
+                        ProgressView()
+
+                        Text("Loading activity…")
+                            .font(.caption)
+                            .foregroundStyle(CloseCutColors.textSecondary)
+
+                        Spacer()
+                    }
+                } else if activities.isEmpty {
+                    Text("Circle updates will appear here.")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    ForEach(activities) { activity in
+                        CircleActivityRowView(activity: activity)
+
+                        if activity.id != activities.last?.id {
+                            Divider()
+                                .overlay(CloseCutColors.separator)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private func copyInviteCode() {
         UIPasteboard.general.string = displayedCircle.inviteCode
 
@@ -396,7 +441,6 @@ struct CircleDetailView: View {
             }
         }
     }
-
     private func refreshCircleDetail() async {
         guard isRefreshing == false else {
             return
@@ -407,27 +451,51 @@ struct CircleDetailView: View {
         defer { isRefreshing = false }
 
         do {
-            async let circleTask = circleRemoteDataSource.fetchCircle(
+            let remoteCircle = try await circleRemoteDataSource.fetchCircle(
                 circleId: displayedCircle.id
             )
 
-            async let membersTask = circleRemoteDataSource.fetchMembers(
-                circleId: displayedCircle.id
+            if remoteCircle.deletedAt != nil {
+                await MainActor.run {
+                    dismiss()
+                }
+                return
+            }
+
+            let localCircle = try circleRepository.upsertRemoteCircle(
+                remoteCircle,
+                modelContext: modelContext
             )
 
-            let (remoteCircle, remoteMembers) = try await (circleTask, membersTask)
-
-            refreshedCircle = remoteCircle
-            members = remoteMembers
+            refreshedCircle = localCircle
         } catch {
-            refreshErrorMessage = error.localizedDescription
+            refreshErrorMessage = "Couldn’t refresh Circle details."
 
             #if DEBUG
-            print("⚠️ Failed to refresh Circle detail:", error.localizedDescription)
+            print("⚠️ Failed to refresh Circle:", error.localizedDescription)
+            #endif
+        }
+
+        do {
+            members = try await circleRemoteDataSource.fetchMembers(
+                circleId: displayedCircle.id
+            )
+        } catch {
+            #if DEBUG
+            print("⚠️ Failed to refresh Circle members:", error.localizedDescription)
+            #endif
+        }
+
+        do {
+            activities = try await circleRemoteDataSource.fetchActivities(
+                circleId: displayedCircle.id
+            )
+        } catch {
+            #if DEBUG
+            print("⚠️ Failed to refresh Circle activity:", error.localizedDescription)
             #endif
         }
     }
-
     private func leaveCircle() async {
         guard isLeavingCircle == false else {
             return
@@ -440,6 +508,7 @@ struct CircleDetailView: View {
             try await circleService.leaveCircle(
                 circle: displayedCircle,
                 membership: membership,
+                actorDisplayName: currentUserDisplayName,
                 modelContext: modelContext
             )
 
@@ -459,6 +528,7 @@ struct CircleDetailView: View {
             #endif
         }
     }
+
     private func updateCircleDetails(
         name: String,
         description: String?

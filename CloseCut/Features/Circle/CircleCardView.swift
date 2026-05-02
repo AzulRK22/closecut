@@ -11,6 +11,23 @@ struct CircleCardView: View {
     let circle: CloseCircle
     let membership: CircleMembership
 
+    private var memberCount: Int {
+        max(circle.memberIds.count, 1)
+    }
+
+    private var memberCountText: String {
+        memberCount == 1 ? "1 member" : "\(memberCount) members"
+    }
+
+    private var descriptionText: String {
+        guard let description = circle.description,
+              description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            return "A private space for shared watch memories."
+        }
+
+        return description
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
@@ -21,18 +38,10 @@ struct CircleCardView: View {
                         .foregroundStyle(CloseCutColors.textPrimary)
                         .lineLimit(1)
 
-                    if let description = circle.description,
-                       description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-                        Text(description)
-                            .font(.subheadline)
-                            .foregroundStyle(CloseCutColors.textSecondary)
-                            .lineLimit(2)
-                    } else {
-                        Text("A private space for shared watch memories.")
-                            .font(.subheadline)
-                            .foregroundStyle(CloseCutColors.textSecondary)
-                            .lineLimit(2)
-                    }
+                    Text(descriptionText)
+                        .font(.subheadline)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .lineLimit(2)
                 }
 
                 Spacer()
@@ -47,7 +56,7 @@ struct CircleCardView: View {
             }
 
             HStack(spacing: 8) {
-                Label("\(circle.memberIds.count) members", systemImage: "person.2.fill")
+                Label(memberCountText, systemImage: "person.2.fill")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textTertiary)
 
@@ -83,6 +92,6 @@ struct CircleCardView: View {
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(circle.name), \(circle.memberIds.count) members, owner \(circle.ownerDisplayName)")
+        .accessibilityLabel("\(circle.name), \(memberCountText), owner \(circle.ownerDisplayName)")
     }
 }

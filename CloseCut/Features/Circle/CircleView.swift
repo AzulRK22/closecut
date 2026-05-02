@@ -197,7 +197,8 @@ struct CircleView: View {
                         CircleDetailView(
                             circle: row.circle,
                             membership: row.membership,
-                            currentUserId: user.id
+                            currentUserId: user.id,
+                            currentUserDisplayName: profile.displayName
                         )
                     } label: {
                         CircleCardView(
@@ -538,22 +539,60 @@ struct CircleView: View {
         isRefreshingCircles = true
         defer { isRefreshingCircles = false }
 
-        do {
-            for membership in memberships {
+        for membership in memberships {
+            do {
                 let remoteCircle = try await circleRemoteDataSource.fetchCircle(
                     circleId: membership.circleId
                 )
+
+                if remoteCircle.deletedAt != nil {
+                    try circleRepository.removeLocalCircleCompletely(
+                        circleId: membership.circleId,
+                        userId: user.id,
+                        modelContext: modelContext
+                    )
+                    continue
+                }
 
                 _ = try circleRepository.upsertRemoteCircle(
                     remoteCircle,
                     modelContext: modelContext
                 )
+            } catch {
+                #if DEBUG
+                print("⚠️ Failed to refresh Circle \(membership.circleId):", error.localizedDescription)
+                #endif
+
+                if shouldRemoveLocalCircleAfterRefreshFailure(error) {
+                    do {
+                        try circleRepository.removeLocalCircleCompletely(
+                            circleId: membership.circleId,
+                            userId: user.id,
+                            modelContext: modelContext
+                        )
+                    } catch {
+                        #if DEBUG
+                        print("⚠️ Failed to remove stale local Circle:", error.localizedDescription)
+                        #endif
+                    }
+                }
             }
-        } catch {
-            #if DEBUG
-            print("⚠️ Failed to refresh Circles:", error.localizedDescription)
-            #endif
         }
+    }
+    private func shouldRemoveLocalCircleAfterRefreshFailure(_ error: Error) -> Bool {
+        if let remoteError = error as? CircleRemoteDataSourceError {
+            switch remoteError {
+            case .circleDocumentMissing, .circleDocumentIncomplete:
+                return true
+            }
+        }
+
+        let message = error.localizedDescription.lowercased()
+
+        return message.contains("missing")
+            || message.contains("couldn’t be read")
+            || message.contains("couldn't be read")
+            || message.contains("incomplete")
     }
 }
 
