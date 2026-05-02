@@ -73,6 +73,36 @@ final class CircleService {
         )
         return circle
     }
+    func previewCircle(
+        inviteCode: String,
+        currentUserId: String
+    ) async throws -> CirclePreview {
+        let normalizedCode = inviteCode.normalizedInviteCode
+
+        guard normalizedCode.isEmpty == false else {
+            throw CircleServiceError.invalidInviteCode
+        }
+
+        guard let circle = try await circleRemoteDataSource.fetchCircleByInviteCode(
+            inviteCode: normalizedCode
+        ) else {
+            throw CircleServiceError.circleNotFound
+        }
+
+        if circle.deletedAt != nil {
+            throw CircleServiceError.circleNotFound
+        }
+
+        let existingMembership = try await circleRemoteDataSource.fetchMember(
+            circleId: circle.id,
+            userId: currentUserId
+        )
+
+        return CirclePreview(
+            circle: circle,
+            currentUserMembership: existingMembership
+        )
+    }
     func joinCircle(
         user: AuthUser,
         profile: UserProfile,

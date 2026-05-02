@@ -27,8 +27,10 @@ struct CircleView: View {
     @State private var circleName = ""
     @State private var circleDescription = ""
     @State private var inviteCodeToJoin = ""
+    @State private var circlePreview: CirclePreview?
 
     @State private var isCreatingCircle = false
+    @State private var isPreviewingCircle = false
     @State private var isJoiningCircle = false
     @State private var isRefreshingCircles = false
 
@@ -335,49 +337,77 @@ struct CircleView: View {
                 CloseCutColors.backgroundPrimary
                     .ignoresSafeArea()
 
-                VStack(alignment: .leading, spacing: 18) {
-                    Text("Join a Circle")
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.textPrimary)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        Text("Join a Circle")
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textPrimary)
 
-                    Text("Enter the invite code from someone you trust. You’ll see a preview before joining in the next iteration.")
-                        .font(.subheadline)
-                        .foregroundStyle(CloseCutColors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        Text("Enter the invite code from someone you trust. You’ll preview the Circle before joining.")
+                            .font(.subheadline)
+                            .foregroundStyle(CloseCutColors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
 
-                    TextField("Invite code", text: $inviteCodeToJoin)
-                        .font(.title3.monospaced().weight(.semibold))
-                        .foregroundStyle(CloseCutColors.textPrimary)
-                        .textInputAutocapitalization(.characters)
-                        .autocorrectionDisabled()
-                        .padding(14)
-                        .background(CloseCutColors.input)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .onChange(of: inviteCodeToJoin) { _, newValue in
-                            let normalized = newValue.normalizedInviteCode
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Invite code")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(CloseCutColors.textTertiary)
+                                .textCase(.uppercase)
+                                .tracking(0.8)
 
-                            if normalized != newValue {
-                                inviteCodeToJoin = normalized
+                            TextField("Invite code", text: $inviteCodeToJoin)
+                                .font(.title3.monospaced().weight(.semibold))
+                                .foregroundStyle(CloseCutColors.textPrimary)
+                                .textInputAutocapitalization(.characters)
+                                .autocorrectionDisabled()
+                                .padding(14)
+                                .background(CloseCutColors.input)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .onChange(of: inviteCodeToJoin) { _, newValue in
+                                    let normalized = newValue.normalizedInviteCode
+
+                                    if normalized != newValue {
+                                        inviteCodeToJoin = normalized
+                                    }
+
+                                    if circlePreview?.circle.inviteCodeNormalized != normalized {
+                                        circlePreview = nil
+                                    }
+                                }
+
+                            Text("Example: AZULR-12345")
+                                .font(.caption)
+                                .foregroundStyle(CloseCutColors.textTertiary)
+                        }
+
+                        if isPreviewingCircle {
+                            HStack(spacing: 10) {
+                                ProgressView()
+
+                                Text("Finding Circle…")
+                                    .font(.caption)
+                                    .foregroundStyle(CloseCutColors.textSecondary)
                             }
                         }
 
-                    Text("Example: AZULR-12345")
-                        .font(.caption)
-                        .foregroundStyle(CloseCutColors.textTertiary)
-
-                    if isJoiningCircle {
-                        HStack(spacing: 10) {
-                            ProgressView()
-
-                            Text("Joining Circle…")
-                                .font(.caption)
-                                .foregroundStyle(CloseCutColors.textSecondary)
+                        if let circlePreview {
+                            CirclePreviewCard(preview: circlePreview)
                         }
-                    }
 
-                    Spacer()
+                        if isJoiningCircle {
+                            HStack(spacing: 10) {
+                                ProgressView()
+
+                                Text("Joining Circle…")
+                                    .font(.caption)
+                                    .foregroundStyle(CloseCutColors.textSecondary)
+                            }
+                        }
+
+                        Spacer(minLength: 24)
+                    }
+                    .padding(20)
                 }
-                .padding(20)
             }
             .navigationTitle("Join Circle")
             .navigationBarTitleDisplayMode(.inline)
@@ -386,16 +416,33 @@ struct CircleView: View {
                     Button("Cancel") {
                         showJoinCircleSheet = false
                     }
-                    .disabled(isJoiningCircle)
+                    .disabled(isJoiningCircle || isPreviewingCircle)
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Join") {
-                        Task {
-                            await joinCircle()
+                    if let circlePreview {
+                        Button(circlePreview.isAlreadyMember ? "Done" : "Join") {
+                            Task {
+                                if circlePreview.isAlreadyMember {
+                                    showJoinCircleSheet = false
+                                } else {
+                                    await joinCircle()
+                                }
+                            }
                         }
+                        .disabled(isJoiningCircle || isPreviewingCircle)
+                    } else {
+                        Button("Preview") {
+                            Task {
+                                await previewCircle()
+                            }
+                        }
+                        .disabled(
+                            isJoiningCircle ||
+                            isPreviewingCircle ||
+                            inviteCodeToJoin.normalizedInviteCode.isEmpty
+                        )
                     }
-                    .disabled(isJoiningCircle || inviteCodeToJoin.normalizedInviteCode.isEmpty)
                 }
             }
         }
@@ -411,7 +458,25 @@ struct CircleView: View {
 
     private func openJoinCircle() {
         inviteCodeToJoin = ""
+        circlePreview = nil
         showJoinCircleSheet = true
+    }
+    private func previewCircle() async {
+        isPreviewingCircle = true
+        circleErrorMessage = nil
+        circlePreview = nil
+        defer { isPreviewingCircle = false }
+
+        do {
+            let preview = try await circleService.previewCircle(
+                inviteCode: inviteCodeToJoin,
+                currentUserId: user.id
+            )
+
+            circlePreview = preview
+        } catch {
+            circleErrorMessage = error.localizedDescription
+        }
     }
 
     private func createCircle() async {
@@ -444,11 +509,13 @@ struct CircleView: View {
             _ = try await circleService.joinCircle(
                 user: user,
                 profile: profile,
-                inviteCode: inviteCodeToJoin,
+                inviteCode: circlePreview?.circle.inviteCodeNormalized ?? inviteCodeToJoin,
                 modelContext: modelContext
             )
 
             showJoinCircleSheet = false
+            circlePreview = nil
+
             await refreshLocalCirclesFromRemote()
         } catch {
             circleErrorMessage = error.localizedDescription
