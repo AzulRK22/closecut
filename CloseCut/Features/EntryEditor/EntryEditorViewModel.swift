@@ -22,7 +22,10 @@ final class EntryEditorViewModel: ObservableObject {
     @Published var cinemaAudio: Int? = nil
     @Published var cinemaScreen: Int? = nil
     @Published var cinemaComfort: Int? = nil
+
+    // Kept for compatibility with older UI/code, but no longer drives sharing.
     @Published var isSharedWithCircle: Bool = false
+
     @Published var isSaving: Bool = false
     @Published var errors: [String] = []
 
@@ -89,6 +92,19 @@ final class EntryEditorViewModel: ObservableObject {
 
     func configureForNewEntry() {
         editingEntry = nil
+        type = .movie
+        title = ""
+        selectedMood = nil
+        takeaway = ""
+        keyMoment = ""
+        intensity = 3
+        tags = []
+        watchContext = .home
+        cinemaAudio = nil
+        cinemaScreen = nil
+        cinemaComfort = nil
+        isSharedWithCircle = false
+        errors = []
     }
 
     func configureForEdit(entry: Entry) {
@@ -105,14 +121,14 @@ final class EntryEditorViewModel: ObservableObject {
         cinemaAudio = entry.cinemaAudio
         cinemaScreen = entry.cinemaScreen
         cinemaComfort = entry.cinemaComfort
-        isSharedWithCircle = entry.visibility == .circle
+        isSharedWithCircle = entry.isSharedWithCircle
         errors = []
     }
 
     func save(
         ownerId: String,
         defaultVisibility: EntryVisibility,
-        hasCircleMembers: Bool,
+        selectedCircleIds: [String],
         modelContext: ModelContext
     ) async -> Bool {
         errors = EntryValidation.validate(
@@ -135,10 +151,10 @@ final class EntryEditorViewModel: ObservableObject {
         isSaving = true
         defer { isSaving = false }
 
-        let visibility = resolvedVisibility(
-            defaultVisibility: defaultVisibility,
-            hasCircleMembers: hasCircleMembers
-        )
+        let cleanedSelectedCircleIds = cleanCircleIds(selectedCircleIds)
+        let visibility = cleanedSelectedCircleIds.isEmpty
+            ? EntryVisibility.privateOnly
+            : EntryVisibility.circle
 
         do {
             if let editingEntry {
@@ -159,6 +175,7 @@ final class EntryEditorViewModel: ObservableObject {
                     cinemaScreen: cinemaScreen,
                     cinemaComfort: cinemaComfort,
                     visibility: visibility,
+                    sharedCircleIds: cleanedSelectedCircleIds,
                     sourceType: .fullEntry,
                     watchedAt: editingEntry.watchedAt,
                     modelContext: modelContext
@@ -181,6 +198,7 @@ final class EntryEditorViewModel: ObservableObject {
                     cinemaScreen: cinemaScreen,
                     cinemaComfort: cinemaComfort,
                     visibility: visibility,
+                    sharedCircleIds: cleanedSelectedCircleIds,
                     sourceType: .fullEntry,
                     watchedAt: Date(),
                     modelContext: modelContext
@@ -194,21 +212,25 @@ final class EntryEditorViewModel: ObservableObject {
         }
     }
 
-    private func resolvedVisibility(
-        defaultVisibility: EntryVisibility,
-        hasCircleMembers: Bool
-    ) -> EntryVisibility {
-        if hasCircleMembers && isSharedWithCircle {
-            return .circle
-        }
+    func hasChanges(
+        comparedTo entry: Entry,
+        selectedCircleIds: [String]
+    ) -> Bool {
+        let currentMood = selectedMood?.label ?? ""
+        let cleanedSelectedCircleIds = cleanCircleIds(selectedCircleIds)
 
-        if editingEntry == nil,
-           defaultVisibility == .circle,
-           hasCircleMembers {
-            return .circle
-        }
-
-        return .privateOnly
+        return type != entry.type ||
+        title != entry.title ||
+        currentMood != entry.mood ||
+        takeaway != entry.takeaway ||
+        keyMoment != (entry.quote ?? "") ||
+        intensity != entry.intensity ||
+        tags != entry.tags ||
+        watchContext != entry.watchContext ||
+        cinemaAudio != entry.cinemaAudio ||
+        cinemaScreen != entry.cinemaScreen ||
+        cinemaComfort != entry.cinemaComfort ||
+        cleanedSelectedCircleIds != cleanCircleIds(entry.sharedCircleIds)
     }
 
     private func hasChanges(comparedTo entry: Entry) -> Bool {
@@ -225,6 +247,17 @@ final class EntryEditorViewModel: ObservableObject {
         cinemaAudio != entry.cinemaAudio ||
         cinemaScreen != entry.cinemaScreen ||
         cinemaComfort != entry.cinemaComfort ||
-        isSharedWithCircle != (entry.visibility == .circle)
+        isSharedWithCircle != entry.isSharedWithCircle
+    }
+
+    private func cleanCircleIds(_ ids: [String]) -> [String] {
+        Array(
+            Set(
+                ids
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+            )
+        )
+        .sorted()
     }
 }

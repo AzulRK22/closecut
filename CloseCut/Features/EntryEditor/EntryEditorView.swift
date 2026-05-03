@@ -21,11 +21,35 @@ struct EntryEditorView: View {
     var hasCircleMembers: Bool = false
 
     @State private var showDiscardConfirmation = false
+    @Query(sort: \LocalCircle.updatedAt, order: .reverse)
+    private var localCircles: [LocalCircle]
+
+    @Query(sort: \LocalCircleMembership.updatedAt, order: .reverse)
+    private var localMemberships: [LocalCircleMembership]
+
+    @State private var selectedCircleIds: Set<String> = []
 
     private enum Field {
         case title
         case takeaway
         case keyMoment
+    }
+    private var activeCircleMemberships: [CircleMembership] {
+        localMemberships
+            .filter { $0.userId == user.id }
+            .map { $0.domain }
+            .filter { $0.isActive }
+    }
+
+    private var activeCircles: [CloseCircle] {
+        let activeCircleIds = Set(activeCircleMemberships.map { $0.circleId })
+
+        return localCircles
+            .map { $0.domain }
+            .filter { activeCircleIds.contains($0.id) && $0.deletedAt == nil }
+            .sorted { first, second in
+                first.updatedAt > second.updatedAt
+            }
     }
 
     var body: some View {
@@ -70,9 +94,10 @@ struct EntryEditorView: View {
                             .animation(.easeInOut(duration: 0.2), value: viewModel.watchContext)
                         }
 
-                        if hasCircleMembers {
-                            visibilitySection
-                        }
+                        CircleSharePickerView(
+                            circles: activeCircles,
+                            selectedCircleIds: $selectedCircleIds
+                        )
 
                         if !viewModel.errors.isEmpty {
                             errorSection
@@ -112,7 +137,7 @@ struct EntryEditorView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .interactiveDismissDisabled(viewModel.isDirty)
+        .interactiveDismissDisabled(isEditorDirty)
         .confirmationDialog(
             "Discard entry?",
             isPresented: $showDiscardConfirmation,
@@ -129,8 +154,10 @@ struct EntryEditorView: View {
         .onAppear {
             if let entryToEdit {
                 viewModel.configureForEdit(entry: entryToEdit)
+                selectedCircleIds = Set(entryToEdit.sharedCircleIds)
             } else {
                 viewModel.configureForNewEntry()
+                selectedCircleIds = []
                 focusedField = .title
             }
         }
@@ -286,7 +313,16 @@ struct EntryEditorView: View {
         .background(CloseCutColors.card)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
+    private var isEditorDirty: Bool {
+        if let entryToEdit {
+            return viewModel.hasChanges(
+                comparedTo: entryToEdit,
+                selectedCircleIds: Array(selectedCircleIds)
+            )
+        }
 
+        return viewModel.isDirty || selectedCircleIds.isEmpty == false
+    }
     private var errorSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(viewModel.errors, id: \.self) { error in
@@ -302,7 +338,7 @@ struct EntryEditorView: View {
     }
 
     private func handleDismiss() {
-        if viewModel.isDirty {
+        if isEditorDirty {
             showDiscardConfirmation = true
         } else {
             dismiss()
@@ -313,7 +349,7 @@ struct EntryEditorView: View {
         let didSave = await viewModel.save(
             ownerId: user.id,
             defaultVisibility: profile.defaultVisibility,
-            hasCircleMembers: hasCircleMembers,
+            selectedCircleIds: Array(selectedCircleIds),
             modelContext: modelContext
         )
 
