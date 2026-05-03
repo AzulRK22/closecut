@@ -57,6 +57,8 @@ struct CircleDetailView: View {
     @State private var isDeletingCircle = false
 
     @State private var circleActionErrorMessage: String?
+    @Query(sort: \LocalEntry.watchedAt, order: .reverse)
+    private var localEntries: [LocalEntry]
 
     private let circleRemoteDataSource = CircleRemoteDataSource()
     private let circleService = CircleService()
@@ -64,6 +66,18 @@ struct CircleDetailView: View {
 
     private var displayedCircle: CloseCircle {
         refreshedCircle ?? circle
+    }
+    private var sharedEntries: [Entry] {
+        localEntries
+            .map { $0.domain }
+            .filter { entry in
+                entry.deletedAt == nil &&
+                entry.visibility == .circle &&
+                entry.sharedCircleIds.contains(displayedCircle.id)
+            }
+            .sorted { first, second in
+                first.watchedAt > second.watchedAt
+            }
     }
     private var displayedMemberCount: Int {
         if members.isEmpty == false {
@@ -267,7 +281,8 @@ struct CircleDetailView: View {
             }
 
             HStack(spacing: 8) {
-                Label("\(displayedMemberCount) members", systemImage: "person.2.fill")         .font(.caption)
+                Label(displayedMemberCountText, systemImage: "person.2.fill")
+                    .font(.caption)
                     .foregroundStyle(CloseCutColors.textTertiary)
 
                 Text("•")
@@ -327,7 +342,7 @@ struct CircleDetailView: View {
     private var selectedContent: some View {
         switch selectedSegment {
         case .timeline:
-            timelinePlaceholder
+            timelineSection
         case .quickPick:
             quickPickPlaceholder
         case .members:
@@ -336,27 +351,45 @@ struct CircleDetailView: View {
             activitySection
         }
     }
-
-    private var timelinePlaceholder: some View {
-        EmptyStateView(
-            title: "Nothing shared yet",
-            message: "Entries intentionally shared with this Circle will appear here.",
-            systemImage: "film.stack",
-            actionTitle: nil,
-            action: nil
-        )
-    }
-
     private var quickPickPlaceholder: some View {
         EmptyStateView(
-            title: "Not enough group history yet",
-            message: "Group QuickPick will use entries shared with this Circle, separate from your private archive.",
+            title: "Group QuickPick is coming",
+            message: "Once this Circle has enough shared history, QuickPick will suggest what this group may want to watch together.",
             systemImage: "sparkles",
             actionTitle: nil,
             action: nil
         )
     }
 
+    private var timelineSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if sharedEntries.isEmpty {
+                EmptyStateView(
+                    title: "Nothing shared yet",
+                    message: "Entries intentionally shared with this Circle will appear here.",
+                    systemImage: "film.stack",
+                    actionTitle: nil,
+                    action: nil
+                )
+            } else {
+                DetailSectionCard(title: "Shared Timeline") {
+                    VStack(spacing: 12) {
+                        ForEach(sharedEntries) { entry in
+                            CircleTimelineEntryRow(entry: entry)
+
+                            if entry.id != sharedEntries.last?.id {
+                                Divider()
+                                    .overlay(CloseCutColors.separator)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    private var displayedMemberCountText: String {
+        displayedMemberCount == 1 ? "1 member" : "\(displayedMemberCount) members"
+    }
     private var membersSection: some View {
         DetailSectionCard(title: "Members") {
             VStack(spacing: 12) {
