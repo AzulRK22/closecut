@@ -18,7 +18,10 @@ struct EntryDetailView: View {
 
     @State private var isShowingEditSheet = false
     @State private var showDeleteConfirmation = false
+    @State private var isDeletingEntry = false
     @State private var deleteErrorMessage: String?
+
+    private let entryRepository = EntryRepository()
 
     private var mood: Mood {
         Mood.from(entry.mood)
@@ -27,6 +30,18 @@ struct EntryDetailView: View {
     private var hasCinemaRatings: Bool {
         entry.watchContext == .cinema &&
         (entry.cinemaAudio != nil || entry.cinemaScreen != nil || entry.cinemaComfort != nil)
+    }
+
+    private var visibilityText: String {
+        if entry.sharedCircleIds.isEmpty {
+            return "Private"
+        }
+
+        if entry.sharedCircleIds.count == 1 {
+            return "Shared with 1 Circle"
+        }
+
+        return "Shared with \(entry.sharedCircleIds.count) Circles"
     }
 
     var body: some View {
@@ -41,6 +56,13 @@ struct EntryDetailView: View {
                     if entry.syncStatus != .synced {
                         PendingSyncBadge(status: entry.syncStatus)
                             .padding(.top, 4)
+                    }
+
+                    if isDeletingEntry {
+                        SyncResultBanner(
+                            message: "Deleting entry…",
+                            style: .neutral
+                        )
                     }
 
                     takeawayBlock
@@ -58,7 +80,7 @@ struct EntryDetailView: View {
                     }
 
                     if entry.isSharedWithCircle {
-                        sharedPlaceholderBlock
+                        sharedStatusBlock
                     }
 
                     Spacer(minLength: 32)
@@ -80,18 +102,24 @@ struct EntryDetailView: View {
                             systemImage: "pencil"
                         )
                     }
+                    .disabled(isDeletingEntry)
 
                     Button(role: .destructive) {
                         showDeleteConfirmation = true
                     } label: {
-                        Label("Delete entry", systemImage: "trash")
+                        Label(
+                            isDeletingEntry ? "Deleting..." : "Delete entry",
+                            systemImage: "trash"
+                        )
                     }
+                    .disabled(isDeletingEntry)
                 } label: {
                     Image(systemName: "ellipsis.circle")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(CloseCutColors.accent)
                 }
                 .accessibilityLabel("Entry actions")
+                .disabled(isDeletingEntry)
             }
         }
         .sheet(isPresented: $isShowingEditSheet) {
@@ -99,7 +127,7 @@ struct EntryDetailView: View {
                 user: user,
                 profile: profile,
                 entryToEdit: entry,
-                hasCircleMembers: false
+                hasCircleMembers: entry.isSharedWithCircle
             )
             .presentationDetents([.large])
             .presentationDragIndicator(.hidden)
@@ -110,12 +138,15 @@ struct EntryDetailView: View {
             titleVisibility: .visible
         ) {
             Button("Delete entry", role: .destructive) {
-                deleteEntry()
+                Task {
+                    await deleteEntry()
+                }
             }
+            .disabled(isDeletingEntry)
 
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will remove it from your timeline. The change will sync later if needed.")
+            Text("This removes it from your Personal Timeline and any Circle timelines where it was shared. The change will sync later if needed.")
         }
         .alert("Couldn’t delete entry", isPresented: Binding(
             get: { deleteErrorMessage != nil },
@@ -137,6 +168,7 @@ struct EntryDetailView: View {
                     .padding(.vertical, 6)
                     .background(CloseCutColors.input)
                     .clipShape(Capsule())
+
                 if entry.sourceType == .quickAdd {
                     Text("Quick Add")
                         .font(.caption)
@@ -146,7 +178,19 @@ struct EntryDetailView: View {
                         .background(CloseCutColors.input)
                         .clipShape(Capsule())
                 }
+
+                if entry.isSharedWithCircle {
+                    Text("Shared")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.accentLight)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(CloseCutColors.input)
+                        .clipShape(Capsule())
+                }
+
                 Spacer()
+
                 MoodPill(
                     mood: mood,
                     size: .medium,
@@ -154,6 +198,7 @@ struct EntryDetailView: View {
                     showLabel: true
                 )
             }
+
             Text(entry.title)
                 .font(.title)
                 .fontWeight(.semibold)
@@ -209,7 +254,7 @@ struct EntryDetailView: View {
 
                 DetailInfoRow(
                     label: "Visibility",
-                    value: entry.visibility == .circle ? "Shared with Circle" : "Private"
+                    value: visibilityText
                 )
 
                 if hasCinemaRatings {
@@ -259,40 +304,60 @@ struct EntryDetailView: View {
         }
     }
 
-    private var sharedPlaceholderBlock: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            DetailSectionCard(title: "Reactions") {
-                Text("Reactions will appear here once Circle sync is connected.")
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textSecondary)
-            }
+    private var sharedStatusBlock: some View {
+        DetailSectionCard(title: "Circle sharing") {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: "person.2.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.accentLight)
 
-            DetailSectionCard(title: "Comments") {
-                Text("Comments will appear here once Circle sync is connected.")
+                    Text(visibilityText)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                }
+
+                Text("This entry stays in your Personal Timeline. Circle members can view, react, and comment from their Circle space.")
                     .font(.caption)
-                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
 
     private func cleanOptional(_ value: String?) -> String? {
         guard let value else { return nil }
+
         let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return cleaned.isEmpty ? nil : cleaned
     }
-    private func deleteEntry() {
-        let repository = EntryRepository()
+
+    private func deleteEntry() async {
+        guard isDeletingEntry == false else {
+            return
+        }
+
+        isDeletingEntry = true
+        deleteErrorMessage = nil
 
         do {
-            _ = try repository.softDeleteLocalEntry(
+            _ = try entryRepository.softDeleteLocalEntry(
                 entryId: entry.id,
                 modelContext: modelContext
             )
 
-            dismiss()
+            isDeletingEntry = false
+
+            await MainActor.run {
+                dismiss()
+            }
         } catch {
+            isDeletingEntry = false
             deleteErrorMessage = error.localizedDescription
+
+            #if DEBUG
+            print("❌ Failed to delete entry:", error.localizedDescription)
+            #endif
         }
     }
 }
-

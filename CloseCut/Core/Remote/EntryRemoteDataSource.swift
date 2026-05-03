@@ -81,10 +81,8 @@ final class EntryRemoteDataSource {
             )
         }
 
-        return entries
-            .filter { $0.deletedAt == nil }
-            .sorted { first, second in
-                first.watchedAt > second.watchedAt
-            }
+        return entries.sorted { first, second in
+            first.watchedAt > second.watchedAt
+        }
     }
 }
