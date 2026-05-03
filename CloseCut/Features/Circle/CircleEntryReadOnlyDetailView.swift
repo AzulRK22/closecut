@@ -10,6 +10,15 @@ import SwiftUI
 struct CircleEntryReadOnlyDetailView: View {
     let entry: Entry
     let currentUserId: String
+    let currentUserDisplayName: String
+    let circleId: String
+
+    @State private var reactions: [CircleReaction] = []
+    @State private var isLoadingSocial = false
+    @State private var isUpdatingReaction = false
+    @State private var socialErrorMessage: String?
+
+    private let socialRemoteDataSource = CircleSocialRemoteDataSource()
 
     private var sharedByText: String {
         entry.ownerId == currentUserId ? "Shared by you" : "Shared by Circle member"
@@ -47,6 +56,12 @@ struct CircleEntryReadOnlyDetailView: View {
         return entry.takeaway
     }
 
+    private var tagColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: 80), spacing: 8)
+        ]
+    }
+
     var body: some View {
         ZStack {
             CloseCutColors.backgroundPrimary
@@ -56,80 +71,40 @@ struct CircleEntryReadOnlyDetailView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     header
 
-                    DetailSectionCard(title: "Memory") {
-                        VStack(alignment: .leading, spacing: 12) {
-                            DetailInfoRow(label: "Mood", value: moodText)
-
-                            DetailInfoRow(
-                                label: "Watched",
-                                value: entry.watchedAt.formatted(date: .abbreviated, time: .omitted)
-                            )
-
-                            DetailInfoRow(
-                                label: "Context",
-                                value: entry.watchContext.displayName
-                            )
-                        }
+                    if let socialErrorMessage {
+                        SyncResultBanner(
+                            message: socialErrorMessage,
+                            style: .warning
+                        )
                     }
 
-                    DetailSectionCard(title: "Takeaway") {
-                        Text(takeawayText)
-                            .font(.subheadline)
-                            .foregroundStyle(CloseCutColors.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    memorySection
 
-                    if let quote = entry.quote,
-                       quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-                        DetailSectionCard(title: "Key moment") {
-                            Text("“\(quote)”")
-                                .font(.subheadline)
-                                .foregroundStyle(CloseCutColors.textSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
+                    takeawaySection
 
-                    if entry.tags.isEmpty == false {
-                        DetailSectionCard(title: "Tags") {
-                            let columns = [
-                                GridItem(.adaptive(minimum: 80), spacing: 8)
-                            ]
+                    keyMomentSection
 
-                            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                                ForEach(entry.tags, id: \.self) { tag in
-                                    Text("#\(tag)")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(CloseCutColors.textSecondary)
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 6)
-                                        .background(CloseCutColors.input)
-                                        .clipShape(Capsule())
-                                }
-                            }
-                        }
-                    }
+                    tagsSection
 
-                    DetailSectionCard(title: "Circle access") {
-                        HStack(spacing: 8) {
-                            Image(systemName: "eye")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(CloseCutColors.textTertiary)
+                    reactionsSection
 
-                            Text("This shared entry is read-only inside Circle.")
-                                .font(.caption)
-                                .foregroundStyle(CloseCutColors.textSecondary)
-                        }
-                    }
+                    circleAccessSection
 
                     Spacer(minLength: 24)
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
             }
+            .refreshable {
+                await loadSocialData(force: true)
+            }
         }
         .navigationTitle("Shared entry")
         .navigationBarTitleDisplayMode(.inline)
         .preferredColorScheme(.dark)
+        .task {
+            await loadSocialData()
+        }
     }
 
     private var header: some View {
@@ -165,6 +140,184 @@ struct CircleEntryReadOnlyDetailView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
+        }
+    }
+
+    private var memorySection: some View {
+        DetailSectionCard(title: "Memory") {
+            VStack(alignment: .leading, spacing: 12) {
+                DetailInfoRow(label: "Mood", value: moodText)
+
+                DetailInfoRow(
+                    label: "Watched",
+                    value: entry.watchedAt.formatted(date: .abbreviated, time: .omitted)
+                )
+
+                DetailInfoRow(
+                    label: "Context",
+                    value: entry.watchContext.displayName
+                )
+            }
+        }
+    }
+
+    private var takeawaySection: some View {
+        DetailSectionCard(title: "Takeaway") {
+            Text(takeawayText)
+                .font(.subheadline)
+                .foregroundStyle(CloseCutColors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder
+    private var keyMomentSection: some View {
+        if let quote = entry.quote,
+           quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            DetailSectionCard(title: "Key moment") {
+                Text("“\(quote)”")
+                    .font(.subheadline)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var tagsSection: some View {
+        if entry.tags.isEmpty == false {
+            DetailSectionCard(title: "Tags") {
+                LazyVGrid(columns: tagColumns, alignment: .leading, spacing: 8) {
+                    ForEach(entry.tags, id: \.self) { tag in
+                        Text("#\(tag)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textSecondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(CloseCutColors.input)
+                            .clipShape(Capsule())
+                    }
+                }
+            }
+        }
+    }
+
+    private var reactionsSection: some View {
+        DetailSectionCard(title: "Reactions") {
+            VStack(alignment: .leading, spacing: 12) {
+                if isLoadingSocial && reactions.isEmpty {
+                    HStack(spacing: 10) {
+                        ProgressView()
+
+                        Text("Loading reactions…")
+                            .font(.caption)
+                            .foregroundStyle(CloseCutColors.textSecondary)
+
+                        Spacer()
+                    }
+                }
+
+                CircleReactionBarView(
+                    reactions: reactions,
+                    currentUserId: currentUserId,
+                    isUpdating: isUpdatingReaction,
+                    onSelect: { type in
+                        Task {
+                            await toggleReaction(type)
+                        }
+                    }
+                )
+
+                if isUpdatingReaction {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .scaleEffect(0.8)
+
+                        Text("Updating reaction…")
+                            .font(.caption)
+                            .foregroundStyle(CloseCutColors.textSecondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private var circleAccessSection: some View {
+        DetailSectionCard(title: "Circle access") {
+            HStack(spacing: 8) {
+                Image(systemName: "eye")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textTertiary)
+
+                Text("This shared entry is read-only inside Circle.")
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+            }
+        }
+    }
+
+    private func loadSocialData(force: Bool = false) async {
+        guard isLoadingSocial == false else {
+            return
+        }
+
+        if isUpdatingReaction && force == false {
+            return
+        }
+
+        isLoadingSocial = true
+        socialErrorMessage = nil
+        defer { isLoadingSocial = false }
+
+        do {
+            reactions = try await socialRemoteDataSource.fetchReactions(
+                entryId: entry.id
+            )
+        } catch {
+            socialErrorMessage = "Couldn’t load reactions."
+
+            #if DEBUG
+            print("⚠️ Failed to load reactions:", error.localizedDescription)
+            #endif
+        }
+    }
+
+    private func toggleReaction(_ type: CircleReactionType) async {
+        guard isUpdatingReaction == false else {
+            return
+        }
+
+        isUpdatingReaction = true
+        socialErrorMessage = nil
+        defer { isUpdatingReaction = false }
+
+        do {
+            let currentReaction = reactions.first { $0.userId == currentUserId }
+
+            if currentReaction?.type == type {
+                try await socialRemoteDataSource.removeReaction(
+                    entryId: entry.id,
+                    userId: currentUserId
+                )
+            } else {
+                _ = try await socialRemoteDataSource.setReaction(
+                    entryId: entry.id,
+                    circleId: circleId,
+                    userId: currentUserId,
+                    displayName: currentUserDisplayName,
+                    type: type
+                )
+            }
+
+            reactions = try await socialRemoteDataSource.fetchReactions(
+                entryId: entry.id
+            )
+        } catch {
+            socialErrorMessage = "Couldn’t update reaction."
+
+            #if DEBUG
+            print("❌ Failed to update reaction:", error.localizedDescription)
+            #endif
         }
     }
 }

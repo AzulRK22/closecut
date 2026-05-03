@@ -406,7 +406,9 @@ struct CircleDetailView: View {
                             NavigationLink {
                                 CircleEntryReadOnlyDetailView(
                                     entry: entry,
-                                    currentUserId: currentUserId
+                                    currentUserId: currentUserId,
+                                    currentUserDisplayName: currentUserDisplayName,
+                                    circleId: displayedCircle.id
                                 )
                             } label: {
                                 CircleTimelineEntryRow(
