@@ -17,6 +17,9 @@ struct CircleEntryReadOnlyDetailView: View {
     @State private var isLoadingSocial = false
     @State private var isUpdatingReaction = false
     @State private var socialErrorMessage: String?
+    @State private var comments: [CircleComment] = []
+    @State private var isSendingComment = false
+    @State private var isDeletingCommentId: String?
 
     private let socialRemoteDataSource = CircleSocialRemoteDataSource()
 
@@ -87,6 +90,8 @@ struct CircleEntryReadOnlyDetailView: View {
                     tagsSection
 
                     reactionsSection
+                    
+                    commentsSection
 
                     circleAccessSection
 
@@ -241,6 +246,27 @@ struct CircleEntryReadOnlyDetailView: View {
             }
         }
     }
+    private var commentsSection: some View {
+        DetailSectionCard(title: "Comments") {
+            CircleCommentsSectionView(
+                comments: comments,
+                currentUserId: currentUserId,
+                isLoading: isLoadingSocial,
+                isSending: isSendingComment,
+                isDeletingCommentId: isDeletingCommentId,
+                onSend: { text in
+                    Task {
+                        await sendComment(text)
+                    }
+                },
+                onDelete: { comment in
+                    Task {
+                        await deleteComment(comment)
+                    }
+                }
+            )
+        }
+    }
 
     private var circleAccessSection: some View {
         DetailSectionCard(title: "Circle access") {
@@ -261,7 +287,7 @@ struct CircleEntryReadOnlyDetailView: View {
             return
         }
 
-        if isUpdatingReaction && force == false {
+        if (isUpdatingReaction || isSendingComment || isDeletingCommentId != nil) && force == false {
             return
         }
 
@@ -270,14 +296,26 @@ struct CircleEntryReadOnlyDetailView: View {
         defer { isLoadingSocial = false }
 
         do {
-            reactions = try await socialRemoteDataSource.fetchReactions(
+            async let reactionsTask = socialRemoteDataSource.fetchReactions(
                 entryId: entry.id
             )
+
+            async let commentsTask = socialRemoteDataSource.fetchComments(
+                entryId: entry.id
+            )
+
+            let (fetchedReactions, fetchedComments) = try await (
+                reactionsTask,
+                commentsTask
+            )
+
+            reactions = fetchedReactions
+            comments = fetchedComments
         } catch {
-            socialErrorMessage = "Couldn’t load reactions."
+            socialErrorMessage = "Couldn’t load reactions or comments."
 
             #if DEBUG
-            print("⚠️ Failed to load reactions:", error.localizedDescription)
+            print("⚠️ Failed to load social data:", error.localizedDescription)
             #endif
         }
     }
@@ -317,6 +355,76 @@ struct CircleEntryReadOnlyDetailView: View {
 
             #if DEBUG
             print("❌ Failed to update reaction:", error.localizedDescription)
+            #endif
+        }
+    }
+    private func sendComment(_ text: String) async {
+        guard isSendingComment == false else {
+            return
+        }
+
+        let cleanedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard cleanedText.isEmpty == false else {
+            return
+        }
+
+        guard cleanedText.count <= 240 else {
+            socialErrorMessage = "Comments must be 240 characters or less."
+            return
+        }
+
+        isSendingComment = true
+        socialErrorMessage = nil
+        defer { isSendingComment = false }
+
+        do {
+            _ = try await socialRemoteDataSource.createComment(
+                entryId: entry.id,
+                circleId: circleId,
+                userId: currentUserId,
+                displayName: currentUserDisplayName,
+                text: cleanedText
+            )
+
+            comments = try await socialRemoteDataSource.fetchComments(
+                entryId: entry.id
+            )
+        } catch {
+            socialErrorMessage = "Couldn’t send comment."
+
+            #if DEBUG
+            print("❌ Failed to send comment:", error.localizedDescription)
+            #endif
+        }
+    }
+
+    private func deleteComment(_ comment: CircleComment) async {
+        guard comment.userId == currentUserId else {
+            return
+        }
+
+        guard isDeletingCommentId == nil else {
+            return
+        }
+
+        isDeletingCommentId = comment.id
+        socialErrorMessage = nil
+        defer { isDeletingCommentId = nil }
+
+        do {
+            try await socialRemoteDataSource.softDeleteComment(
+                entryId: entry.id,
+                commentId: comment.id,
+                userId: currentUserId
+            )
+
+            comments.removeAll { $0.id == comment.id }
+        } catch {
+            socialErrorMessage = "Couldn’t delete comment."
+
+            #if DEBUG
+            print("❌ Failed to delete comment:", error.localizedDescription)
             #endif
         }
     }
