@@ -55,6 +55,7 @@ struct CircleDetailView: View {
     @State private var showDeleteConfirmation = false
     @State private var isSavingCircle = false
     @State private var isDeletingCircle = false
+    @State private var isPullingSharedEntries = false
 
     @State private var circleActionErrorMessage: String?
     @Query(sort: \LocalEntry.watchedAt, order: .reverse)
@@ -63,6 +64,8 @@ struct CircleDetailView: View {
     private let circleRemoteDataSource = CircleRemoteDataSource()
     private let circleService = CircleService()
     private let circleRepository = CircleRepository()
+    private let entryRemoteDataSource = EntryRemoteDataSource()
+    private let entryRepository = EntryRepository()
 
     private var displayedCircle: CloseCircle {
         refreshedCircle ?? circle
@@ -101,6 +104,31 @@ struct CircleDetailView: View {
             }
 
             return first.displayName.localizedCaseInsensitiveCompare(second.displayName) == .orderedAscending
+        }
+    }
+    private func pullSharedEntries() async {
+        guard isPullingSharedEntries == false else {
+            return
+        }
+
+        isPullingSharedEntries = true
+        defer { isPullingSharedEntries = false }
+
+        do {
+            let remoteEntries = try await entryRemoteDataSource.fetchSharedEntries(
+                circleId: displayedCircle.id
+            )
+
+            for remoteEntry in remoteEntries {
+                _ = try entryRepository.upsertRemoteEntry(
+                    remoteEntry,
+                    modelContext: modelContext
+                )
+            }
+        } catch {
+            #if DEBUG
+            print("⚠️ Failed to pull shared Circle entries:", error.localizedDescription)
+            #endif
         }
     }
 
@@ -501,6 +529,8 @@ struct CircleDetailView: View {
             )
 
             refreshedCircle = localCircle
+
+            await pullSharedEntries()
         } catch {
             refreshErrorMessage = "Couldn’t refresh Circle details."
 

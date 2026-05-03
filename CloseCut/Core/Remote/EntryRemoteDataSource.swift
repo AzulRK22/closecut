@@ -63,4 +63,28 @@ final class EntryRemoteDataSource {
             )
         }
     }
+    func fetchSharedEntries(
+        circleId: String
+    ) async throws -> [Entry] {
+        let snapshot = try await db
+            .collection("entries")
+            .whereField("visibility", isEqualTo: EntryVisibility.circle.rawValue)
+            .whereField("circleId", isEqualTo: circleId)
+            .getDocuments()
+
+        let entries = try snapshot.documents.map { document in
+            let dto = try document.data(as: FirestoreEntryDTO.self)
+
+            return dto.domain(
+                id: document.documentID,
+                syncStatus: .synced
+            )
+        }
+
+        return entries
+            .filter { $0.deletedAt == nil }
+            .sorted { first, second in
+                first.watchedAt > second.watchedAt
+            }
+    }
 }
