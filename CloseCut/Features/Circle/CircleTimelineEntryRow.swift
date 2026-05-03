@@ -9,6 +9,11 @@ import SwiftUI
 
 struct CircleTimelineEntryRow: View {
     let entry: Entry
+    let currentUserId: String
+
+    private var sharedByText: String {
+        entry.ownerId == currentUserId ? "Shared by you" : "Shared by Circle member"
+    }
 
     private var subtitle: String {
         var parts: [String] = []
@@ -44,6 +49,11 @@ struct CircleTimelineEntryRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
+            Text(sharedByText)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(CloseCutColors.accentLight)
+                .lineLimit(1)
+
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(entry.title)
@@ -96,6 +106,6 @@ struct CircleTimelineEntryRow: View {
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(entry.title), \(moodText), read-only shared entry")
+        .accessibilityLabel("\(entry.title), \(moodText), \(sharedByText), read-only shared entry")
     }
 }

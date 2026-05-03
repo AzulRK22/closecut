@@ -403,8 +403,18 @@ struct CircleDetailView: View {
                 DetailSectionCard(title: "Shared Timeline") {
                     VStack(spacing: 12) {
                         ForEach(sharedEntries) { entry in
-                            CircleTimelineEntryRow(entry: entry)
-
+                            NavigationLink {
+                                CircleEntryReadOnlyDetailView(
+                                    entry: entry,
+                                    currentUserId: currentUserId
+                                )
+                            } label: {
+                                CircleTimelineEntryRow(
+                                    entry: entry,
+                                    currentUserId: currentUserId
+                                )
+                            }
+                            .buttonStyle(.plain)
                             if entry.id != sharedEntries.last?.id {
                                 Divider()
                                     .overlay(CloseCutColors.separator)

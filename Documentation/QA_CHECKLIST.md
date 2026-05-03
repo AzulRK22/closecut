@@ -1,165 +1,211 @@
 # CloseCut QA Checklist
 
 ## 1. Fresh Install / Launch
-- [ ] App launches without crash
-- [ ] App shows auth screen when signed out
-- [ ] App supports dark mode consistently
-- [ ] No debug UI appears in Home
-- [ ] Loading states look intentional
+
+- [ ] App launches without crashing
+- [ ] Signed-out user lands on auth
+- [ ] Loading states render cleanly
+- [ ] Home, Circle, and Settings match the dark visual system
+- [ ] No debug-only UI leaks into the happy path
 
 ## 2. Authentication
+
+- [ ] User can create an account
 - [ ] User can sign in
-- [ ] User profile is created/loaded
+- [ ] User profile is created or restored
 - [ ] User can sign out
-- [ ] Sign out returns to auth screen
-- [ ] Sign in again restores session correctly
+- [ ] Signing out resets session state cleanly
+- [ ] Signing back in restores the expected user state
 
 ## 3. Onboarding
+
 - [ ] New user sees onboarding
 - [ ] Continue navigation works
-- [ ] Skip routes to Home
-- [ ] Start fresh routes to Home
+- [ ] Skip completes onboarding
+- [ ] Start fresh routes to main app
 - [ ] Add past watches fast opens Quick Add
 - [ ] Onboarding does not repeat after completion
 
-## 4. Quick Add Past Watches
-- [ ] Quick Add opens from Home lightning button
-- [ ] Suggested titles appear
-- [ ] User can add a suggested title
-- [ ] Quick Add card appears in Timeline
-- [ ] Quick Add badge appears on card
-- [ ] Duplicate title does not create duplicate entry
-- [ ] Quick sentiment appears on card when available
-- [ ] Rough watched date appears when available
+## 4. Quick Add
 
-## 5. New Entry
-- [ ] New Entry opens from plus button
-- [ ] Save is disabled without required fields
-- [ ] Title is required
-- [ ] Mood is required
-- [ ] User can create a movie entry
-- [ ] User can create a series entry
+- [ ] Quick Add opens from Home
+- [ ] Seeded suggestions appear
+- [ ] Manual title entry works
+- [ ] User can add a suggested title
+- [ ] Duplicate prevention works
+- [ ] Quick sentiment is stored when selected
+- [ ] Approximate watched date is stored when selected
+- [ ] Quick Add result appears in Timeline
+
+## 5. Entry Creation and Editing
+
+- [ ] New Entry opens from the plus button
+- [ ] Save stays disabled without required fields
+- [ ] Title validation works
+- [ ] Mood validation works
+- [ ] User can create movie and series entries
 - [ ] Home context works
-- [ ] Cinema context shows cinema fields
-- [ ] Tags are cleaned/lowercased/deduped
-- [ ] Max tags validation works
-- [ ] Dirty cancel shows discard confirmation
+- [ ] Cinema context reveals cinema-specific fields
+- [ ] Tags are cleaned, deduped, and lowercased
+- [ ] Dirty-dismiss confirmation appears
 - [ ] Saved entry appears in Timeline
+- [ ] Existing entry can be edited
+- [ ] Visibility and Circle sharing selections persist correctly
 
 ## 6. Timeline
-- [ ] Empty state shows Add past watches
-- [ ] Empty state shows Log a new watch
-- [ ] Low-history module appears with 1–2 entries
-- [ ] Low-history progress updates
-- [ ] Recently watched appears with entries
-- [ ] Quick Add and Full Entry cards coexist
-- [ ] Pending Sync badge appears on unsynced entries
-- [ ] Synced entries do not show Pending Sync
-- [ ] Deleted entries do not appear
+
+- [ ] Empty state appears correctly with no entries
+- [ ] Timeline renders mixed quick-add and full entries
+- [ ] Pending sync badge appears on pending entries
+- [ ] Synced entries do not show pending state
+- [ ] Deleted entries disappear from the main timeline
+- [ ] Entry cards open detail
 
 ## 7. Entry Detail
-- [ ] Tapping a card opens Detail
-- [ ] Detail shows title, type, mood, date, visibility
+
+- [ ] Detail shows title, type, mood, date, and visibility
 - [ ] Takeaway appears when available
-- [ ] Empty takeaway copy works for Quick Add
-- [ ] Tags appear when available
-- [ ] Intensity appears
+- [ ] Quick Add empty-state copy appears when expected
+- [ ] Tags render when available
+- [ ] Intensity renders
 - [ ] Cinema ratings appear only when relevant
 - [ ] Actions menu opens
-- [ ] Edit/Add details opens editor
+- [ ] Edit / Add details opens the editor
 - [ ] Delete confirmation appears
 
-## 8. Quick Add → Full Entry Upgrade
-- [ ] Quick Add Detail button says Add details
-- [ ] Editor title says Add details
-- [ ] Helper copy appears
-- [ ] User can add mood/takeaway/tags
-- [ ] Save details converts sourceType to fullEntry
+## 8. Quick Add to Full Entry Upgrade
+
+- [ ] Quick Add detail offers Add details
+- [ ] Editor title reflects upgrade flow
+- [ ] User can add emotional details
+- [ ] Saving upgrades the source type to full entry
 - [ ] Quick Add badge disappears after upgrade
 
 ## 9. Delete Entry
-- [ ] Delete entry removes it from Timeline
-- [ ] Delete creates pending sync state
-- [ ] Sync now sends deletedAt to Firestore
-- [ ] Deleted Firestore entry is not restored into Timeline
-- [ ] Deleted entry remains hidden after refresh from cloud
+
+- [ ] Deleting removes the entry from Timeline
+- [ ] Delete produces pending sync state
+- [ ] Sync sends deleted state to Firestore
+- [ ] Deleted remote entry is not restored into Timeline
 
 ## 10. QuickPick
-- [ ] Shows insufficient history with fewer than 3 entries
-- [ ] CTA opens Quick Add
-- [ ] Secondary CTA opens New Entry
-- [ ] Shows suggestion with 3+ entries
-- [ ] Suggestion has reason string
-- [ ] Show me another changes suggestion when possible
-- [ ] Already watched seed is not recommended as Watch Next
-- [ ] QuickPick works offline with local data
 
-## 11. Settings
-- [ ] Profile card appears
-- [ ] Sync status card appears
-- [ ] Sync now appears when there are pending changes
+- [ ] Fewer than 3 entries shows insufficient history state
+- [ ] CTA to Quick Add works
+- [ ] CTA to New Entry works
+- [ ] 3 or more entries generate a suggestion
+- [ ] Suggestion includes a reason string
+- [ ] Refresh avoids immediate repeats when alternatives exist
+- [ ] Already watched seeded candidates are not suggested as new watch-next items
+- [ ] QuickPick works offline from local history
+
+## 11. Circle Creation and Join
+
+- [ ] User can open Circle action sheet
+- [ ] User can create a Circle
+- [ ] Circle appears in the Circle list after creation
+- [ ] Invite code is shown in Circle detail
+- [ ] Invite code can be copied
+- [ ] User can preview a Circle by invite code
+- [ ] User can join a Circle by invite code
+- [ ] Joined Circle appears in local list after refresh
+
+## 12. Circle Detail
+
+- [ ] Circle detail opens from Circle list
+- [ ] Segments switch correctly between Timeline, QuickPick, Members, and Activity
+- [ ] Members load when available
+- [ ] Activity feed loads when available
+- [ ] Shared timeline loads when shared entries exist
+- [ ] Shared entries open read-only detail
+- [ ] Group QuickPick placeholder appears in Circle detail
+
+## 13. Circle Management
+
+- [ ] Owner can edit Circle details
+- [ ] Owner can delete Circle
+- [ ] Non-owner can leave Circle
+- [ ] Owner cannot use leave flow incorrectly
+- [ ] Deleting a Circle removes it from active local membership lists
+
+## 14. Sharing Entries to Circles
+
+- [ ] Entry editor shows Circle share picker when relevant
+- [ ] User can select one or more Circles
+- [ ] Shared entry remains in personal timeline
+- [ ] Shared entry appears in Circle shared timeline after sync/pull
+- [ ] Non-shared entry does not appear in Circle timeline
+
+## 15. Settings and Sync Controls
+
+- [ ] Profile header appears
+- [ ] Sync status summary appears
+- [ ] Sync now appears when pending work exists
 - [ ] Retry sync appears when failed actions exist
-- [ ] Refresh from cloud appears
+- [ ] Refresh from cloud works
 - [ ] Privacy section appears
 - [ ] Offline-first section appears
 - [ ] Pending local entries count is accurate
 - [ ] Queued actions count is accurate
 - [ ] Completed sync actions count is accurate
 - [ ] Clear completed sync history works
-- [ ] Version/build appears
+- [ ] Version/build info appears
 - [ ] Sign out works
 
-## 12. Firestore Push Sync
-- [ ] New Entry syncs to Firestore
+## 16. Firestore Push Sync
+
+- [ ] New entry syncs to Firestore
 - [ ] Quick Add syncs to Firestore
 - [ ] Edit syncs to Firestore
-- [ ] Delete syncs deletedAt to Firestore
-- [ ] sourceType quickAdd is stored correctly
-- [ ] sourceType fullEntry is stored correctly
-- [ ] ownerId matches Firebase Auth UID
-- [ ] Sync success message appears
+- [ ] Delete syncs deleted state to Firestore
+- [ ] Entry ownerId matches Firebase Auth UID
+- [ ] Entry source type is stored correctly
+- [ ] Shared Circle IDs persist correctly when present
+- [ ] Success or warning feedback appears in Settings after sync
 
-## 13. Firestore Pull Sync
-- [ ] Refresh from cloud pulls entries
-- [ ] Auto refresh pulls entries after login
-- [ ] Fresh install + login restores synced entries
+## 17. Firestore Pull Sync
+
+- [ ] Initial session refresh pulls entries when appropriate
+- [ ] Manual refresh from Settings pulls entries
+- [ ] Fresh install plus sign-in restores synced entries
 - [ ] Remote deleted entries stay hidden
 - [ ] Local pending entries are not overwritten by pull
-- [ ] Firestore index works for ownerId + updatedAt query
+- [ ] Local failed entries are not overwritten by pull
 
-## 14. Offline-first
+## 18. Offline-First Behavior
+
 - [ ] App opens offline
-- [ ] New Entry can be created offline
-- [ ] Quick Add can be created offline
-- [ ] Edit can be saved offline
-- [ ] Delete can be performed offline
-- [ ] Pending Sync appears offline
-- [ ] Settings shows pending local entries
-- [ ] Reconnect + Sync now pushes changes
-- [ ] No local data loss after force quit
+- [ ] User can create entries offline
+- [ ] User can use Quick Add offline
+- [ ] User can edit offline
+- [ ] User can delete offline
+- [ ] Pending sync state is visible offline
+- [ ] No local data loss after relaunch
+- [ ] Reconnect plus Sync now pushes pending changes
 
-## 15. Conflict Policy
-- [ ] Local pending entry is not overwritten by cloud refresh
-- [ ] Remote newer synced entry updates local
-- [ ] Local newer synced entry is kept
-- [ ] Remote deleted entry applies when local is synced
-- [ ] Failed local entry is not overwritten by pull
+## 19. Conflict and Queue Behavior
 
-## 16. Tests
-- [ ] Unit tests pass
-- [ ] DuplicateDetector tests pass
-- [ ] EntryValidation tests pass
-- [ ] QuickPickEngine tests pass
-- [ ] PendingActionQueue tests pass
-- [ ] EntryConflictPolicy tests pass
-- [ ] UI smoke test passes or UI tests are intentionally minimal
+- [ ] Pending action queue tracks syncable work
+- [ ] Completed actions can be cleaned up
+- [ ] Failed actions remain retryable
+- [ ] Pull respects local conflict policy assumptions
 
-## 17. Release Readiness
+## 20. Automated Test Baseline
+
+- [ ] `DuplicateDetectorTests` pass
+- [ ] `EntryValidationTests` pass
+- [ ] `QuickPickEngineTests` pass
+- [ ] `PendingActionQueueTests` pass
+- [ ] `EntryConflictPolicyTests` pass
+- [ ] UI tests are intentionally minimal or passing
+
+## 21. Release Readiness
+
 - [ ] Bundle ID is correct
 - [ ] Version is correct
-- [ ] Build number is incremented
+- [ ] Build number is correct
 - [ ] Signing team is correct
-- [ ] GoogleService-Info.plist target membership is correct
-- [ ] Firestore rules are published
-- [ ] App archives successfully
-- [ ] No obvious console spam in normal happy path
+- [ ] `GoogleService-Info.plist` target membership is correct
+- [ ] Required Firestore rules and indexes are deployed
+- [ ] Archive succeeds
+- [ ] Normal happy path does not produce obvious console noise
