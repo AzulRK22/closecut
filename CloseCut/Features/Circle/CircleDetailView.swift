@@ -171,7 +171,7 @@ struct CircleDetailView: View {
                 .padding(.vertical, 16)
             }
         }
-        .navigationTitle(displayedCircle.name)
+        .navigationTitle("Circle")
         .navigationBarTitleDisplayMode(.inline)
         .preferredColorScheme(.dark)
         .task {
@@ -276,66 +276,74 @@ struct CircleDetailView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top) {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "person.2.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.accentLight)
+                    .frame(width: 42, height: 42)
+                    .background(CloseCutColors.input)
+                    .clipShape(SwiftUI.Circle())
+
                 VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Text(membership.role.displayName)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(membership.isOwner ? CloseCutColors.accentLight : CloseCutColors.textTertiary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(CloseCutColors.input)
+                            .clipShape(Capsule())
+
+                        Text(displayedMemberCountText)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(CloseCutColors.input)
+                            .clipShape(Capsule())
+                    }
+
                     Text(displayedCircle.name)
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    if let description = displayedCircle.description,
-                       description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-                        Text(description)
-                            .font(.subheadline)
-                            .foregroundStyle(CloseCutColors.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        Text("A private Circle for shared watch memories.")
-                            .font(.subheadline)
-                            .foregroundStyle(CloseCutColors.textSecondary)
-                    }
+                    Text(circleDescriptionText)
+                        .font(.subheadline)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer()
-
-                Text(membership.role.displayName)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(membership.isOwner ? CloseCutColors.accentLight : CloseCutColors.textTertiary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(CloseCutColors.input)
-                    .clipShape(Capsule())
             }
 
             HStack(spacing: 8) {
-                Label(displayedMemberCountText, systemImage: "person.2.fill")
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textTertiary)
-
-                Text("•")
-                    .font(.caption)
+                Image(systemName: "crown.fill")
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textTertiary)
 
                 Text("Owner: \(displayedCircle.ownerDisplayName)")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textTertiary)
                     .lineLimit(1)
+
+                Spacer()
             }
 
             inviteCodeBlock
         }
         .padding(16)
         .background(CloseCutColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
     }
 
     private var inviteCodeBlock: some View {
-        HStack {
+        HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Invite code")
                     .font(.caption2.weight(.semibold))
@@ -346,6 +354,7 @@ struct CircleDetailView: View {
                 Text(displayedCircle.inviteCode)
                     .font(.subheadline.monospaced().weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
+                    .lineLimit(1)
             }
 
             Spacer()
@@ -353,15 +362,24 @@ struct CircleDetailView: View {
             Button {
                 copyInviteCode()
             } label: {
-                Image(systemName: copiedInviteCode ? "checkmark" : "doc.on.doc")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.accentLight)
-                    .frame(width: 40, height: 40)
+                HStack(spacing: 6) {
+                    Image(systemName: copiedInviteCode ? "checkmark" : "doc.on.doc")
+                        .font(.caption.weight(.semibold))
+
+                    Text(copiedInviteCode ? "Copied" : "Copy")
+                        .font(.caption.weight(.semibold))
+                }
+                .foregroundStyle(CloseCutColors.accentLight)
+                .padding(.horizontal, 10)
+                .frame(height: 34)
+                .background(CloseCutColors.card)
+                .clipShape(Capsule())
             }
+            .buttonStyle(.plain)
             .accessibilityLabel("Copy invite code")
         }
         .padding(.horizontal, 14)
-        .frame(height: 58)
+        .padding(.vertical, 12)
         .background(CloseCutColors.input)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
@@ -382,7 +400,7 @@ struct CircleDetailView: View {
     private var quickPickPlaceholder: some View {
         EmptyStateView(
             title: "Group QuickPick is coming",
-            message: "Once this Circle has enough shared history, QuickPick will suggest what this group may want to watch together.",
+            message: "Once this Circle has enough shared taste history, CloseCut will suggest what this group may want to watch together.",
             systemImage: "sparkles",
             actionTitle: nil,
             action: nil
@@ -394,13 +412,13 @@ struct CircleDetailView: View {
             if sharedEntries.isEmpty {
                 EmptyStateView(
                     title: "Nothing shared yet",
-                    message: "Entries intentionally shared with this Circle will appear here.",
+                    message: "Share entries from your Personal Timeline to start building this Circle’s shared history.",
                     systemImage: "film.stack",
                     actionTitle: nil,
                     action: nil
                 )
             } else {
-                DetailSectionCard(title: "Shared Timeline") {
+                DetailSectionCard(title: "Shared timeline") {
                     VStack(spacing: 12) {
                         ForEach(sharedEntries) { entry in
                             NavigationLink {
@@ -429,6 +447,14 @@ struct CircleDetailView: View {
     }
     private var displayedMemberCountText: String {
         displayedMemberCount == 1 ? "1 member" : "\(displayedMemberCount) members"
+    }
+    private var circleDescriptionText: String {
+        if let description = displayedCircle.description,
+           description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            return description
+        }
+
+        return "A private space for shared watch memories."
     }
     private var membersSection: some View {
         DetailSectionCard(title: "Members") {

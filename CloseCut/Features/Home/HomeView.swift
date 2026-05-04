@@ -28,6 +28,31 @@ struct HomeView: View {
             .filter { $0.deletedAt == nil }
             .map { $0.domain }
     }
+    private var homeHeader: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Personal")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+
+                Text(selectedSegment == .timeline
+                     ? "Your private taste history."
+                     : "Suggestions shaped by your own history.")
+                    .font(.subheadline)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .lineLimit(2)
+            }
+
+            Spacer()
+
+            Image(systemName: selectedSegment == .timeline ? "film.stack" : "sparkles")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(CloseCutColors.accentLight)
+                .frame(width: 36, height: 36)
+                .background(CloseCutColors.input)
+                .clipShape(SwiftUI.Circle())
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -36,14 +61,11 @@ struct HomeView: View {
                     .ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    CloseCutHeroHeader(
-                        title: "Your taste history",
-                        subtitle: "Memories, moods, and picks shaped by what you watch.",
-                        systemImage: "sparkles"
-                    )
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .padding(.bottom, 12)
+                    homeHeader
+                        .padding(.horizontal, 20)
+                        .padding(.top, 8)
+                        .padding(.bottom, 10)
+                    
                     Picker("Home section", selection: $selectedSegment) {
                         ForEach(HomeSegment.allCases) { segment in
                             Text(segment.title)
@@ -52,8 +74,8 @@ struct HomeView: View {
                     }
                     .pickerStyle(.segmented)
                     .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .padding(.bottom, 8)
+                    .padding(.top, 4)
+                    .padding(.bottom, 6)
 
                     switch selectedSegment {
                     case .timeline:

@@ -72,7 +72,7 @@ struct TimelineView: View {
 
     private var populatedTimeline: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 16) {
+            LazyVStack(alignment: .leading, spacing: 18) {
                 PersonalTimelineSummaryCard(
                     entries: entries,
                     onQuickAdd: onQuickAdd,
@@ -89,10 +89,12 @@ struct TimelineView: View {
 
                 TimelineSectionHeader(
                     title: "Recently watched",
-                    subtitle: isLowHistory ? "Your archive is taking shape." : "Your latest memories and additions."
+                    subtitle: isLowHistory
+                        ? "Add a few more memories to unlock stronger picks."
+                        : "Your latest memories, quick adds, and shared moments."
                 )
 
-                LazyVStack(spacing: 12) {
+                LazyVStack(spacing: 14) {
                     ForEach(sortedEntries) { entry in
                         NavigationLink {
                             EntryDetailView(

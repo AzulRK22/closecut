@@ -62,12 +62,20 @@ struct CircleView: View {
 
     private var circleRows: [(circle: CloseCircle, membership: CircleMembership)] {
         memberships.compactMap { membership in
-            guard let circle = circlesById[membership.circleId] else {
+            guard let circle = circlesById[membership.circleId],
+                  circle.deletedAt == nil else {
                 return nil
             }
 
             return (circle, membership)
         }
+    }
+    private var ownedCircleCount: Int {
+        circleRows.filter { $0.membership.isOwner }.count
+    }
+
+    private var joinedCircleCount: Int {
+        circleRows.filter { $0.membership.isOwner == false }.count
     }
     private var membershipRefreshKey: String {
         localMemberships
@@ -165,18 +173,51 @@ struct CircleView: View {
     }
 
     private var heroSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Share only with the people who matter.")
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(CloseCutColors.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Share with the people who matter.")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.accentLight)
 
-            Text("Create private spaces for friends, family, your partner, or movie clubs. Your personal history stays private unless you choose to share.")
-                .font(.subheadline)
-                .foregroundStyle(CloseCutColors.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
+                    Text("Create private spaces for friends, family, your partner, or movie clubs. Your personal Timeline stays private unless you choose to share.")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                Image(systemName: "person.2.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.accentLight)
+                    .frame(width: 38, height: 38)
+                    .background(CloseCutColors.input)
+                    .clipShape(SwiftUI.Circle())
+            }
+
+            if circleRows.isEmpty == false {
+                HStack(spacing: 10) {
+                    circleStatPill(
+                        value: "\(circleRows.count)",
+                        label: circleRows.count == 1 ? "circle" : "circles",
+                        icon: "circle.grid.2x2.fill"
+                    )
+
+                    circleStatPill(
+                        value: "\(ownedCircleCount)",
+                        label: "owned",
+                        icon: "crown.fill"
+                    )
+
+                    circleStatPill(
+                        value: "\(joinedCircleCount)",
+                        label: "joined",
+                        icon: "person.badge.plus"
+                    )
+                }
+            }
         }
-        .padding(.top, 4)
     }
 
     private var circlesListSection: some View {
@@ -187,7 +228,7 @@ struct CircleView: View {
                         .font(.headline)
                         .foregroundStyle(CloseCutColors.textPrimary)
 
-                    Text("\(circleRows.count) private spaces")
+                    Text(circleRows.count == 1 ? "1 private space" : "\(circleRows.count) private spaces")
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textSecondary)
                 }
@@ -218,7 +259,7 @@ struct CircleView: View {
 
     private var comingSoonSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Coming soon")
+            Text("Circle features")
                 .font(.caption2.weight(.semibold))
                 .tracking(0.8)
                 .foregroundStyle(CloseCutColors.textTertiary)
@@ -229,16 +270,7 @@ struct CircleView: View {
                 CircleComingSoonRow(
                     icon: "film.stack.fill",
                     title: "Shared timeline",
-                    message: "Each Circle will have its own shared movie and series history."
-                )
-
-                Divider()
-                    .overlay(CloseCutColors.separator)
-
-                CircleComingSoonRow(
-                    icon: "sparkles",
-                    title: "Group QuickPick",
-                    message: "Recommendations based on what that group shares, not your private archive."
+                    message: "See memories intentionally shared with each Circle."
                 )
 
                 Divider()
@@ -247,7 +279,16 @@ struct CircleView: View {
                 CircleComingSoonRow(
                     icon: "heart.circle.fill",
                     title: "Reactions and comments",
-                    message: "Small trusted signals from the people in that Circle."
+                    message: "React once, leave short comments, and keep the signal lightweight."
+                )
+
+                Divider()
+                    .overlay(CloseCutColors.separator)
+
+                CircleComingSoonRow(
+                    icon: "sparkles",
+                    title: "Group QuickPick",
+                    message: "Coming later: recommendations based on what that group shares."
                 )
             }
             .padding(16)
@@ -627,6 +668,36 @@ struct CircleView: View {
             #if DEBUG
             print("⚠️ Failed to pull remote Circles:", error.localizedDescription)
             #endif
+        }
+    }
+    private func circleStatPill(
+        value: String,
+        label: String,
+        icon: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textTertiary)
+
+                Text(label)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .lineLimit(1)
+            }
+
+            Text(value)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textPrimary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(CloseCutColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
     }
 }
