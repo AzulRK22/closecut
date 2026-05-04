@@ -17,10 +17,10 @@ struct SettingsView: View {
     @State private var isPullingFromCloud = false
     @State private var lastSyncMessage: String?
     @State private var lastSyncBannerStyle: SyncResultBannerStyle = .neutral
+    @State private var showSignOutConfirmation = false
 
     @Query(sort: \PendingAction.updatedAt, order: .reverse)
     private var pendingActions: [PendingAction]
-    
 
     @Query(sort: \LocalEntry.updatedAt, order: .reverse)
     private var localEntries: [LocalEntry]
@@ -44,6 +44,7 @@ struct SettingsView: View {
             $0.statusRaw == PendingActionStatus.failed.rawValue
         }
     }
+
     private var currentUserCompletedActions: [PendingAction] {
         pendingActions.filter {
             $0.userId == user.id &&
@@ -74,6 +75,8 @@ struct SettingsView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
+                        settingsHeader
+
                         ProfileHeaderCard(
                             user: user,
                             profile: profile
@@ -83,7 +86,7 @@ struct SettingsView: View {
 
                         privacySection
 
-                        localFirstSection
+                        localDataSection
 
                         accountSection
 
@@ -94,18 +97,63 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
             .preferredColorScheme(.dark)
+            .confirmationDialog(
+                "Sign out?",
+                isPresented: $showSignOutConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Sign out", role: .destructive) {
+                    authService.signOut()
+                }
+
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("You can sign back in later. Your synced entries remain in your private cloud database.")
+            }
+        }
+    }
+
+    private var settingsHeader: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Control center")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+
+                Text("Manage your account, privacy, and local-first sync.")
+                    .font(.subheadline)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+
+            Image(systemName: "gearshape.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(CloseCutColors.accentLight)
+                .frame(width: 38, height: 38)
+                .background(CloseCutColors.input)
+                .clipShape(SwiftUI.Circle())
         }
     }
 
     private var syncSection: some View {
-        VStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("SYNC")
+                .font(.caption2.weight(.semibold))
+                .tracking(0.8)
+                .foregroundStyle(CloseCutColors.textTertiary)
+                .padding(.horizontal, 2)
+
             if sessionSyncViewModel.isInitialCloudRefreshRunning {
                 SyncResultBanner(
                     message: "Refreshing your cloud entries…",
                     style: .neutral
                 )
             }
+
             SyncStatusSummaryCard(
                 pendingCount: visiblePendingCount,
                 failedCount: currentUserFailedActions.count,
@@ -159,7 +207,7 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 46)
                 .background(CloseCutColors.input)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
             .buttonStyle(.plain)
             .disabled(isPullingFromCloud || isSyncing)
@@ -174,7 +222,7 @@ struct SettingsView: View {
     }
 
     private var privacySection: some View {
-        settingsSection(title: "Privacy") {
+        settingsSection(title: "Privacy & sharing") {
             VStack(alignment: .leading, spacing: 10) {
                 settingsRow(
                     icon: "lock.fill",
@@ -190,8 +238,8 @@ struct SettingsView: View {
         }
     }
 
-    private var localFirstSection: some View {
-        settingsSection(title: "Offline-first") {
+    private var localDataSection: some View {
+        settingsSection(title: "Local data") {
             VStack(alignment: .leading, spacing: 10) {
                 settingsRow(
                     icon: "iphone",
@@ -210,6 +258,7 @@ struct SettingsView: View {
                     title: "Queued actions",
                     value: "\(currentUserPendingActions.count)"
                 )
+
                 settingsRow(
                     icon: "checkmark.circle.fill",
                     title: "Completed sync actions",
@@ -220,6 +269,7 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+
                 if currentUserCompletedActions.isEmpty == false {
                     Button {
                         cleanupCompletedActions()
@@ -230,7 +280,7 @@ struct SettingsView: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: 38)
                             .background(CloseCutColors.input)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
@@ -240,27 +290,44 @@ struct SettingsView: View {
 
     private var accountSection: some View {
         settingsSection(title: "Account") {
-            Button {
-                authService.signOut()
-            } label: {
-                HStack {
-                    Image(systemName: "rectangle.portrait.and.arrow.right")
-                        .frame(width: 24)
+            VStack(alignment: .leading, spacing: 10) {
+                settingsRow(
+                    icon: "person.crop.circle.fill",
+                    title: "Signed in as",
+                    value: profile.displayName
+                )
 
-                    Text("Sign Out")
-                        .font(.subheadline.weight(.semibold))
+                Button {
+                    showSignOutConfirmation = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.failed)
+                            .frame(width: 30, height: 30)
+                            .background(CloseCutColors.input)
+                            .clipShape(SwiftUI.Circle())
 
-                    Spacer()
+                        Text("Sign out")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.failed)
+
+                        Spacer()
+                    }
+                    .frame(minHeight: 38)
                 }
-                .foregroundStyle(CloseCutColors.failed)
-                .frame(minHeight: 44)
+                .buttonStyle(.plain)
+
+                Text("Signing out does not delete your local data or cloud entries.")
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .buttonStyle(.plain)
         }
     }
 
     private var appInfoSection: some View {
-        settingsSection(title: "App") {
+        settingsSection(title: "App info") {
             VStack(spacing: 10) {
                 settingsRow(
                     icon: "sparkles",
@@ -373,6 +440,7 @@ struct SettingsView: View {
             lastSyncMessage = "Nothing new to sync."
         }
     }
+
     private func cleanupCompletedActions() {
         do {
             let deletedCount = try pendingActionQueue.cleanupAllCompletedActions(
