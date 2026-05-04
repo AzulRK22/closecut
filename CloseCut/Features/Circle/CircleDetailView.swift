@@ -457,8 +457,13 @@ struct CircleDetailView: View {
         return "A private space for shared watch memories."
     }
     private var membersSection: some View {
-        DetailSectionCard(title: "Members") {
+        DetailSectionCard(title: displayedMemberCountText) {
             VStack(spacing: 12) {
+                Text("People who can see entries shared with this Circle.")
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
                 if members.isEmpty && isRefreshing {
                     HStack(spacing: 10) {
                         ProgressView()
@@ -470,7 +475,7 @@ struct CircleDetailView: View {
                         Spacer()
                     }
                 } else if members.isEmpty {
-                    Text("Members will appear here once Circle membership is refreshed.")
+                    Text("Circle members will appear here once this space is refreshed.")
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -492,8 +497,12 @@ struct CircleDetailView: View {
     }
 
     private var activitySection: some View {
-        DetailSectionCard(title: "Activity") {
+        DetailSectionCard(title: "Recent activity") {
             VStack(spacing: 12) {
+                Text("A lightweight history of changes inside this Circle.")
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 if activities.isEmpty && isRefreshing {
                     HStack(spacing: 10) {
                         ProgressView()
@@ -505,7 +514,7 @@ struct CircleDetailView: View {
                         Spacer()
                     }
                 } else if activities.isEmpty {
-                    Text("Circle updates will appear here.")
+                    Text("Circle updates, joins, edits, and sharing activity will appear here.")
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
