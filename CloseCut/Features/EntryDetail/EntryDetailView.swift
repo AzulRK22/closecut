@@ -32,8 +32,12 @@ struct EntryDetailView: View {
         (entry.cinemaAudio != nil || entry.cinemaScreen != nil || entry.cinemaComfort != nil)
     }
 
-    private var visibilityText: String {
-        if entry.sharedCircleIds.isEmpty {
+    private var isShared: Bool {
+        entry.visibility == .circle && entry.sharedCircleIds.isEmpty == false
+    }
+
+    private var sharingText: String {
+        guard isShared else {
             return "Private"
         }
 
@@ -42,6 +46,21 @@ struct EntryDetailView: View {
         }
 
         return "Shared with \(entry.sharedCircleIds.count) Circles"
+    }
+
+    private var syncText: String {
+        switch entry.syncStatus {
+        case .pending:
+            return "Pending sync"
+        case .synced:
+            return "Synced"
+        case .failed:
+            return "Sync failed"
+        }
+    }
+
+    private var shouldShowSyncStatus: Bool {
+        entry.syncStatus != .synced
     }
 
     var body: some View {
@@ -53,9 +72,11 @@ struct EntryDetailView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     headerBlock
 
-                    if entry.syncStatus != .synced {
-                        PendingSyncBadge(status: entry.syncStatus)
-                            .padding(.top, 4)
+                    if entry.syncStatus == .failed {
+                        SyncResultBanner(
+                            message: "This entry failed to sync. Try syncing again from Settings.",
+                            style: .warning
+                        )
                     }
 
                     if isDeletingEntry {
@@ -75,13 +96,11 @@ struct EntryDetailView: View {
 
                     intensityBlock
 
-                    if !entry.tags.isEmpty {
+                    if entry.tags.isEmpty == false {
                         tagsBlock
                     }
 
-                    if entry.isSharedWithCircle {
-                        sharedStatusBlock
-                    }
+                    sharedStatusBlock
 
                     Spacer(minLength: 32)
                 }
@@ -159,34 +178,38 @@ struct EntryDetailView: View {
     }
 
     private var headerBlock: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(entry.type.displayName)
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(CloseCutColors.input)
-                    .clipShape(Capsule())
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        EntryDetailStatusChip(
+                            icon: entry.type == .movie ? "film.fill" : "tv.fill",
+                            text: entry.type.displayName,
+                            isHighlighted: false
+                        )
 
-                if entry.sourceType == .quickAdd {
-                    Text("Quick Add")
-                        .font(.caption)
-                        .foregroundStyle(CloseCutColors.accentLight)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(CloseCutColors.input)
-                        .clipShape(Capsule())
-                }
+                        if entry.sourceType == .quickAdd {
+                            EntryDetailStatusChip(
+                                icon: "bolt.fill",
+                                text: "Quick Add",
+                                isHighlighted: true
+                            )
+                        }
 
-                if entry.isSharedWithCircle {
-                    Text("Shared")
-                        .font(.caption)
-                        .foregroundStyle(CloseCutColors.accentLight)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(CloseCutColors.input)
-                        .clipShape(Capsule())
+                        if isShared {
+                            EntryDetailStatusChip(
+                                icon: "person.2.fill",
+                                text: "Shared",
+                                isHighlighted: true
+                            )
+                        }
+                    }
+
+                    Text(entry.title)
+                        .font(.title.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer()
@@ -199,15 +222,12 @@ struct EntryDetailView: View {
                 )
             }
 
-            Text(entry.title)
-                .font(.title)
-                .fontWeight(.semibold)
-                .foregroundStyle(CloseCutColors.textPrimary)
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Image(systemName: "calendar")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textTertiary)
 
-            HStack(spacing: 6) {
-                Text("Added by \(profile.displayName)")
+                Text(entry.createdAt.formatted(date: .abbreviated, time: .omitted))
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textTertiary)
 
@@ -215,12 +235,35 @@ struct EntryDetailView: View {
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textTertiary)
 
-                Text(entry.createdAt, style: .date)
+                Text("Added by \(profile.displayName)")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textTertiary)
+                    .lineLimit(1)
+            }
+
+            if entry.sourceType == .quickAdd {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "sparkles")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.accentLight)
+
+                    Text("This started as a Quick Add. Add details anytime to turn it into a richer memory.")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(12)
+                .background(CloseCutColors.input)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
         }
-        .padding(.bottom, 4)
+        .padding(16)
+        .background(CloseCutColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(CloseCutColors.separator, lineWidth: 0.5)
+        }
     }
 
     private var takeawayBlock: some View {
@@ -232,9 +275,13 @@ struct EntryDetailView: View {
                     .lineSpacing(6)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text(entry.sourceType == .quickAdd ? "No details yet. Add mood, takeaway, tags, and context when you're ready." : "No takeaway added.")
-                    .font(.body)
-                    .foregroundStyle(CloseCutColors.textTertiary)
+                Text(
+                    entry.sourceType == .quickAdd
+                    ? "No details yet. Add mood, takeaway, tags, and context when you're ready."
+                    : "No takeaway added."
+                )
+                .font(.body)
+                .foregroundStyle(CloseCutColors.textTertiary)
             }
         }
     }
@@ -248,14 +295,21 @@ struct EntryDetailView: View {
                 )
 
                 DetailInfoRow(
-                    label: "When",
+                    label: "Watched",
                     value: entry.watchedAt.formatted(date: .abbreviated, time: .omitted)
                 )
 
                 DetailInfoRow(
                     label: "Visibility",
-                    value: visibilityText
+                    value: sharingText
                 )
+
+                if shouldShowSyncStatus {
+                    DetailInfoRow(
+                        label: "Sync",
+                        value: syncText
+                    )
+                }
 
                 if hasCinemaRatings {
                     Divider()
@@ -306,18 +360,29 @@ struct EntryDetailView: View {
 
     private var sharedStatusBlock: some View {
         DetailSectionCard(title: "Circle sharing") {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Image(systemName: "person.2.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.accentLight)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 10) {
+                    Image(systemName: isShared ? "person.2.fill" : "lock.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(isShared ? CloseCutColors.accentLight : CloseCutColors.textTertiary)
+                        .frame(width: 32, height: 32)
+                        .background(CloseCutColors.input)
+                        .clipShape(SwiftUI.Circle())
 
-                    Text(visibilityText)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.textSecondary)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(sharingText)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textPrimary)
+
+                        Text(isShared ? "Circle members can view, react, and comment." : "Only you can see this memory.")
+                            .font(.caption)
+                            .foregroundStyle(CloseCutColors.textSecondary)
+                    }
+
+                    Spacer()
                 }
 
-                Text("This entry stays in your Personal Timeline. Circle members can view, react, and comment from their Circle space.")
+                Text("This entry always stays in your Personal Timeline. Sharing only controls where else it appears.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -326,9 +391,12 @@ struct EntryDetailView: View {
     }
 
     private func cleanOptional(_ value: String?) -> String? {
-        guard let value else { return nil }
+        guard let value else {
+            return nil
+        }
 
         let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+
         return cleaned.isEmpty ? nil : cleaned
     }
 
@@ -359,5 +427,40 @@ struct EntryDetailView: View {
             print("❌ Failed to delete entry:", error.localizedDescription)
             #endif
         }
+    }
+}
+
+private struct EntryDetailStatusChip: View {
+    let icon: String
+    let text: String
+    var isHighlighted: Bool = false
+    var isWarning: Bool = false
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.caption2.weight(.semibold))
+
+            Text(text)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(foregroundColor)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(CloseCutColors.input)
+        .clipShape(Capsule())
+    }
+
+    private var foregroundColor: Color {
+        if isWarning {
+            return CloseCutColors.failed
+        }
+
+        if isHighlighted {
+            return CloseCutColors.accentLight
+        }
+
+        return CloseCutColors.textTertiary
     }
 }
