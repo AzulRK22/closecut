@@ -27,6 +27,12 @@ struct CircleEntryReadOnlyDetailView: View {
         entry.ownerId == currentUserId ? "Shared by you" : "Shared by Circle member"
     }
 
+    private var sharedContextText: String {
+        entry.ownerId == currentUserId
+            ? "You shared this from your Personal Timeline."
+            : "A Circle member shared this from their Personal Timeline."
+    }
+
     private var subtitle: String {
         var parts: [String] = []
 
@@ -59,6 +65,21 @@ struct CircleEntryReadOnlyDetailView: View {
         return entry.takeaway
     }
 
+    private var reactionCount: Int {
+        reactions.count
+    }
+
+    private var commentCount: Int {
+        comments.count
+    }
+
+    private var socialSummaryText: String {
+        let reactionText = reactionCount == 1 ? "1 reaction" : "\(reactionCount) reactions"
+        let commentText = commentCount == 1 ? "1 comment" : "\(commentCount) comments"
+
+        return "\(reactionText) • \(commentText)"
+    }
+
     private var tagColumns: [GridItem] {
         [
             GridItem(.adaptive(minimum: 80), spacing: 8)
@@ -81,16 +102,16 @@ struct CircleEntryReadOnlyDetailView: View {
                         )
                     }
 
-                    memorySection
+                    socialSummarySection
 
                     takeawaySection
 
                     keyMomentSection
 
+                    memorySection
+
                     tagsSection
 
-                    reactionsSection
-                    
                     commentsSection
 
                     circleAccessSection
@@ -113,102 +134,80 @@ struct CircleEntryReadOnlyDetailView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(sharedByText)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(CloseCutColors.accentLight)
-                .textCase(.uppercase)
-                .tracking(0.8)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: entry.ownerId == currentUserId ? "person.fill.checkmark" : "person.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.accentLight)
+                    .frame(width: 42, height: 42)
+                    .background(CloseCutColors.input)
+                    .clipShape(SwiftUI.Circle())
 
-            Text(entry.title)
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(CloseCutColors.textPrimary)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        CircleEntryStatusChip(
+                            icon: "person.2.fill",
+                            text: "Shared",
+                            isHighlighted: true
+                        )
+
+                        CircleEntryStatusChip(
+                            icon: entry.sourceType == .quickAdd ? "bolt.fill" : "film.fill",
+                            text: entry.sourceType == .quickAdd ? "Quick Add" : entry.type.displayName,
+                            isHighlighted: entry.sourceType == .quickAdd
+                        )
+                    }
+
+                    Text(entry.title)
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(sharedByText)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.accentLight)
+                        .textCase(.uppercase)
+                        .tracking(0.8)
+                }
+
+                Spacer()
+            }
+
+            Text(sharedContextText)
+                .font(.caption)
+                .foregroundStyle(CloseCutColors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text(subtitle)
-                .font(.subheadline)
-                .foregroundStyle(CloseCutColors.textSecondary)
-
             HStack(spacing: 8) {
-                Image(systemName: "lock.fill")
+                Image(systemName: "eye")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textTertiary)
 
-                Text("Personal entry shared with this Circle")
+                Text("Read-only in Circle")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textTertiary)
+
+                Text("•")
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+
+                Text(socialSummaryText)
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .lineLimit(1)
             }
         }
         .padding(16)
         .background(CloseCutColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
     }
 
-    private var memorySection: some View {
-        DetailSectionCard(title: "Memory") {
-            VStack(alignment: .leading, spacing: 12) {
-                DetailInfoRow(label: "Mood", value: moodText)
-
-                DetailInfoRow(
-                    label: "Watched",
-                    value: entry.watchedAt.formatted(date: .abbreviated, time: .omitted)
-                )
-
-                DetailInfoRow(
-                    label: "Context",
-                    value: entry.watchContext.displayName
-                )
-            }
-        }
-    }
-
-    private var takeawaySection: some View {
-        DetailSectionCard(title: "Takeaway") {
-            Text(takeawayText)
-                .font(.subheadline)
-                .foregroundStyle(CloseCutColors.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    @ViewBuilder
-    private var keyMomentSection: some View {
-        if let quote = entry.quote,
-           quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-            DetailSectionCard(title: "Key moment") {
-                Text("“\(quote)”")
-                    .font(.subheadline)
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var tagsSection: some View {
-        if entry.tags.isEmpty == false {
-            DetailSectionCard(title: "Tags") {
-                LazyVGrid(columns: tagColumns, alignment: .leading, spacing: 8) {
-                    ForEach(entry.tags, id: \.self) { tag in
-                        Text("#\(tag)")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(CloseCutColors.textSecondary)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(CloseCutColors.input)
-                            .clipShape(Capsule())
-                    }
-                }
-            }
-        }
-    }
-
-    private var reactionsSection: some View {
-        DetailSectionCard(title: "Reactions") {
+    private var socialSummarySection: some View {
+        DetailSectionCard(title: "Circle reactions") {
             VStack(alignment: .leading, spacing: 12) {
                 if isLoadingSocial && reactions.isEmpty {
                     HStack(spacing: 10) {
@@ -243,9 +242,79 @@ struct CircleEntryReadOnlyDetailView: View {
                             .foregroundStyle(CloseCutColors.textSecondary)
                     }
                 }
+
+                Text("One active reaction per person. Selecting the same reaction removes it.")
+                    .font(.caption2)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
+
+    private var takeawaySection: some View {
+        DetailSectionCard(title: "Takeaway") {
+            Text(takeawayText)
+                .font(.subheadline)
+                .foregroundStyle(CloseCutColors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder
+    private var keyMomentSection: some View {
+        if let quote = entry.quote,
+           quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            DetailSectionCard(title: "Key moment") {
+                Text("“\(quote)”")
+                    .font(.subheadline)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var memorySection: some View {
+        DetailSectionCard(title: "Watch details") {
+            VStack(alignment: .leading, spacing: 12) {
+                DetailInfoRow(label: "Mood", value: moodText)
+
+                DetailInfoRow(
+                    label: "Watched",
+                    value: entry.watchedAt.formatted(date: .abbreviated, time: .omitted)
+                )
+
+                DetailInfoRow(
+                    label: "Context",
+                    value: entry.watchContext.displayName
+                )
+
+                DetailInfoRow(
+                    label: "Type",
+                    value: subtitle
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var tagsSection: some View {
+        if entry.tags.isEmpty == false {
+            DetailSectionCard(title: "Tags") {
+                LazyVGrid(columns: tagColumns, alignment: .leading, spacing: 8) {
+                    ForEach(entry.tags, id: \.self) { tag in
+                        Text("#\(tag)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textSecondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(CloseCutColors.input)
+                            .clipShape(Capsule())
+                    }
+                }
+            }
+        }
+    }
+
     private var commentsSection: some View {
         DetailSectionCard(title: "Comments") {
             CircleCommentsSectionView(
@@ -270,14 +339,21 @@ struct CircleEntryReadOnlyDetailView: View {
 
     private var circleAccessSection: some View {
         DetailSectionCard(title: "Circle access") {
-            HStack(spacing: 8) {
-                Image(systemName: "eye")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textTertiary)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "lock.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textTertiary)
 
-                Text("This shared entry is read-only inside Circle.")
+                    Text("Read-only shared memory")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                }
+
+                Text("Circle members can react and comment here, but only the owner can edit or delete the original entry from their Personal Timeline.")
                     .font(.caption)
-                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -358,6 +434,7 @@ struct CircleEntryReadOnlyDetailView: View {
             #endif
         }
     }
+
     private func sendComment(_ text: String) async {
         guard isSendingComment == false else {
             return
@@ -427,5 +504,40 @@ struct CircleEntryReadOnlyDetailView: View {
             print("❌ Failed to delete comment:", error.localizedDescription)
             #endif
         }
+    }
+}
+
+private struct CircleEntryStatusChip: View {
+    let icon: String
+    let text: String
+    var isHighlighted: Bool = false
+    var isWarning: Bool = false
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.caption2.weight(.semibold))
+
+            Text(text)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(foregroundColor)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(CloseCutColors.input)
+        .clipShape(Capsule())
+    }
+
+    private var foregroundColor: Color {
+        if isWarning {
+            return CloseCutColors.failed
+        }
+
+        if isHighlighted {
+            return CloseCutColors.accentLight
+        }
+
+        return CloseCutColors.textTertiary
     }
 }
