@@ -39,31 +39,45 @@ struct TimelineView: View {
     }
 
     private var emptyTimelineState: some View {
-        VStack(spacing: 16) {
-            EmptyStateView(
-                title: "Start your taste history",
-                message: "Add past watches fast or log what you just watched.",
-                systemImage: "film.stack",
-                actionTitle: "Add past watches",
-                action: onQuickAdd
-            )
+        ScrollView {
+            VStack(spacing: 18) {
+                PersonalTimelineSummaryCard(
+                    entries: entries,
+                    onQuickAdd: onQuickAdd,
+                    onCreateEntry: onCreateEntry
+                )
 
-            Button {
-                onCreateEntry()
-            } label: {
-                Text("Log a new watch")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .frame(minHeight: 44)
+                EmptyStateView(
+                    title: "Start your private taste history",
+                    message: "Quick Add a few movies or series you already watched, then let CloseCut help you remember, decide, and share selectively.",
+                    systemImage: "film.stack",
+                    actionTitle: "Add past watches",
+                    action: onQuickAdd
+                )
+
+                Button {
+                    onCreateEntry()
+                } label: {
+                    Text("Log a new watch instead")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
         }
-        .padding(.horizontal, 20)
     }
 
     private var populatedTimeline: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
+                PersonalTimelineSummaryCard(
+                    entries: entries,
+                    onQuickAdd: onQuickAdd,
+                    onCreateEntry: onCreateEntry
+                )
                 if isLowHistory {
                     HistoryProgressModule(
                         currentCount: entries.count,
