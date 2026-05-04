@@ -133,7 +133,7 @@ struct SettingsView: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 46)
                     .background(currentUserFailedActions.isEmpty ? CloseCutColors.accent : CloseCutColors.failed)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .disabled(isSyncing || isPullingFromCloud)
@@ -182,7 +182,7 @@ struct SettingsView: View {
                     value: profile.defaultVisibility.displayName
                 )
 
-                Text("Entries are private by default. Circle sharing will only apply when you explicitly choose it.")
+                Text("Your Personal Timeline is private by default. Sharing only happens when you intentionally choose one or more Circles.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -216,7 +216,7 @@ struct SettingsView: View {
                     value: "\(currentUserCompletedActions.count)"
                 )
 
-                Text("You can add and edit memories offline. Sync actions are tracked locally, and pending entries can be pushed when sync is available.")
+                Text("You can add, edit, and delete memories offline. CloseCut keeps local changes queued until you sync them with the cloud.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -305,7 +305,7 @@ struct SettingsView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title.uppercased())
-                .font(.caption2)
+                .font(.caption2.weight(.semibold))
                 .tracking(0.8)
                 .foregroundStyle(CloseCutColors.textTertiary)
                 .padding(.horizontal, 2)
@@ -316,9 +316,9 @@ struct SettingsView: View {
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(CloseCutColors.card)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .stroke(CloseCutColors.separator, lineWidth: 0.5)
             }
         }
@@ -331,22 +331,25 @@ struct SettingsView: View {
     ) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.subheadline)
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(CloseCutColors.accentLight)
-                .frame(width: 24)
+                .frame(width: 30, height: 30)
+                .background(CloseCutColors.input)
+                .clipShape(SwiftUI.Circle())
 
             Text(title)
                 .font(.subheadline)
                 .foregroundStyle(CloseCutColors.textPrimary)
+                .lineLimit(1)
 
-            Spacer()
+            Spacer(minLength: 12)
 
             Text(value)
-                .font(.caption)
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(CloseCutColors.textSecondary)
                 .lineLimit(1)
         }
-        .frame(minHeight: 32)
+        .frame(minHeight: 36)
     }
 
     private func syncNow() async {

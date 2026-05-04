@@ -14,11 +14,11 @@ struct SyncStatusSummaryCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
                 ZStack {
                     SwiftUI.Circle()
                         .fill(iconColor.opacity(0.16))
-                        .frame(width: 38, height: 38)
+                        .frame(width: 40, height: 40)
 
                     if isSyncing {
                         ProgressView()
@@ -33,7 +33,7 @@ struct SyncStatusSummaryCard: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
-                        .font(.headline)
+                        .font(.headline.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
 
                     Text(message)
@@ -68,9 +68,9 @@ struct SyncStatusSummaryCard: View {
         }
         .padding(16)
         .background(CloseCutColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(borderColor, lineWidth: failedCount > 0 ? 1 : 0.5)
         }
         .accessibilityElement(children: .combine)
@@ -95,7 +95,7 @@ struct SyncStatusSummaryCard: View {
 
     private var message: String {
         if isSyncing {
-            return "CloseCut is sending your local changes to your private database."
+            return "CloseCut is sending your local changes to Firestore."
         }
 
         if failedCount > 0 {
@@ -106,7 +106,7 @@ struct SyncStatusSummaryCard: View {
             return "You can keep using CloseCut. These changes will sync when you choose Sync now."
         }
 
-        return "Your journal is up to date across local storage and Firestore."
+        return "Your journal is up to date across local storage and cloud sync."
     }
 
     private var iconName: String {

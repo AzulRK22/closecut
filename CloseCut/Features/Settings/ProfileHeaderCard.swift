@@ -24,37 +24,52 @@ struct ProfileHeaderCard: View {
         return String(letters).uppercased()
     }
 
+    private var emailText: String {
+        profile.email ?? user.email ?? user.id
+    }
+
     var body: some View {
         HStack(spacing: 14) {
-            SwiftUI.Circle()
-                .fill(CloseCutColors.accent)
-                .frame(width: 58, height: 58)
-                .overlay {
-                    Text(initials)
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                }
+            ZStack {
+                SwiftUI.Circle()
+                    .fill(CloseCutColors.accent)
+                    .frame(width: 58, height: 58)
 
-            VStack(alignment: .leading, spacing: 4) {
+                Text(initials)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
                 Text(profile.displayName)
-                    .font(.headline)
+                    .font(.headline.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
                     .lineLimit(1)
 
-                Text(profile.email ?? user.email ?? user.id)
+                Text(emailText)
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .lineLimit(1)
+
+                Text("Private taste journal")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.accentLight)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(CloseCutColors.input)
+                    .clipShape(Capsule())
             }
 
             Spacer()
         }
         .padding(16)
         .background(CloseCutColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(profile.displayName), \(emailText)")
     }
 }
