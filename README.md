@@ -16,6 +16,7 @@ CloseCut currently supports:
 - Rule-based `QuickPick` recommendations
 - Manual and initial cloud sync for entries
 - Private `Circle` spaces with invite codes, members, activity, and shared timelines
+- Emerging `Battle` feature for interactive watch experiences
 
 ## Product Focus
 
@@ -98,6 +99,15 @@ Circle is no longer just a placeholder. The current implementation includes:
 - Join Circle by invite code
 - Preview Circle before joining
 - Leave Circle
+- Circle members and activity feeds
+- Shared entry details with comments and reactions
+- Entry sharing picker for selective sharing
+- Owner actions: edit and delete circles
+- Member management and lifecycle handling
+
+### Battle
+
+- Battle tab foundation (in development)
 - Edit Circle details
 - Delete Circle
 - Member list
