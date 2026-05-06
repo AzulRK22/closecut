@@ -82,6 +82,26 @@ final class BattleResultRepository {
         modelContext.delete(result)
         try modelContext.save()
     }
+    func deleteAllResults(
+        ownerId: String,
+        modelContext: ModelContext
+    ) throws -> Int {
+        let descriptor = FetchDescriptor<LocalBattleResult>(
+            predicate: #Predicate { result in
+                result.ownerId == ownerId
+            }
+        )
+
+        let results = try modelContext.fetch(descriptor)
+
+        for result in results {
+            modelContext.delete(result)
+        }
+
+        try modelContext.save()
+
+        return results.count
+    }
 
     private func createResult(
         ownerId: String,

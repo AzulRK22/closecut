@@ -19,6 +19,8 @@ struct BattleView: View {
     @State private var pickedEntry: Entry?
     @State private var showHeadToHeadBattle = false
     @State private var battleErrorMessage: String?
+    @State private var showClearResultsConfirmation = false
+    @State private var isClearingResults = false
 
     @Query(sort: \LocalEntry.watchedAt, order: .reverse)
     private var localEntries: [LocalEntry]
@@ -146,6 +148,20 @@ struct BattleView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
             }
+            .confirmationDialog(
+                "Clear Battle results?",
+                isPresented: $showClearResultsConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Clear results", role: .destructive) {
+                    clearRecentResults()
+                }
+                .disabled(isClearingResults)
+
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This only clears your local Battle history. Your entries are not deleted.")
+            }
         }
     }
 
@@ -163,7 +179,7 @@ struct BattleView: View {
                         .foregroundStyle(CloseCutColors.accentLight)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("Start with your own archive, then bring trusted people into the decision.")
+                    Text("Start with your own archive. Friend and Circle Battles will build on trusted sharing later.")
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -206,11 +222,11 @@ struct BattleView: View {
                     .clipShape(SwiftUI.Circle())
 
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(canStartLocalBattle ? "Your archive is ready" : "Build your archive first")
+                    Text(canStartLocalBattle ? "Your archive is ready" : "Battle needs two options")
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
 
-                    Text(canStartLocalBattle ? "You have enough memories to start comparing titles or picking what to watch." : "Add at least two movies or series to unlock your first Battle.")
+                    Text(canStartLocalBattle ? "You have enough memories to start comparing titles or picking what to watch." : "Add one more movie or series to unlock random picks and Movie vs Movie.")
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -313,7 +329,27 @@ struct BattleView: View {
     }
 
     private var recentResultsSection: some View {
-        battleSection(title: "Recent results") {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("RECENT RESULTS")
+                    .font(.caption2.weight(.semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .padding(.horizontal, 2)
+
+                Spacer()
+
+                Button {
+                    showClearResultsConfirmation = true
+                } label: {
+                    Text(isClearingResults ? "Clearing…" : "Clear")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                }
+                .buttonStyle(.plain)
+                .disabled(isClearingResults)
+            }
+
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(recentBattleResults) { result in
                     HStack(alignment: .top, spacing: 12) {
@@ -348,6 +384,14 @@ struct BattleView: View {
                             .overlay(CloseCutColors.separator)
                     }
                 }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(CloseCutColors.card)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(CloseCutColors.separator, lineWidth: 0.5)
             }
         }
     }
@@ -581,6 +625,34 @@ struct BattleView: View {
 
             #if DEBUG
             print("❌ Failed to save random Battle result:", error.localizedDescription)
+            #endif
+        }
+    }
+    private func clearRecentResults() {
+        guard isClearingResults == false else {
+            return
+        }
+
+        isClearingResults = true
+        battleErrorMessage = nil
+
+        do {
+            let deletedCount = try battleResultRepository.deleteAllResults(
+                ownerId: user.id,
+                modelContext: modelContext
+            )
+
+            isClearingResults = false
+
+            #if DEBUG
+            print("✅ Cleared \(deletedCount) Battle results.")
+            #endif
+        } catch {
+            isClearingResults = false
+            battleErrorMessage = "Couldn’t clear Battle results."
+
+            #if DEBUG
+            print("❌ Failed to clear Battle results:", error.localizedDescription)
             #endif
         }
     }
