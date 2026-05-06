@@ -13,6 +13,7 @@
 		350720952F9D2F86005D6E92 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 350720942F9D2F86005D6E92 /* FirebaseFirestore */; };
 		350720972F9D2F86005D6E92 /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = 350720962F9D2F86005D6E92 /* FirebaseFunctions */; };
 		350720992F9D2F86005D6E92 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = 350720982F9D2F86005D6E92 /* FirebaseStorage */; };
+		351456052FABFB6D00115579 /* Secrets.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = 351456042FABFB6D00115579 /* Secrets.xcconfig */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -33,6 +34,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		351456042FABFB6D00115579 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 		356EB3532F9D1C1A00E9C3FF /* CloseCut.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CloseCut.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		356EB3622F9D1C1B00E9C3FF /* CloseCutTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CloseCutTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		356EB36C2F9D1C1B00E9C3FF /* CloseCutUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CloseCutUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -127,6 +129,7 @@
 				3554AD392FA293C0006B3AE5 /* Documentation */,
 				356EB3552F9D1C1A00E9C3FF /* CloseCut */,
 				356EB3542F9D1C1A00E9C3FF /* Products */,
+				351456042FABFB6D00115579 /* Secrets.xcconfig */,
 			);
 			sourceTree = "<group>";
 		};
@@ -264,6 +267,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				351456052FABFB6D00115579 /* Secrets.xcconfig in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -323,6 +327,7 @@
 /* Begin XCBuildConfiguration section */
 		356EB3742F9D1C1B00E9C3FF /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 351456042FABFB6D00115579 /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -385,6 +390,7 @@
 		};
 		356EB3752F9D1C1B00E9C3FF /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 351456042FABFB6D00115579 /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -439,6 +445,7 @@
 		};
 		356EB3772F9D1C1B00E9C3FF /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 351456042FABFB6D00115579 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -485,6 +492,7 @@
 		};
 		356EB3782F9D1C1B00E9C3FF /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 351456042FABFB6D00115579 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -531,6 +539,7 @@
 		};
 		356EB37A2F9D1C1B00E9C3FF /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 351456042FABFB6D00115579 /* Secrets.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
@@ -557,6 +566,7 @@
 		};
 		356EB37B2F9D1C1B00E9C3FF /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 351456042FABFB6D00115579 /* Secrets.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
@@ -583,6 +593,7 @@
 		};
 		356EB37D2F9D1C1B00E9C3FF /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 351456042FABFB6D00115579 /* Secrets.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -608,6 +619,7 @@
 		};
 		356EB37E2F9D1C1B00E9C3FF /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 351456042FABFB6D00115579 /* Secrets.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;

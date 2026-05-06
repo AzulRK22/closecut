@@ -17,6 +17,7 @@ final class QuickAddViewModel: ObservableObject {
     @Published private(set) var addedEntries: [Entry] = []
     @Published private(set) var lastDuplicateEntry: Entry?
     @Published private(set) var errorMessage: String?
+    @Published private(set) var lastAddedEntry: Entry?
 
     private let repository = EntryRepository()
 
@@ -82,6 +83,24 @@ final class QuickAddViewModel: ObservableObject {
         )
     }
 
+    func addTMDBResult(
+        _ result: TMDBMediaSearchResult,
+        ownerId: String,
+        modelContext: ModelContext
+    ) {
+        let draft = QuickAddDraft(
+            tmdbResult: result,
+            quickSentiment: selectedSentiment,
+            watchedDateApprox: selectedApproxDate
+        )
+
+        saveDraft(
+            draft,
+            ownerId: ownerId,
+            modelContext: modelContext
+        )
+    }
+
     func addManualTitle(
         ownerId: String,
         modelContext: ModelContext
@@ -120,6 +139,17 @@ final class QuickAddViewModel: ObservableObject {
         }
     }
 
+    func hasAdded(_ result: TMDBMediaSearchResult) -> Bool {
+        addedEntries.contains { entry in
+            DuplicateDetector.isDuplicate(
+                title: result.title,
+                type: result.entryType,
+                releaseYear: result.releaseYear,
+                existingEntry: entry
+            )
+        }
+    }
+
     private func saveDraft(
         _ draft: QuickAddDraft,
         ownerId: String,
@@ -127,6 +157,7 @@ final class QuickAddViewModel: ObservableObject {
     ) {
         errorMessage = nil
         lastDuplicateEntry = nil
+        lastAddedEntry = nil
 
         do {
             let beforeCount = try repository.fetchLocalEntries(
@@ -152,6 +183,7 @@ final class QuickAddViewModel: ObservableObject {
                 lastDuplicateEntry = entry
             } else {
                 addedEntries.insert(entry, at: 0)
+                lastAddedEntry = entry
             }
 
             print("✅ Quick Add result:", entry.title, entry.sourceType.rawValue)

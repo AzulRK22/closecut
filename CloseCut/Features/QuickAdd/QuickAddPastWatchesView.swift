@@ -15,6 +15,8 @@ struct QuickAddPastWatchesView: View {
     @StateObject private var viewModel = QuickAddViewModel()
     @FocusState private var isSearchFocused: Bool
 
+    @State private var showMediaSearch = false
+
     let user: AuthUser
 
     var body: some View {
@@ -28,6 +30,8 @@ struct QuickAddPastWatchesView: View {
 
                     ScrollView {
                         VStack(alignment: .leading, spacing: 18) {
+                            tmdbSearchCard
+
                             QuickAddSearchBar(
                                 query: $viewModel.query,
                                 onSubmit: {
@@ -72,6 +76,27 @@ struct QuickAddPastWatchesView: View {
                     .foregroundStyle(CloseCutColors.accent)
                 }
             }
+            .sheet(isPresented: $showMediaSearch) {
+                MediaSearchView(
+                    title: "Search TMDB",
+                    subtitle: "Find a movie or series and add it to your personal history fast.",
+                    placeholder: "Search movies or series",
+                    onCancel: {
+                        showMediaSearch = false
+                    },
+                    onSelect: { result in
+                        viewModel.addTMDBResult(
+                            result,
+                            ownerId: user.id,
+                            modelContext: modelContext
+                        )
+
+                        showMediaSearch = false
+                    }
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
         }
         .preferredColorScheme(.dark)
         .onAppear {
@@ -100,8 +125,59 @@ struct QuickAddPastWatchesView: View {
         .padding(.bottom, 10)
     }
 
+    private var tmdbSearchCard: some View {
+        Button {
+            showMediaSearch = true
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "sparkles")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.accentLight)
+                    .frame(width: 38, height: 38)
+                    .background(CloseCutColors.input)
+                    .clipShape(SwiftUI.Circle())
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Search with TMDB")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
+
+                    Text("Use posters, release years, and real movie/series metadata.")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .padding(.top, 6)
+            }
+            .padding(14)
+            .background(CloseCutColors.card)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(CloseCutColors.separator, lineWidth: 0.5)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
     @ViewBuilder
     private var statusMessages: some View {
+        if let lastAdded = viewModel.lastAddedEntry {
+            Text("Added: \(lastAdded.title)")
+                .font(.caption)
+                .foregroundStyle(CloseCutColors.synced)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(CloseCutColors.input)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+
         if let duplicate = viewModel.lastDuplicateEntry {
             Text("Already in your history: \(duplicate.title)")
                 .font(.caption)
@@ -125,7 +201,7 @@ struct QuickAddPastWatchesView: View {
 
     private var suggestionsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(viewModel.query.isEmpty ? "Suggested" : "Results")
+            Text(viewModel.query.isEmpty ? "Suggested fallback" : "Local fallback results")
                 .font(.caption)
                 .foregroundStyle(CloseCutColors.textSecondary)
 
