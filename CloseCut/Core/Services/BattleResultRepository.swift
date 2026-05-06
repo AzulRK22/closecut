@@ -102,6 +102,32 @@ final class BattleResultRepository {
 
         return results.count
     }
+    private func hasRecentDuplicateResult(
+        ownerId: String,
+        mode: BattleMode,
+        optionEntryIds: [String],
+        winnerEntryId: String,
+        within seconds: TimeInterval = 60,
+        modelContext: ModelContext
+    ) throws -> Bool {
+        let cutoffDate = Date().addingTimeInterval(-seconds)
+        let sortedOptionIds = optionEntryIds.sorted()
+
+        let descriptor = FetchDescriptor<LocalBattleResult>(
+            predicate: #Predicate { result in
+                result.ownerId == ownerId &&
+                result.modeRaw == mode.rawValue &&
+                result.winnerEntryId == winnerEntryId &&
+                result.createdAt >= cutoffDate
+            }
+        )
+
+        let recentResults = try modelContext.fetch(descriptor)
+
+        return recentResults.contains { result in
+            result.optionEntryIds.sorted() == sortedOptionIds
+        }
+    }
 
     private func createResult(
         ownerId: String,
@@ -120,11 +146,25 @@ final class BattleResultRepository {
             throw BattleResultRepositoryError.winnerNotInOptions
         }
 
+        let optionEntryIds = cleanedOptions.map { $0.id }
+
+        let isDuplicate = try hasRecentDuplicateResult(
+            ownerId: ownerId,
+            mode: mode,
+            optionEntryIds: optionEntryIds,
+            winnerEntryId: winner.id,
+            modelContext: modelContext
+        )
+
+        if isDuplicate {
+            throw BattleResultRepositoryError.duplicateRecentResult
+        }
+
         let localResult = LocalBattleResult(
             ownerId: ownerId,
             mode: mode,
             title: title,
-            optionEntryIds: cleanedOptions.map { $0.id },
+            optionEntryIds: optionEntryIds,
             optionTitles: cleanedOptions.map { $0.title },
             winnerEntryId: winner.id,
             winnerTitle: winner.title,
@@ -140,11 +180,14 @@ final class BattleResultRepository {
 
 enum BattleResultRepositoryError: LocalizedError {
     case winnerNotInOptions
+    case duplicateRecentResult
 
     var errorDescription: String? {
         switch self {
         case .winnerNotInOptions:
             return "The selected winner must be one of the Battle options."
+        case .duplicateRecentResult:
+            return "This Battle result was already saved recently."
         }
     }
 }

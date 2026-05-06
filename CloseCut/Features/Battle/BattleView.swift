@@ -42,6 +42,10 @@ struct BattleView: View {
         localBattleResults
             .filter { $0.ownerId == user.id }
             .map { $0.domain }
+            .filter {
+                $0.winnerTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false &&
+                $0.optionTitles.isEmpty == false
+            }
             .prefix(5)
             .map { $0 }
     }
@@ -605,7 +609,17 @@ struct BattleView: View {
             return
         }
 
-        guard let winner = selectedEntries.randomElement() else {
+        let possibleWinners: [Entry]
+
+        if let pickedEntry,
+           selectedEntries.count > 1 {
+            let alternatives = selectedEntries.filter { $0.id != pickedEntry.id }
+            possibleWinners = alternatives.isEmpty ? selectedEntries : alternatives
+        } else {
+            possibleWinners = selectedEntries
+        }
+
+        guard let winner = possibleWinners.randomElement() else {
             pickedEntry = nil
             return
         }
@@ -620,6 +634,10 @@ struct BattleView: View {
                 winner: winner,
                 modelContext: modelContext
             )
+        } catch BattleResultRepositoryError.duplicateRecentResult {
+            #if DEBUG
+            print("ℹ️ Skipped duplicate random Battle result.")
+            #endif
         } catch {
             battleErrorMessage = "Couldn’t save Battle result."
 
@@ -670,6 +688,10 @@ struct BattleView: View {
                 winner: winner,
                 modelContext: modelContext
             )
+        } catch BattleResultRepositoryError.duplicateRecentResult {
+            #if DEBUG
+            print("ℹ️ Skipped duplicate head-to-head Battle result.")
+            #endif
         } catch {
             battleErrorMessage = "Couldn’t save Movie vs Movie result."
 

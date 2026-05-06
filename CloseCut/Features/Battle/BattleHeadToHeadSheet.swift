@@ -16,7 +16,7 @@ struct BattleHeadToHeadSheet: View {
     @State private var firstEntry: Entry?
     @State private var secondEntry: Entry?
     @State private var winner: Entry?
-    @State private var savedWinnerId: String?
+    @State private var lastSavedWinnerId: String?
 
     private var availableEntries: [Entry] {
         entries.sorted { first, second in
@@ -124,7 +124,7 @@ struct BattleHeadToHeadSheet: View {
                     Button {
                         selectedEntry.wrappedValue = entry
                         winner = nil
-                        savedWinnerId = nil
+                        lastSavedWinnerId = nil
                     } label: {
                         Text(entry.title)
                     }
@@ -196,8 +196,8 @@ struct BattleHeadToHeadSheet: View {
                 winner = entry
             }
 
-            if let firstEntry, let secondEntry, savedWinnerId != entry.id {
-                savedWinnerId = entry.id
+            if let firstEntry, let secondEntry, lastSavedWinnerId != entry.id {
+                lastSavedWinnerId = entry.id
                 onWinnerSelected(entry, [firstEntry, secondEntry])
             }
         } label: {
@@ -280,7 +280,7 @@ struct BattleHeadToHeadSheet: View {
                     firstEntry = nil
                     secondEntry = nil
                     self.winner = nil
-                    savedWinnerId = nil
+                    lastSavedWinnerId = nil
                 } label: {
                     Text("Start another battle")
                         .font(.caption.weight(.semibold))
