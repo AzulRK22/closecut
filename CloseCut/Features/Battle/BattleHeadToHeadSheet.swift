@@ -11,10 +11,12 @@ struct BattleHeadToHeadSheet: View {
     let entries: [Entry]
     let currentUserId: String
     let onCancel: () -> Void
+    let onWinnerSelected: (Entry, [Entry]) -> Void
 
     @State private var firstEntry: Entry?
     @State private var secondEntry: Entry?
     @State private var winner: Entry?
+    @State private var savedWinnerId: String?
 
     private var availableEntries: [Entry] {
         entries.sorted { first, second in
@@ -122,6 +124,7 @@ struct BattleHeadToHeadSheet: View {
                     Button {
                         selectedEntry.wrappedValue = entry
                         winner = nil
+                        savedWinnerId = nil
                     } label: {
                         Text(entry.title)
                     }
@@ -191,6 +194,11 @@ struct BattleHeadToHeadSheet: View {
         Button {
             withAnimation(.easeInOut(duration: 0.2)) {
                 winner = entry
+            }
+
+            if let firstEntry, let secondEntry, savedWinnerId != entry.id {
+                savedWinnerId = entry.id
+                onWinnerSelected(entry, [firstEntry, secondEntry])
             }
         } label: {
             HStack(alignment: .top, spacing: 12) {
@@ -272,6 +280,7 @@ struct BattleHeadToHeadSheet: View {
                     firstEntry = nil
                     secondEntry = nil
                     self.winner = nil
+                    savedWinnerId = nil
                 } label: {
                     Text("Start another battle")
                         .font(.caption.weight(.semibold))

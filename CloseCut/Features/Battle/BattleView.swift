@@ -9,6 +9,8 @@ import SwiftUI
 import SwiftData
 
 struct BattleView: View {
+    @Environment(\.modelContext) private var modelContext
+
     let user: AuthUser
     let profile: UserProfile
 
@@ -16,9 +18,15 @@ struct BattleView: View {
     @State private var selectedEntries: [Entry] = []
     @State private var pickedEntry: Entry?
     @State private var showHeadToHeadBattle = false
+    @State private var battleErrorMessage: String?
 
     @Query(sort: \LocalEntry.watchedAt, order: .reverse)
     private var localEntries: [LocalEntry]
+
+    @Query(sort: \LocalBattleResult.createdAt, order: .reverse)
+    private var localBattleResults: [LocalBattleResult]
+
+    private let battleResultRepository = BattleResultRepository()
 
     private var selectedEntryIds: Set<String> {
         Set(selectedEntries.map { $0.id })
@@ -26,6 +34,14 @@ struct BattleView: View {
 
     private var canPickRandomWinner: Bool {
         selectedEntries.count >= 2
+    }
+
+    private var recentBattleResults: [BattleResult] {
+        localBattleResults
+            .filter { $0.ownerId == user.id }
+            .map { $0.domain }
+            .prefix(5)
+            .map { $0 }
     }
 
     private var entries: [Entry] {
@@ -57,6 +73,13 @@ struct BattleView: View {
 
                         readinessCard
 
+                        if let battleErrorMessage {
+                            SyncResultBanner(
+                                message: battleErrorMessage,
+                                style: .warning
+                            )
+                        }
+
                         if let pickedEntry {
                             BattlePickResultCard(
                                 winner: pickedEntry,
@@ -68,6 +91,10 @@ struct BattleView: View {
 
                         if selectedEntries.isEmpty == false {
                             selectedOptionsSection
+                        }
+
+                        if recentBattleResults.isEmpty == false {
+                            recentResultsSection
                         }
 
                         battleModesSection
@@ -95,6 +122,7 @@ struct BattleView: View {
                     onConfirm: { entries in
                         selectedEntries = entries
                         pickedEntry = nil
+                        battleErrorMessage = nil
                         showOptionSelector = false
                     }
                 )
@@ -107,6 +135,12 @@ struct BattleView: View {
                     currentUserId: user.id,
                     onCancel: {
                         showHeadToHeadBattle = false
+                    },
+                    onWinnerSelected: { winner, options in
+                        saveHeadToHeadResult(
+                            winner: winner,
+                            options: options
+                        )
                     }
                 )
                 .presentationDetents([.large])
@@ -274,6 +308,46 @@ struct BattleView: View {
                     .disabled(canPickRandomWinner == false)
                 }
                 .padding(.top, 2)
+            }
+        }
+    }
+
+    private var recentResultsSection: some View {
+        battleSection(title: "Recent results") {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(recentBattleResults) { result in
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: result.mode.systemImage)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.accentLight)
+                            .frame(width: 32, height: 32)
+                            .background(CloseCutColors.input)
+                            .clipShape(SwiftUI.Circle())
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(result.winnerTitle)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(CloseCutColors.textPrimary)
+                                .lineLimit(2)
+
+                            Text(resultSubtitle(for: result))
+                                .font(.caption)
+                                .foregroundStyle(CloseCutColors.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            Text(result.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                .font(.caption2)
+                                .foregroundStyle(CloseCutColors.textTertiary)
+                        }
+
+                        Spacer()
+                    }
+
+                    if result.id != recentBattleResults.last?.id {
+                        Divider()
+                            .overlay(CloseCutColors.separator)
+                    }
+                }
             }
         }
     }
@@ -458,13 +532,79 @@ struct BattleView: View {
         return parts.joined(separator: " • ")
     }
 
+    private func resultSubtitle(for result: BattleResult) -> String {
+        switch result.mode {
+        case .randomPick:
+            return "Picked from \(result.optionTitles.count) options"
+
+        case .headToHead:
+            let opponents = result.optionTitles
+                .filter { $0 != result.winnerTitle }
+
+            if let opponent = opponents.first {
+                return "Won against \(opponent)"
+            }
+
+            return "Won a head-to-head Battle"
+
+        case .friend:
+            return "Won a Friend Battle"
+
+        case .circle:
+            return "Won a Circle Battle"
+        }
+    }
+
     private func pickRandomWinner() {
         guard selectedEntries.count >= 2 else {
             pickedEntry = nil
             return
         }
 
-        pickedEntry = selectedEntries.randomElement()
+        guard let winner = selectedEntries.randomElement() else {
+            pickedEntry = nil
+            return
+        }
+
+        pickedEntry = winner
+        battleErrorMessage = nil
+
+        do {
+            _ = try battleResultRepository.createRandomPickResult(
+                ownerId: user.id,
+                options: selectedEntries,
+                winner: winner,
+                modelContext: modelContext
+            )
+        } catch {
+            battleErrorMessage = "Couldn’t save Battle result."
+
+            #if DEBUG
+            print("❌ Failed to save random Battle result:", error.localizedDescription)
+            #endif
+        }
+    }
+
+    private func saveHeadToHeadResult(
+        winner: Entry,
+        options: [Entry]
+    ) {
+        battleErrorMessage = nil
+
+        do {
+            _ = try battleResultRepository.createHeadToHeadResult(
+                ownerId: user.id,
+                options: options,
+                winner: winner,
+                modelContext: modelContext
+            )
+        } catch {
+            battleErrorMessage = "Couldn’t save Movie vs Movie result."
+
+            #if DEBUG
+            print("❌ Failed to save head-to-head Battle result:", error.localizedDescription)
+            #endif
+        }
     }
 
     private func clearBattleSelection() {
@@ -500,6 +640,7 @@ struct BattleView: View {
         LocalCircleMembership.self,
         LocalUserProfile.self,
         LocalUserState.self,
-        PendingAction.self
+        PendingAction.self,
+        LocalBattleResult.self
     ], inMemory: true)
 }

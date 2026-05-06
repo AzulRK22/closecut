@@ -208,6 +208,7 @@ private struct ProfileErrorView: View {
             LocalCircleMembership.self,
             LocalUserProfile.self,
             LocalUserState.self,
-            PendingAction.self
+            PendingAction.self,
+            LocalBattleResult.self
         ], inMemory: true)
 }
