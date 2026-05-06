@@ -12,8 +12,21 @@ struct BattleView: View {
     let user: AuthUser
     let profile: UserProfile
 
+    @State private var showOptionSelector = false
+    @State private var selectedEntries: [Entry] = []
+    @State private var pickedEntry: Entry?
+    @State private var showHeadToHeadBattle = false
+
     @Query(sort: \LocalEntry.watchedAt, order: .reverse)
     private var localEntries: [LocalEntry]
+
+    private var selectedEntryIds: Set<String> {
+        Set(selectedEntries.map { $0.id })
+    }
+
+    private var canPickRandomWinner: Bool {
+        selectedEntries.count >= 2
+    }
 
     private var entries: [Entry] {
         localEntries
@@ -44,6 +57,19 @@ struct BattleView: View {
 
                         readinessCard
 
+                        if let pickedEntry {
+                            BattlePickResultCard(
+                                winner: pickedEntry,
+                                optionCount: selectedEntries.count,
+                                onPickAgain: pickRandomWinner,
+                                onClear: clearBattleSelection
+                            )
+                        }
+
+                        if selectedEntries.isEmpty == false {
+                            selectedOptionsSection
+                        }
+
                         battleModesSection
 
                         futureSocialSection
@@ -59,6 +85,33 @@ struct BattleView: View {
             .navigationTitle("Battle")
             .navigationBarTitleDisplayMode(.inline)
             .preferredColorScheme(.dark)
+            .sheet(isPresented: $showOptionSelector) {
+                BattleOptionSelectorSheet(
+                    entries: eligibleEntries,
+                    initialSelection: selectedEntryIds,
+                    onCancel: {
+                        showOptionSelector = false
+                    },
+                    onConfirm: { entries in
+                        selectedEntries = entries
+                        pickedEntry = nil
+                        showOptionSelector = false
+                    }
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showHeadToHeadBattle) {
+                BattleHeadToHeadSheet(
+                    entries: eligibleEntries,
+                    currentUserId: user.id,
+                    onCancel: {
+                        showHeadToHeadBattle = false
+                    }
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
         }
     }
 
@@ -133,12 +186,12 @@ struct BattleView: View {
             }
 
             Button {
-                // Future: open local Battle creation flow.
+                showOptionSelector = true
             } label: {
                 HStack {
-                    Image(systemName: "bolt.fill")
+                    Image(systemName: "shuffle")
 
-                    Text(canStartLocalBattle ? "Start Battle" : "Need 2 entries")
+                    Text(canStartLocalBattle ? "Start with random pick" : "Need 2 entries")
                 }
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(canStartLocalBattle ? .white : CloseCutColors.textTertiary)
@@ -159,25 +212,103 @@ struct BattleView: View {
         }
     }
 
+    private var selectedOptionsSection: some View {
+        battleSection(title: "Selected options") {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(selectedEntries) { entry in
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: entry.type == .movie ? "film.fill" : "tv.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.accentLight)
+                            .frame(width: 28, height: 28)
+                            .background(CloseCutColors.input)
+                            .clipShape(SwiftUI.Circle())
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(entry.title)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(CloseCutColors.textPrimary)
+                                .lineLimit(2)
+
+                            Text(optionSubtitle(for: entry))
+                                .font(.caption)
+                                .foregroundStyle(CloseCutColors.textSecondary)
+                                .lineLimit(1)
+                        }
+
+                        Spacer()
+                    }
+
+                    if entry.id != selectedEntries.last?.id {
+                        Divider()
+                            .overlay(CloseCutColors.separator)
+                    }
+                }
+
+                HStack(spacing: 10) {
+                    Button {
+                        showOptionSelector = true
+                    } label: {
+                        Text("Edit options")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textSecondary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 38)
+                            .background(CloseCutColors.input)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        pickRandomWinner()
+                    } label: {
+                        Label("Pick one", systemImage: "shuffle")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(canPickRandomWinner ? .white : CloseCutColors.textTertiary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 38)
+                            .background(canPickRandomWinner ? CloseCutColors.accent : CloseCutColors.input)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(canPickRandomWinner == false)
+                }
+                .padding(.top, 2)
+            }
+        }
+    }
+
     private var battleModesSection: some View {
-        battleSection(title: "Personal modes") {
+        battleSection(title: "Personal battles") {
             VStack(alignment: .leading, spacing: 14) {
-                battleModeRow(
-                    icon: "shuffle",
-                    title: "Pick what to watch",
-                    status: canStartLocalBattle ? "Ready soon" : "Need 2 entries",
-                    message: "Choose 2+ options from your Timeline and let CloseCut pick one."
-                )
+                Button {
+                    showOptionSelector = true
+                } label: {
+                    battleModeRow(
+                        icon: "shuffle",
+                        title: "Pick what to watch",
+                        status: canStartLocalBattle ? "Available now" : "Need 2 entries",
+                        message: "Choose 2+ options and let CloseCut randomly pick one."
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(canStartLocalBattle == false)
 
                 Divider()
                     .overlay(CloseCutColors.separator)
 
-                battleModeRow(
-                    icon: "bolt.fill",
-                    title: "Movie vs Movie",
-                    status: canStartLocalBattle ? "Ready soon" : "Need 2 entries",
-                    message: "Put two titles head-to-head and decide what wins."
-                )
+                Button {
+                    showHeadToHeadBattle = true
+                } label: {
+                    battleModeRow(
+                        icon: "bolt.fill",
+                        title: "Movie vs Movie",
+                        status: canStartLocalBattle ? "Available now" : "Need 2 entries",
+                        message: "Put two titles head-to-head and choose what wins for you."
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(canStartLocalBattle == false)
             }
         }
     }
@@ -189,7 +320,7 @@ struct BattleView: View {
                     icon: "person.2.fill",
                     title: "Friend Battle",
                     status: "Coming later",
-                    message: "Compare two picks with one trusted person. Built on private Circles."
+                    message: "Compare two picks with one trusted person. Best for a two-person Circle."
                 )
 
                 Divider()
@@ -207,7 +338,7 @@ struct BattleView: View {
 
     private var whyItMattersSection: some View {
         battleSection(title: "Why Battle exists") {
-            Text("CloseCut is not only about remembering what you watched. Battle makes your taste playful, helps surface favorites, and gives Circles a lightweight entertainment layer without becoming a public social app.")
+            Text("Battle turns your archive into a decision game. Use it to pick what to watch, compare favorites, and eventually decide with trusted people without turning CloseCut into a public social app.")
                 .font(.caption)
                 .foregroundStyle(CloseCutColors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -305,6 +436,40 @@ struct BattleView: View {
                     .stroke(CloseCutColors.separator, lineWidth: 0.5)
             }
         }
+    }
+
+    private func optionSubtitle(for entry: Entry) -> String {
+        var parts: [String] = []
+
+        if let releaseYear = entry.releaseYear {
+            parts.append("\(releaseYear)")
+        }
+
+        parts.append(entry.type.displayName)
+
+        if entry.sourceType == .quickAdd {
+            parts.append("Quick Add")
+        }
+
+        if entry.visibility == .circle {
+            parts.append("Shared")
+        }
+
+        return parts.joined(separator: " • ")
+    }
+
+    private func pickRandomWinner() {
+        guard selectedEntries.count >= 2 else {
+            pickedEntry = nil
+            return
+        }
+
+        pickedEntry = selectedEntries.randomElement()
+    }
+
+    private func clearBattleSelection() {
+        pickedEntry = nil
+        selectedEntries = []
     }
 }
 
