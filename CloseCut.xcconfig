@@ -1,0 +1,14 @@
+//
+//  CloseCut.xcconfig
+//  CloseCut
+//
+//  Created by Azul Ramirez Kuri on 06/05/26.
+//
+
+// Shared build configuration for CloseCut.
+// Secrets.xcconfig is local-only and ignored by Git.
+// Shared build configuration for CloseCut.
+
+TMDB_READ_ACCESS_TOKEN =
+
+#include? "Secrets.xcconfig"
