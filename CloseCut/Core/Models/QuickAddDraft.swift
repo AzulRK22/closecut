@@ -16,6 +16,7 @@ struct QuickAddDraft: Equatable, Identifiable {
     var releaseYear: Int?
     var quickSentiment: QuickSentiment?
     var watchedDateApprox: WatchedDateApprox?
+    var externalMetadata: EntryExternalMetadata?
 
     init(
         id: String = UUID().uuidString,
@@ -23,7 +24,8 @@ struct QuickAddDraft: Equatable, Identifiable {
         type: EntryType = .movie,
         releaseYear: Int? = nil,
         quickSentiment: QuickSentiment? = nil,
-        watchedDateApprox: WatchedDateApprox? = nil
+        watchedDateApprox: WatchedDateApprox? = nil,
+        externalMetadata: EntryExternalMetadata? = nil
     ) {
         let cleanedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -34,6 +36,7 @@ struct QuickAddDraft: Equatable, Identifiable {
         self.releaseYear = releaseYear
         self.quickSentiment = quickSentiment
         self.watchedDateApprox = watchedDateApprox
+        self.externalMetadata = externalMetadata
     }
 
     var isValid: Bool {

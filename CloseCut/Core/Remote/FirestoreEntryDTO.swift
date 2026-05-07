@@ -43,6 +43,16 @@ struct FirestoreEntryDTO: Codable {
     var visibility: String
     var sourceType: String
 
+    var externalSource: String?
+    var tmdbId: Int?
+    var tmdbMediaType: String?
+    var posterPath: String?
+    var backdropPath: String?
+    var overview: String?
+    var tmdbRating: Double?
+    var tmdbPopularity: Double?
+    var tmdbGenreIds: [Int]?
+
     var watchedAt: Timestamp
     var createdAt: Timestamp
     var updatedAt: Timestamp
@@ -84,6 +94,16 @@ extension FirestoreEntryDTO {
 
         self.visibility = entry.visibility.rawValue
         self.sourceType = entry.sourceType.rawValue
+
+        self.externalSource = entry.externalSourceRaw
+        self.tmdbId = entry.tmdbId
+        self.tmdbMediaType = entry.tmdbMediaTypeRaw
+        self.posterPath = entry.posterPath
+        self.backdropPath = entry.backdropPath
+        self.overview = entry.overview
+        self.tmdbRating = entry.tmdbRating
+        self.tmdbPopularity = entry.tmdbPopularity
+        self.tmdbGenreIds = entry.tmdbGenreIds
 
         self.watchedAt = Timestamp(date: entry.watchedAt)
         self.createdAt = Timestamp(date: entry.createdAt)
@@ -138,6 +158,15 @@ extension FirestoreEntryDTO {
             visibility: EntryVisibility(rawValue: visibility) ?? .privateOnly,
             sharedCircleIds: resolvedSharedCircleIds,
             sourceType: EntrySourceType(rawValue: sourceType) ?? .fullEntry,
+            externalSourceRaw: externalSource,
+            tmdbId: tmdbId,
+            tmdbMediaTypeRaw: tmdbMediaType,
+            posterPath: posterPath,
+            backdropPath: backdropPath,
+            overview: overview,
+            tmdbRating: tmdbRating,
+            tmdbPopularity: tmdbPopularity,
+            tmdbGenreIds: tmdbGenreIds ?? [],
             watchedAt: watchedAt.dateValue(),
             createdAt: createdAt.dateValue(),
             updatedAt: updatedAt.dateValue(),

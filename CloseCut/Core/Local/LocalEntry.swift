@@ -43,6 +43,16 @@ final class LocalEntry {
 
     var sourceTypeRaw: String
 
+    var externalSourceRaw: String?
+    var tmdbId: Int?
+    var tmdbMediaTypeRaw: String?
+    var posterPath: String?
+    var backdropPath: String?
+    var overview: String?
+    var tmdbRating: Double?
+    var tmdbPopularity: Double?
+    var tmdbGenreIds: [Int]
+
     var watchedAt: Date
     var createdAt: Date
     var updatedAt: Date
@@ -71,6 +81,7 @@ final class LocalEntry {
         visibility: EntryVisibility = .privateOnly,
         sharedCircleIds: [String] = [],
         sourceType: EntrySourceType = .fullEntry,
+        externalMetadata: EntryExternalMetadata? = nil,
         watchedAt: Date = Date(),
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
@@ -108,6 +119,16 @@ final class LocalEntry {
         self.sharedCircleIds = sharedCircleIds
         self.sourceTypeRaw = sourceType.rawValue
 
+        self.externalSourceRaw = externalMetadata?.source.rawValue
+        self.tmdbId = externalMetadata?.tmdbId
+        self.tmdbMediaTypeRaw = externalMetadata?.tmdbMediaTypeRaw
+        self.posterPath = externalMetadata?.posterPath
+        self.backdropPath = externalMetadata?.backdropPath
+        self.overview = externalMetadata?.overview
+        self.tmdbRating = externalMetadata?.tmdbRating
+        self.tmdbPopularity = externalMetadata?.tmdbPopularity
+        self.tmdbGenreIds = externalMetadata?.tmdbGenreIds ?? []
+
         self.watchedAt = watchedAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -133,6 +154,25 @@ extension LocalEntry {
         )
     }
 
+    var externalMetadata: EntryExternalMetadata? {
+        guard let tmdbId,
+              let tmdbMediaTypeRaw else {
+            return nil
+        }
+
+        return EntryExternalMetadata(
+            source: ExternalMediaSource(rawValue: externalSourceRaw ?? "") ?? .tmdb,
+            tmdbId: tmdbId,
+            tmdbMediaTypeRaw: tmdbMediaTypeRaw,
+            posterPath: posterPath,
+            backdropPath: backdropPath,
+            overview: overview,
+            tmdbRating: tmdbRating,
+            tmdbPopularity: tmdbPopularity,
+            tmdbGenreIds: tmdbGenreIds
+        )
+    }
+
     var domain: Entry {
         Entry(
             id: id,
@@ -155,6 +195,15 @@ extension LocalEntry {
             visibility: EntryVisibility(rawValue: visibilityRaw) ?? .privateOnly,
             sharedCircleIds: sharedCircleIds,
             sourceType: EntrySourceType(rawValue: sourceTypeRaw) ?? .fullEntry,
+            externalSourceRaw: externalSourceRaw,
+            tmdbId: tmdbId,
+            tmdbMediaTypeRaw: tmdbMediaTypeRaw,
+            posterPath: posterPath,
+            backdropPath: backdropPath,
+            overview: overview,
+            tmdbRating: tmdbRating,
+            tmdbPopularity: tmdbPopularity,
+            tmdbGenreIds: tmdbGenreIds,
             watchedAt: watchedAt,
             createdAt: createdAt,
             updatedAt: updatedAt,
@@ -192,6 +241,16 @@ extension LocalEntry {
         visibilityRaw = entry.visibility.rawValue
         sharedCircleIds = entry.sharedCircleIds
         sourceTypeRaw = entry.sourceType.rawValue
+
+        externalSourceRaw = entry.externalSourceRaw
+        tmdbId = entry.tmdbId
+        tmdbMediaTypeRaw = entry.tmdbMediaTypeRaw
+        posterPath = entry.posterPath
+        backdropPath = entry.backdropPath
+        overview = entry.overview
+        tmdbRating = entry.tmdbRating
+        tmdbPopularity = entry.tmdbPopularity
+        tmdbGenreIds = entry.tmdbGenreIds
 
         watchedAt = entry.watchedAt
         createdAt = entry.createdAt

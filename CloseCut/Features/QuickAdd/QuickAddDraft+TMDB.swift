@@ -2,8 +2,6 @@
 //  QuickAddDraft+TMDB.swift
 //  CloseCut
 //
-//  Created by Azul Ramirez Kuri on 06/05/26.
-//
 
 import Foundation
 
@@ -18,7 +16,8 @@ extension QuickAddDraft {
             type: tmdbResult.entryType,
             releaseYear: tmdbResult.releaseYear,
             quickSentiment: quickSentiment,
-            watchedDateApprox: watchedDateApprox
+            watchedDateApprox: watchedDateApprox,
+            externalMetadata: EntryExternalMetadata(tmdbResult: tmdbResult)
         )
     }
 }

@@ -33,6 +33,7 @@ final class EntryRepository {
         visibility: EntryVisibility,
         sharedCircleIds: [String] = [],
         sourceType: EntrySourceType = .fullEntry,
+        externalMetadata: EntryExternalMetadata? = nil,
         watchedAt: Date,
         modelContext: ModelContext
     ) throws -> Entry {
@@ -62,6 +63,7 @@ final class EntryRepository {
             visibility: resolvedVisibility,
             sharedCircleIds: cleanedSharedCircleIds,
             sourceType: sourceType,
+            externalMetadata: externalMetadata,
             watchedAt: watchedAt,
             createdAt: now,
             updatedAt: now,
@@ -120,6 +122,7 @@ final class EntryRepository {
             visibility: visibility,
             sharedCircleIds: [],
             sourceType: .quickAdd,
+            externalMetadata: draft.externalMetadata,
             watchedAt: watchedAt,
             modelContext: modelContext
         )
@@ -214,6 +217,7 @@ final class EntryRepository {
                 visibility: remoteEntry.visibility,
                 sharedCircleIds: remoteEntry.sharedCircleIds,
                 sourceType: remoteEntry.sourceType,
+                externalMetadata: remoteEntry.externalMetadata,
                 watchedAt: remoteEntry.watchedAt,
                 createdAt: remoteEntry.createdAt,
                 updatedAt: remoteEntry.updatedAt,
@@ -311,6 +315,7 @@ final class EntryRepository {
         visibility: EntryVisibility,
         sharedCircleIds: [String] = [],
         sourceType: EntrySourceType = .fullEntry,
+        externalMetadata: EntryExternalMetadata? = nil,
         watchedAt: Date,
         modelContext: ModelContext
     ) throws -> Entry {
@@ -351,6 +356,18 @@ final class EntryRepository {
         localEntry.visibilityRaw = resolvedVisibility.rawValue
         localEntry.sharedCircleIds = cleanedSharedCircleIds
         localEntry.sourceTypeRaw = sourceType.rawValue
+        
+        if let externalMetadata {
+            localEntry.externalSourceRaw = externalMetadata.source.rawValue
+            localEntry.tmdbId = externalMetadata.tmdbId
+            localEntry.tmdbMediaTypeRaw = externalMetadata.tmdbMediaTypeRaw
+            localEntry.posterPath = externalMetadata.posterPath
+            localEntry.backdropPath = externalMetadata.backdropPath
+            localEntry.overview = externalMetadata.overview
+            localEntry.tmdbRating = externalMetadata.tmdbRating
+            localEntry.tmdbPopularity = externalMetadata.tmdbPopularity
+            localEntry.tmdbGenreIds = externalMetadata.tmdbGenreIds
+        }
 
         localEntry.watchedAt = watchedAt
         localEntry.updatedAt = Date()

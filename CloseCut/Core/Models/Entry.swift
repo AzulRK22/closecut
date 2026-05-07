@@ -35,6 +35,16 @@ struct Entry: Identifiable, Codable, Equatable {
 
     var sourceType: EntrySourceType
 
+    var externalSourceRaw: String?
+    var tmdbId: Int?
+    var tmdbMediaTypeRaw: String?
+    var posterPath: String?
+    var backdropPath: String?
+    var overview: String?
+    var tmdbRating: Double?
+    var tmdbPopularity: Double?
+    var tmdbGenreIds: [Int]
+
     var watchedAt: Date
     var createdAt: Date
     var updatedAt: Date
@@ -57,5 +67,39 @@ struct Entry: Identifiable, Codable, Equatable {
     var hasFullEmotionalDetails: Bool {
         sourceType == .fullEntry &&
         mood.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
+    var hasTMDBMetadata: Bool {
+        externalSourceRaw == ExternalMediaSource.tmdb.rawValue && tmdbId != nil
+    }
+
+    var externalMetadata: EntryExternalMetadata? {
+        guard let tmdbId,
+              let tmdbMediaTypeRaw else {
+            return nil
+        }
+
+        return EntryExternalMetadata(
+            source: ExternalMediaSource(rawValue: externalSourceRaw ?? "") ?? .tmdb,
+            tmdbId: tmdbId,
+            tmdbMediaTypeRaw: tmdbMediaTypeRaw,
+            posterPath: posterPath,
+            backdropPath: backdropPath,
+            overview: overview,
+            tmdbRating: tmdbRating,
+            tmdbPopularity: tmdbPopularity,
+            tmdbGenreIds: tmdbGenreIds
+        )
+    }
+
+    var posterURL: URL? {
+        TMDBImageURLBuilder.imageURL(path: posterPath)
+    }
+
+    var backdropURL: URL? {
+        TMDBImageURLBuilder.imageURL(
+            path: backdropPath,
+            size: .backdropMedium
+        )
     }
 }
