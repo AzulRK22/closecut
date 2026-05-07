@@ -22,6 +22,10 @@ struct EntryCardView: View {
 
     private var cardSubtitle: String {
         if entry.sourceType == .quickAdd {
+            if let overview = cleanOptional(entry.overview) {
+                return overview
+            }
+
             if let quickSentiment = entry.quickSentiment {
                 return quickSentiment.displayName
             }
@@ -29,7 +33,9 @@ struct EntryCardView: View {
             return "Added to your history"
         }
 
-        return entry.takeaway.isEmpty ? "No takeaway added yet." : entry.takeaway
+        return entry.takeaway.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "No takeaway added yet."
+            : entry.takeaway
     }
 
     private var footerDateText: String {
@@ -40,132 +46,114 @@ struct EntryCardView: View {
         return entry.watchedAt.formatted(date: .abbreviated, time: .omitted)
     }
 
-    private var isShared: Bool {
-        entry.visibility == .circle && entry.sharedCircleIds.isEmpty == false
+    private var metadataText: String {
+        var parts: [String] = []
+
+        if let releaseYear = entry.releaseYear {
+            parts.append("\(releaseYear)")
+        }
+
+        parts.append(entry.type.displayName)
+
+        if let rating = entry.tmdbRating, rating > 0 {
+            parts.append(String(format: "%.1f TMDB", rating))
+        }
+
+        return parts.joined(separator: " • ")
     }
 
     private var sharingChipText: String {
-        if entry.sharedCircleIds.count == 1 {
-            return "Shared with 1 Circle"
+        if entry.sharedCircleIds.isEmpty || entry.visibility == .privateOnly {
+            return "Private"
         }
 
-        return "Shared with \(entry.sharedCircleIds.count) Circles"
+        if entry.sharedCircleIds.count == 1 {
+            return "Shared"
+        }
+
+        return "\(entry.sharedCircleIds.count) Circles"
+    }
+
+    private var sharingChipIcon: String {
+        entry.sharedCircleIds.isEmpty || entry.visibility == .privateOnly
+            ? "lock.fill"
+            : "person.2.fill"
     }
 
     private var shouldShowSyncChip: Bool {
         entry.syncStatus != .synced
     }
 
-    private var syncChipText: String {
-        switch entry.syncStatus {
-        case .pending:
-            return "Pending sync"
-        case .synced:
-            return "Synced"
-        case .failed:
-            return "Sync failed"
-        }
-    }
-
-    private var syncChipIcon: String {
-        switch entry.syncStatus {
-        case .pending:
-            return "clock.fill"
-        case .synced:
-            return "checkmark.circle.fill"
-        case .failed:
-            return "exclamationmark.triangle.fill"
-        }
-    }
-
-    private var shouldShowStatusChips: Bool {
-        entry.sourceType == .quickAdd ||
-        isShared ||
-        shouldShowSyncChip
-    }
-
     var body: some View {
         ZStack(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(CloseCutColors.card)
 
             mood.color
                 .frame(width: 3)
                 .clipShape(
                     UnevenRoundedRectangle(
-                        topLeadingRadius: 16,
-                        bottomLeadingRadius: 16
+                        topLeadingRadius: 18,
+                        bottomLeadingRadius: 18
                     )
                 )
 
-            VStack(alignment: .leading, spacing: 9) {
-                HStack(alignment: .top, spacing: 12) {
-                    Text(entry.title)
-                        .font(.headline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(CloseCutColors.textPrimary)
+            HStack(alignment: .top, spacing: 14) {
+                EntryPosterThumbnailView(
+                    entry: entry,
+                    width: variant == .timeline ? 68 : 58,
+                    height: variant == .timeline ? 100 : 86,
+                    cornerRadius: 14
+                )
+
+                VStack(alignment: .leading, spacing: 8) {
+                    headerRow
+
+                    Text(metadataText)
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textTertiary)
                         .lineLimit(1)
 
-                    Spacer()
+                    Text(cardSubtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .lineLimit(variant == .timeline ? 2 : 1)
+                        .multilineTextAlignment(.leading)
 
-                    MoodPill(
-                        mood: mood,
-                        size: .small,
-                        showLabel: false
-                    )
+                    Spacer(minLength: 0)
+
+                    footerRow
                 }
-
-                if shouldShowStatusChips {
-                    statusChipsRow
-                }
-
-                Text(cardSubtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-
-                Spacer(minLength: 0)
-
-                footerRow
             }
-            .padding(16)
+            .padding(14)
             .padding(.leading, 3)
         }
-        .frame(minHeight: variant == .timeline ? 148 : 128)
+        .frame(minHeight: variant == .timeline ? 130 : 112)
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityText)
+        .accessibilityLabel(
+            "\(entry.title), \(metadataText), \(footerDateText)"
+        )
     }
 
-    private var statusChipsRow: some View {
-        HStack(spacing: 6) {
-            if entry.sourceType == .quickAdd {
-                EntryStatusChip(
-                    icon: "bolt.fill",
-                    text: "Quick Add",
-                    isHighlighted: true
-                )
-            }
+    private var headerRow: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(entry.title)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textPrimary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
 
-            if isShared {
-                EntryStatusChip(
-                    icon: "person.2.fill",
-                    text: sharingChipText,
-                    isHighlighted: true
-                )
-            }
+            Spacer(minLength: 8)
 
-            if shouldShowSyncChip {
-                EntryStatusChip(
-                    icon: syncChipIcon,
-                    text: syncChipText,
-                    isWarning: entry.syncStatus == .failed
-                )
-            }
+            MoodPill(
+                mood: mood,
+                size: .small,
+                showLabel: false
+            )
         }
     }
 
@@ -177,6 +165,7 @@ struct EntryCardView: View {
             )
             .font(.caption)
             .foregroundStyle(CloseCutColors.textTertiary)
+            .lineLimit(1)
 
             Text("•")
                 .font(.caption)
@@ -185,42 +174,28 @@ struct EntryCardView: View {
             Text(footerDateText)
                 .font(.caption)
                 .foregroundStyle(CloseCutColors.textTertiary)
+                .lineLimit(1)
 
-            Spacer()
+            Spacer(minLength: 6)
+
+            chip(
+                icon: sharingChipIcon,
+                text: sharingChipText,
+                isHighlighted: entry.visibility == .circle && entry.sharedCircleIds.isEmpty == false
+            )
+
+            if shouldShowSyncChip {
+                PendingSyncBadge(status: entry.syncStatus)
+            }
         }
     }
 
-    private var accessibilityText: String {
-        var parts: [String] = [
-            entry.title,
-            "feeling \(mood.label)",
-            footerDateText
-        ]
-
-        if entry.sourceType == .quickAdd {
-            parts.append("Quick Add")
-        }
-
-        if isShared {
-            parts.append(sharingChipText)
-        }
-
-        if shouldShowSyncChip {
-            parts.append(syncChipText)
-        }
-
-        return parts.joined(separator: ", ")
-    }
-}
-
-private struct EntryStatusChip: View {
-    let icon: String
-    let text: String
-    var isHighlighted: Bool = false
-    var isWarning: Bool = false
-
-    var body: some View {
-        HStack(spacing: 5) {
+    private func chip(
+        icon: String,
+        text: String,
+        isHighlighted: Bool
+    ) -> some View {
+        HStack(spacing: 4) {
             Image(systemName: icon)
                 .font(.caption2.weight(.semibold))
 
@@ -228,22 +203,19 @@ private struct EntryStatusChip: View {
                 .font(.caption2.weight(.semibold))
                 .lineLimit(1)
         }
-        .foregroundStyle(foregroundColor)
+        .foregroundStyle(isHighlighted ? CloseCutColors.accentLight : CloseCutColors.textTertiary)
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .background(CloseCutColors.input)
         .clipShape(Capsule())
     }
 
-    private var foregroundColor: Color {
-        if isWarning {
-            return CloseCutColors.failed
+    private func cleanOptional(_ value: String?) -> String? {
+        guard let value else {
+            return nil
         }
 
-        if isHighlighted {
-            return CloseCutColors.accentLight
-        }
-
-        return CloseCutColors.textTertiary
+        let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? nil : cleaned
     }
 }
