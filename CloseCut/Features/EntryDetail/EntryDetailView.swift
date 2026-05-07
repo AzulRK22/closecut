@@ -63,6 +63,30 @@ struct EntryDetailView: View {
         entry.syncStatus != .synced
     }
 
+    private var hasBackdrop: Bool {
+        entry.backdropPath?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
+    private var metadataText: String {
+        var parts: [String] = []
+
+        if let releaseYear = entry.releaseYear {
+            parts.append("\(releaseYear)")
+        }
+
+        parts.append(entry.type.displayName)
+
+        if let rating = entry.tmdbRating, rating > 0 {
+            parts.append(String(format: "%.1f TMDB", rating))
+        }
+
+        return parts.joined(separator: " • ")
+    }
+
+    private var overviewText: String? {
+        cleanOptional(entry.overview)
+    }
+
     var body: some View {
         ZStack {
             CloseCutColors.backgroundPrimary
@@ -70,7 +94,7 @@ struct EntryDetailView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    headerBlock
+                    heroMediaBlock
 
                     if entry.syncStatus == .failed {
                         SyncResultBanner(
@@ -84,6 +108,10 @@ struct EntryDetailView: View {
                             message: "Deleting entry…",
                             style: .neutral
                         )
+                    }
+
+                    if let overviewText {
+                        overviewBlock(overviewText)
                     }
 
                     takeawayBlock
@@ -180,92 +208,172 @@ struct EntryDetailView: View {
         }
     }
 
-    private var headerBlock: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 6) {
-                        EntryDetailStatusChip(
-                            icon: entry.type == .movie ? "film.fill" : "tv.fill",
-                            text: entry.type.displayName,
-                            isHighlighted: false
+    private var heroMediaBlock: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ZStack(alignment: .bottomLeading) {
+                backdropLayer
+
+                LinearGradient(
+                    colors: [
+                        .clear,
+                        CloseCutColors.card.opacity(0.88),
+                        CloseCutColors.card
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                HStack(alignment: .bottom, spacing: 14) {
+                    EntryPosterThumbnailView(
+                        entry: entry,
+                        width: 86,
+                        height: 126,
+                        cornerRadius: 16
+                    )
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 6) {
+                            EntryDetailStatusChip(
+                                icon: entry.type == .movie ? "film.fill" : "tv.fill",
+                                text: entry.type.displayName,
+                                isHighlighted: false
+                            )
+
+                            if entry.sourceType == .quickAdd {
+                                EntryDetailStatusChip(
+                                    icon: "bolt.fill",
+                                    text: "Quick Add",
+                                    isHighlighted: true
+                                )
+                            }
+
+                            if isShared {
+                                EntryDetailStatusChip(
+                                    icon: "person.2.fill",
+                                    text: "Shared",
+                                    isHighlighted: true
+                                )
+                            }
+                        }
+
+                        Text(entry.title)
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textPrimary)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Text(metadataText)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textSecondary)
+                            .lineLimit(1)
+
+                        HStack(spacing: 8) {
+                            Image(systemName: "calendar")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(CloseCutColors.textTertiary)
+
+                            Text(entry.createdAt.formatted(date: .abbreviated, time: .omitted))
+                                .font(.caption)
+                                .foregroundStyle(CloseCutColors.textTertiary)
+
+                            Text("•")
+                                .font(.caption)
+                                .foregroundStyle(CloseCutColors.textTertiary)
+
+                            Text("Added by \(profile.displayName)")
+                                .font(.caption)
+                                .foregroundStyle(CloseCutColors.textTertiary)
+                                .lineLimit(1)
+                        }
+
+                        MoodPill(
+                            mood: mood,
+                            size: .small,
+                            isSelected: false,
+                            showLabel: true
                         )
-
-                        if entry.sourceType == .quickAdd {
-                            EntryDetailStatusChip(
-                                icon: "bolt.fill",
-                                text: "Quick Add",
-                                isHighlighted: true
-                            )
-                        }
-
-                        if isShared {
-                            EntryDetailStatusChip(
-                                icon: "person.2.fill",
-                                text: "Shared",
-                                isHighlighted: true
-                            )
-                        }
                     }
 
-                    Text(entry.title)
-                        .font(.title.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.textPrimary)
-                        .lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
                 }
-
-                Spacer()
-
-                MoodPill(
-                    mood: mood,
-                    size: .medium,
-                    isSelected: false,
-                    showLabel: true
-                )
+                .padding(16)
             }
-
-            HStack(spacing: 8) {
-                Image(systemName: "calendar")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textTertiary)
-
-                Text(entry.createdAt.formatted(date: .abbreviated, time: .omitted))
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textTertiary)
-
-                Text("•")
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textTertiary)
-
-                Text("Added by \(profile.displayName)")
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textTertiary)
-                    .lineLimit(1)
+            .frame(minHeight: hasBackdrop ? 220 : 176)
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(CloseCutColors.separator, lineWidth: 0.5)
             }
 
             if entry.sourceType == .quickAdd {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "sparkles")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.accentLight)
-
-                    Text("This started as a Quick Add. Add details anytime to turn it into a richer memory.")
-                        .font(.caption)
-                        .foregroundStyle(CloseCutColors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(12)
-                .background(CloseCutColors.input)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                quickAddNote
             }
         }
-        .padding(16)
-        .background(CloseCutColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(CloseCutColors.separator, lineWidth: 0.5)
+    }
+
+    @ViewBuilder
+    private var backdropLayer: some View {
+        if let backdropURL = entry.backdropURL {
+            AsyncImage(url: backdropURL) { phase in
+                switch phase {
+                case .empty:
+                    CloseCutColors.card
+
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+
+                case .failure:
+                    fallbackBackdrop
+
+                @unknown default:
+                    fallbackBackdrop
+                }
+            }
+        } else {
+            fallbackBackdrop
+        }
+    }
+
+    private var fallbackBackdrop: some View {
+        ZStack {
+            CloseCutColors.card
+
+            LinearGradient(
+                colors: [
+                    CloseCutColors.accent.opacity(0.22),
+                    CloseCutColors.card.opacity(0.96)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+
+    private var quickAddNote: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "sparkles")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CloseCutColors.accentLight)
+
+            Text("This started as a Quick Add. Add details anytime to turn it into a richer memory.")
+                .font(.caption)
+                .foregroundStyle(CloseCutColors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .background(CloseCutColors.input)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func overviewBlock(_ overview: String) -> some View {
+        DetailSectionCard(title: "Overview") {
+            Text(overview)
+                .font(.subheadline)
+                .foregroundStyle(CloseCutColors.textSecondary)
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
