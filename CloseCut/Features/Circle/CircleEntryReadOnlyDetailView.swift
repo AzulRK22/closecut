@@ -33,7 +33,7 @@ struct CircleEntryReadOnlyDetailView: View {
             : "A Circle member shared this from their Personal Timeline."
     }
 
-    private var subtitle: String {
+    private var metadataText: String {
         var parts: [String] = []
 
         if let releaseYear = entry.releaseYear {
@@ -41,6 +41,10 @@ struct CircleEntryReadOnlyDetailView: View {
         }
 
         parts.append(entry.type.displayName)
+
+        if let rating = entry.tmdbRating, rating > 0 {
+            parts.append(String(format: "%.1f TMDB", rating))
+        }
 
         if entry.sourceType == .quickAdd {
             parts.append("Quick Add")
@@ -50,19 +54,31 @@ struct CircleEntryReadOnlyDetailView: View {
     }
 
     private var moodText: String {
-        if entry.mood.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        let cleanedMood = entry.mood.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if cleanedMood.isEmpty {
             return entry.quickSentiment?.displayName ?? "Shared memory"
         }
 
-        return entry.mood
+        return cleanedMood
     }
 
     private var takeawayText: String {
-        if entry.takeaway.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        let cleanedTakeaway = entry.takeaway.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if cleanedTakeaway.isEmpty {
             return "No takeaway was added."
         }
 
-        return entry.takeaway
+        return cleanedTakeaway
+    }
+
+    private var overviewText: String? {
+        cleanOptional(entry.overview)
+    }
+
+    private var hasBackdrop: Bool {
+        entry.backdropPath?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     }
 
     private var reactionCount: Int {
@@ -93,7 +109,7 @@ struct CircleEntryReadOnlyDetailView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    header
+                    heroMediaBlock
 
                     if let socialErrorMessage {
                         SyncResultBanner(
@@ -103,6 +119,10 @@ struct CircleEntryReadOnlyDetailView: View {
                     }
 
                     socialSummarySection
+
+                    if let overviewText {
+                        overviewSection(overviewText)
+                    }
 
                     takeawaySection
 
@@ -125,85 +145,170 @@ struct CircleEntryReadOnlyDetailView: View {
                 await loadSocialData(force: true)
             }
         }
-        .navigationTitle("Shared entry")
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .tint(CloseCutColors.accent)
         .preferredColorScheme(.dark)
         .task {
             await loadSocialData()
         }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: entry.ownerId == currentUserId ? "person.fill.checkmark" : "person.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.accentLight)
-                    .frame(width: 42, height: 42)
-                    .background(CloseCutColors.input)
-                    .clipShape(SwiftUI.Circle())
+    private var heroMediaBlock: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ZStack(alignment: .bottomLeading) {
+                backdropLayer
 
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 6) {
-                        CircleEntryStatusChip(
-                            icon: "person.2.fill",
-                            text: "Shared",
-                            isHighlighted: true
-                        )
+                LinearGradient(
+                    colors: [
+                        .clear,
+                        CloseCutColors.card.opacity(0.88),
+                        CloseCutColors.card
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
 
-                        CircleEntryStatusChip(
-                            icon: entry.sourceType == .quickAdd ? "bolt.fill" : "film.fill",
-                            text: entry.sourceType == .quickAdd ? "Quick Add" : entry.type.displayName,
-                            isHighlighted: entry.sourceType == .quickAdd
-                        )
+                HStack(alignment: .bottom, spacing: 14) {
+                    EntryPosterThumbnailView(
+                        entry: entry,
+                        width: 86,
+                        height: 126,
+                        cornerRadius: 16
+                    )
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 6) {
+                            CircleEntryStatusChip(
+                                icon: "person.2.fill",
+                                text: "Shared",
+                                isHighlighted: true
+                            )
+
+                            CircleEntryStatusChip(
+                                icon: entry.type == .movie ? "film.fill" : "tv.fill",
+                                text: entry.type.displayName,
+                                isHighlighted: false
+                            )
+
+                            if entry.sourceType == .quickAdd {
+                                CircleEntryStatusChip(
+                                    icon: "bolt.fill",
+                                    text: "Quick Add",
+                                    isHighlighted: true
+                                )
+                            }
+                        }
+
+                        Text(entry.title)
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textPrimary)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Text(metadataText)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textSecondary)
+                            .lineLimit(1)
+
+                        Text(sharedByText)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.accentLight)
+                            .textCase(.uppercase)
+                            .tracking(0.8)
+                            .lineLimit(1)
+
+                        HStack(spacing: 8) {
+                            Image(systemName: "eye")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(CloseCutColors.textTertiary)
+
+                            Text("Read-only in Circle")
+                                .font(.caption)
+                                .foregroundStyle(CloseCutColors.textTertiary)
+
+                            Text("•")
+                                .font(.caption)
+                                .foregroundStyle(CloseCutColors.textTertiary)
+
+                            Text(socialSummaryText)
+                                .font(.caption)
+                                .foregroundStyle(CloseCutColors.textTertiary)
+                                .lineLimit(1)
+                        }
                     }
 
-                    Text(entry.title)
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text(sharedByText)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.accentLight)
-                        .textCase(.uppercase)
-                        .tracking(0.8)
+                    Spacer(minLength: 0)
                 }
-
-                Spacer()
+                .padding(16)
             }
+            .frame(minHeight: hasBackdrop ? 220 : 176)
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(CloseCutColors.separator, lineWidth: 0.5)
+            }
+
+            sharedContextNote
+        }
+    }
+
+    @ViewBuilder
+    private var backdropLayer: some View {
+        if let backdropURL = entry.backdropURL {
+            AsyncImage(url: backdropURL) { phase in
+                switch phase {
+                case .empty:
+                    CloseCutColors.card
+
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+
+                case .failure:
+                    fallbackBackdrop
+
+                @unknown default:
+                    fallbackBackdrop
+                }
+            }
+        } else {
+            fallbackBackdrop
+        }
+    }
+
+    private var fallbackBackdrop: some View {
+        ZStack {
+            CloseCutColors.card
+
+            LinearGradient(
+                colors: [
+                    CloseCutColors.accent.opacity(0.22),
+                    CloseCutColors.card.opacity(0.96)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+
+    private var sharedContextNote: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: entry.ownerId == currentUserId ? "person.fill.checkmark" : "person.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CloseCutColors.accentLight)
 
             Text(sharedContextText)
                 .font(.caption)
                 .foregroundStyle(CloseCutColors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: 8) {
-                Image(systemName: "eye")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textTertiary)
-
-                Text("Read-only in Circle")
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textTertiary)
-
-                Text("•")
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textTertiary)
-
-                Text(socialSummaryText)
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textTertiary)
-                    .lineLimit(1)
-            }
         }
-        .padding(16)
-        .background(CloseCutColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(CloseCutColors.separator, lineWidth: 0.5)
-        }
+        .padding(12)
+        .background(CloseCutColors.input)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var socialSummarySection: some View {
@@ -251,6 +356,16 @@ struct CircleEntryReadOnlyDetailView: View {
         }
     }
 
+    private func overviewSection(_ overview: String) -> some View {
+        DetailSectionCard(title: "Overview") {
+            Text(overview)
+                .font(.subheadline)
+                .foregroundStyle(CloseCutColors.textSecondary)
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     private var takeawaySection: some View {
         DetailSectionCard(title: "Takeaway") {
             Text(takeawayText)
@@ -262,8 +377,7 @@ struct CircleEntryReadOnlyDetailView: View {
 
     @ViewBuilder
     private var keyMomentSection: some View {
-        if let quote = entry.quote,
-           quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+        if let quote = cleanOptional(entry.quote) {
             DetailSectionCard(title: "Key moment") {
                 Text("“\(quote)”")
                     .font(.subheadline)
@@ -290,7 +404,7 @@ struct CircleEntryReadOnlyDetailView: View {
 
                 DetailInfoRow(
                     label: "Type",
-                    value: subtitle
+                    value: metadataText
                 )
             }
         }
@@ -504,6 +618,16 @@ struct CircleEntryReadOnlyDetailView: View {
             print("❌ Failed to delete comment:", error.localizedDescription)
             #endif
         }
+    }
+
+    private func cleanOptional(_ value: String?) -> String? {
+        guard let value else {
+            return nil
+        }
+
+        let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return cleaned.isEmpty ? nil : cleaned
     }
 }
 
