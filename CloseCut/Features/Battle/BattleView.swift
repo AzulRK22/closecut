@@ -271,12 +271,12 @@ struct BattleView: View {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(selectedEntries) { entry in
                     HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: entry.type == .movie ? "film.fill" : "tv.fill")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(CloseCutColors.accentLight)
-                            .frame(width: 28, height: 28)
-                            .background(CloseCutColors.input)
-                            .clipShape(SwiftUI.Circle())
+                        EntryPosterThumbnailView(
+                            entry: entry,
+                            width: 42,
+                            height: 62,
+                            cornerRadius: 10
+                        )
 
                         VStack(alignment: .leading, spacing: 3) {
                             Text(entry.title)
@@ -571,6 +571,9 @@ struct BattleView: View {
 
         if entry.sourceType == .quickAdd {
             parts.append("Quick Add")
+        }
+        if let rating = entry.tmdbRating, rating > 0 {
+            parts.append(String(format: "%.1f TMDB", rating))
         }
 
         if entry.visibility == .circle {

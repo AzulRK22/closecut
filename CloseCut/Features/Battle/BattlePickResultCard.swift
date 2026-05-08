@@ -22,6 +22,10 @@ struct BattlePickResultCard: View {
 
         parts.append(winner.type.displayName)
 
+        if let rating = winner.tmdbRating, rating > 0 {
+            parts.append(String(format: "%.1f TMDB", rating))
+        }
+
         if winner.sourceType == .quickAdd {
             parts.append("Quick Add")
         }
@@ -30,24 +34,34 @@ struct BattlePickResultCard: View {
     }
 
     private var moodText: String {
-        if winner.mood.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        let cleanedMood = winner.mood.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if cleanedMood.isEmpty {
             return winner.quickSentiment?.displayName ?? "Selected memory"
         }
 
-        return winner.mood
+        return cleanedMood
+    }
+
+    private var resultDescription: String {
+        if let overview = cleanOptional(winner.overview) {
+            return overview
+        }
+
+        return "CloseCut picked one option from your selected memories. Pick again if you want another possibility."
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "sparkles")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.accentLight)
-                    .frame(width: 42, height: 42)
-                    .background(CloseCutColors.input)
-                    .clipShape(SwiftUI.Circle())
+                EntryPosterThumbnailView(
+                    entry: winner,
+                    width: 76,
+                    height: 112,
+                    cornerRadius: 15
+                )
 
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text("Tonight’s pick")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(CloseCutColors.accentLight)
@@ -63,26 +77,27 @@ struct BattlePickResultCard: View {
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textSecondary)
                         .lineLimit(1)
+
+                    HStack(spacing: 8) {
+                        resultPill(
+                            icon: "shuffle",
+                            text: "From \(optionCount)"
+                        )
+
+                        resultPill(
+                            icon: "sparkle",
+                            text: moodText
+                        )
+                    }
                 }
 
                 Spacer()
             }
 
-            HStack(spacing: 8) {
-                resultPill(
-                    icon: "shuffle",
-                    text: "Picked from \(optionCount) options"
-                )
-
-                resultPill(
-                    icon: "sparkle",
-                    text: moodText
-                )
-            }
-
-            Text("CloseCut picked one option from your selected memories. Pick again if you want another possibility.")
+            Text(resultDescription)
                 .font(.caption)
                 .foregroundStyle(CloseCutColors.textTertiary)
+                .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 10) {
@@ -139,5 +154,14 @@ struct BattlePickResultCard: View {
         .padding(.vertical, 6)
         .background(CloseCutColors.input)
         .clipShape(Capsule())
+    }
+
+    private func cleanOptional(_ value: String?) -> String? {
+        guard let value else {
+            return nil
+        }
+
+        let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? nil : cleaned
     }
 }

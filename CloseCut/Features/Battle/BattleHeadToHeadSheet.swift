@@ -130,24 +130,57 @@ struct BattleHeadToHeadSheet: View {
                     }
                 }
             } label: {
-                HStack {
-                    Text(selectedEntry.wrappedValue?.title ?? "Select entry")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(selectedEntry.wrappedValue == nil ? CloseCutColors.textTertiary : CloseCutColors.textPrimary)
-                        .lineLimit(1)
-
-                    Spacer()
-
-                    Image(systemName: "chevron.down")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.textTertiary)
-                }
-                .padding(14)
-                .background(CloseCutColors.input)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                selectedPickerLabel(
+                    entry: selectedEntry.wrappedValue
+                )
             }
             .buttonStyle(.plain)
         }
+    }
+
+    private func selectedPickerLabel(entry: Entry?) -> some View {
+        HStack(spacing: 12) {
+            if let entry {
+                EntryPosterThumbnailView(
+                    entry: entry,
+                    width: 42,
+                    height: 60,
+                    cornerRadius: 10
+                )
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(entry.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
+                        .lineLimit(1)
+
+                    Text(subtitle(for: entry))
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .lineLimit(1)
+                }
+            } else {
+                Image(systemName: "film.stack")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .frame(width: 42, height: 60)
+                    .background(CloseCutColors.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                Text("Select entry")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textTertiary)
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.down")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textTertiary)
+        }
+        .padding(12)
+        .background(CloseCutColors.input)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     @ViewBuilder
@@ -191,7 +224,9 @@ struct BattleHeadToHeadSheet: View {
     }
 
     private func battleOptionButton(entry: Entry) -> some View {
-        Button {
+        let isWinner = winner?.id == entry.id
+
+        return Button {
             withAnimation(.easeInOut(duration: 0.2)) {
                 winner = entry
             }
@@ -202,18 +237,29 @@ struct BattleHeadToHeadSheet: View {
             }
         } label: {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: icon(for: entry))
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(winner?.id == entry.id ? .white : CloseCutColors.accentLight)
-                    .frame(width: 38, height: 38)
-                    .background(winner?.id == entry.id ? CloseCutColors.accent : CloseCutColors.input)
-                    .clipShape(SwiftUI.Circle())
+                EntryPosterThumbnailView(
+                    entry: entry,
+                    width: 64,
+                    height: 94,
+                    cornerRadius: 13
+                )
 
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(entry.title)
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.textPrimary)
-                        .lineLimit(2)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(entry.title)
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textPrimary)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Spacer()
+
+                        if isWinner {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(CloseCutColors.accentLight)
+                        }
+                    }
 
                     Text(subtitle(for: entry))
                         .font(.caption)
@@ -224,22 +270,22 @@ struct BattleHeadToHeadSheet: View {
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textTertiary)
                         .lineLimit(1)
-                }
 
-                Spacer()
-
-                if winner?.id == entry.id {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.accentLight)
+                    if let overview = cleanOptional(entry.overview) {
+                        Text(overview)
+                            .font(.caption)
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
             .padding(14)
             .background(CloseCutColors.card)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(winner?.id == entry.id ? CloseCutColors.accentLight : CloseCutColors.separator, lineWidth: winner?.id == entry.id ? 1 : 0.5)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(isWinner ? CloseCutColors.accentLight : CloseCutColors.separator, lineWidth: isWinner ? 1 : 0.5)
             }
         }
         .buttonStyle(.plain)
@@ -247,16 +293,16 @@ struct BattleHeadToHeadSheet: View {
 
     private func winnerSection(_ winner: Entry) -> some View {
         battleCard {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: "trophy.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.accentLight)
-                        .frame(width: 42, height: 42)
-                        .background(CloseCutColors.input)
-                        .clipShape(SwiftUI.Circle())
+                    EntryPosterThumbnailView(
+                        entry: winner,
+                        width: 70,
+                        height: 102,
+                        cornerRadius: 14
+                    )
 
-                    VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: 6) {
                         Text("Winner")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(CloseCutColors.accentLight)
@@ -268,9 +314,15 @@ struct BattleHeadToHeadSheet: View {
                             .foregroundStyle(CloseCutColors.textPrimary)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        Text("This title won your head-to-head taste battle.")
+                        Text(subtitle(for: winner))
                             .font(.caption)
                             .foregroundStyle(CloseCutColors.textSecondary)
+                            .lineLimit(1)
+
+                        Text("This title won your head-to-head taste battle.")
+                            .font(.caption)
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     Spacer()
@@ -311,10 +363,6 @@ struct BattleHeadToHeadSheet: View {
         }
     }
 
-    private func icon(for entry: Entry) -> String {
-        entry.type == .movie ? "film.fill" : "tv.fill"
-    }
-
     private func subtitle(for entry: Entry) -> String {
         var parts: [String] = []
 
@@ -324,6 +372,10 @@ struct BattleHeadToHeadSheet: View {
 
         parts.append(entry.type.displayName)
 
+        if let rating = entry.tmdbRating, rating > 0 {
+            parts.append(String(format: "%.1f TMDB", rating))
+        }
+
         if entry.sourceType == .quickAdd {
             parts.append("Quick Add")
         }
@@ -332,10 +384,21 @@ struct BattleHeadToHeadSheet: View {
     }
 
     private func moodText(for entry: Entry) -> String {
-        if entry.mood.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        let cleanedMood = entry.mood.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if cleanedMood.isEmpty {
             return entry.quickSentiment?.displayName ?? "No mood yet"
         }
 
-        return entry.mood
+        return cleanedMood
+    }
+
+    private func cleanOptional(_ value: String?) -> String? {
+        guard let value else {
+            return nil
+        }
+
+        let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? nil : cleaned
     }
 }

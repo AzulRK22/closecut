@@ -3,6 +3,7 @@
 //  CloseCut
 //
 //  Created by Azul Ramirez Kuri on 06/05/26.
+//
 
 import SwiftUI
 
@@ -118,30 +119,52 @@ struct BattleOptionSelectorSheet: View {
             toggle(entry)
         } label: {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(isSelected ? CloseCutColors.accentLight : CloseCutColors.textTertiary)
-                    .frame(width: 28, height: 28)
+                EntryPosterThumbnailView(
+                    entry: entry,
+                    width: 54,
+                    height: 78,
+                    cornerRadius: 12
+                )
 
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(entry.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.textPrimary)
-                        .lineLimit(2)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(entry.title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textPrimary)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Spacer()
+
+                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(isSelected ? CloseCutColors.accentLight : CloseCutColors.textTertiary)
+                    }
 
                     Text(subtitle(for: entry))
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textSecondary)
                         .lineLimit(1)
-                }
 
-                Spacer()
+                    if let overview = cleanOptional(entry.overview) {
+                        Text(overview)
+                            .font(.caption)
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text(moodText(for: entry))
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                            .lineLimit(1)
+                    }
+                }
             }
-            .padding(14)
+            .padding(12)
             .background(CloseCutColors.card)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(isSelected ? CloseCutColors.accentLight : CloseCutColors.separator, lineWidth: isSelected ? 1 : 0.5)
             }
         }
@@ -157,6 +180,10 @@ struct BattleOptionSelectorSheet: View {
 
         parts.append(entry.type.displayName)
 
+        if let rating = entry.tmdbRating, rating > 0 {
+            parts.append(String(format: "%.1f TMDB", rating))
+        }
+
         if entry.sourceType == .quickAdd {
             parts.append("Quick Add")
         }
@@ -166,6 +193,25 @@ struct BattleOptionSelectorSheet: View {
         }
 
         return parts.joined(separator: " • ")
+    }
+
+    private func moodText(for entry: Entry) -> String {
+        let cleanedMood = entry.mood.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if cleanedMood.isEmpty {
+            return entry.quickSentiment?.displayName ?? "No mood yet"
+        }
+
+        return cleanedMood
+    }
+
+    private func cleanOptional(_ value: String?) -> String? {
+        guard let value else {
+            return nil
+        }
+
+        let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? nil : cleaned
     }
 
     private func toggle(_ entry: Entry) {
