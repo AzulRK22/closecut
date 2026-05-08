@@ -12,6 +12,8 @@ struct QuickPickSuggestion: Identifiable, Equatable {
     let candidate: SuggestionCandidate
     let reason: String
     let reasonCode: QuickPickReasonCode
+    let confidenceLabel: String
+    let signals: [QuickPickSignal]
     let generatedAt: Date
 
     init(
@@ -19,12 +21,16 @@ struct QuickPickSuggestion: Identifiable, Equatable {
         candidate: SuggestionCandidate,
         reason: String,
         reasonCode: QuickPickReasonCode,
+        confidenceLabel: String = "Local match",
+        signals: [QuickPickSignal] = [],
         generatedAt: Date = Date()
     ) {
         self.id = id
         self.candidate = candidate
         self.reason = reason
         self.reasonCode = reasonCode
+        self.confidenceLabel = confidenceLabel
+        self.signals = signals
         self.generatedAt = generatedAt
     }
 }
@@ -34,8 +40,11 @@ enum QuickPickReasonCode: String, Codable {
     case moodContinuity
     case moodContrast
     case tagAffinity
+    case genreAffinity
     case strongSentiment
     case highIntensity
+    case highTMDBRating
+    case recentFavorite
     case rewatchCandidate
     case fallback
 }

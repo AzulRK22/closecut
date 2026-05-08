@@ -67,7 +67,9 @@ final class QuickPickEngine {
     func generateSuggestion(
         history: [Entry]
     ) -> QuickPickState {
-        let activeHistory = history.filter { $0.deletedAt == nil }
+        let activeHistory = history
+            .filter { $0.deletedAt == nil }
+            .filter { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
 
         guard activeHistory.count >= minimumHistoryCount else {
             return .insufficientHistory(
@@ -96,7 +98,9 @@ final class QuickPickEngine {
         let suggestion = QuickPickSuggestion(
             candidate: selected,
             reason: reason.0,
-            reasonCode: reason.1
+            reasonCode: reason.1,
+            confidenceLabel: QuickPickReasonBuilder.confidenceLabel(for: selected),
+            signals: Array(selected.signals.prefix(3))
         )
 
         if availableCandidates.count == 1 {
@@ -128,7 +132,45 @@ final class QuickPickEngine {
             }
             .map { enrich(candidate: $0, with: history) }
 
-        return rewatchCandidates + unwatchedSeeds
+        let upgradedHistoryCandidates = buildHistoryBasedCandidates(from: history)
+
+        return rewatchCandidates + upgradedHistoryCandidates + unwatchedSeeds
+    }
+
+    private func buildHistoryBasedCandidates(
+        from history: [Entry]
+    ) -> [SuggestionCandidate] {
+        history
+            .filter { entry in
+                entry.sourceType == .quickAdd &&
+                entry.quickSentiment != nil &&
+                entry.deletedAt == nil
+            }
+            .prefix(8)
+            .map { entry in
+                var signals = signalsFromEntry(entry)
+
+                if signals.isEmpty {
+                    signals = [.fallback]
+                }
+
+                return SuggestionCandidate(
+                    id: "memory-\(entry.id)",
+                    title: entry.title,
+                    type: entry.type,
+                    releaseYear: entry.releaseYear,
+                    sourceEntryId: entry.id,
+                    isAlreadyWatched: true,
+                    isRewatchCandidate: false,
+                    posterPath: entry.posterPath,
+                    backdropPath: entry.backdropPath,
+                    overview: entry.overview,
+                    tmdbRating: entry.tmdbRating,
+                    tmdbPopularity: entry.tmdbPopularity,
+                    tmdbGenreIds: entry.tmdbGenreIds,
+                    signals: signals
+                )
+            }
     }
 
     private func enrich(
@@ -149,6 +191,10 @@ final class QuickPickEngine {
             signals.append(.strongSentiment(strongSentiment))
         }
 
+        if let dominantGenre = mostFrequentGenreId(in: history) {
+            signals.append(.genreAffinity(dominantGenre))
+        }
+
         return SuggestionCandidate(
             id: candidate.id,
             title: candidate.title,
@@ -157,8 +203,45 @@ final class QuickPickEngine {
             sourceEntryId: candidate.sourceEntryId,
             isAlreadyWatched: candidate.isAlreadyWatched,
             isRewatchCandidate: candidate.isRewatchCandidate,
+            posterPath: candidate.posterPath,
+            backdropPath: candidate.backdropPath,
+            overview: candidate.overview,
+            tmdbRating: candidate.tmdbRating,
+            tmdbPopularity: candidate.tmdbPopularity,
+            tmdbGenreIds: candidate.tmdbGenreIds,
             signals: signals
         )
+    }
+
+    private func signalsFromEntry(_ entry: Entry) -> [QuickPickSignal] {
+        var signals: [QuickPickSignal] = []
+
+        if let sentiment = entry.quickSentiment,
+           sentiment == .loved || sentiment == .stayedWithMe {
+            signals.append(.strongSentiment(sentiment))
+        }
+
+        if entry.intensity >= 4 {
+            signals.append(.highIntensity(entry.intensity))
+        }
+
+        if let rating = entry.tmdbRating, rating >= 7.5 {
+            signals.append(.highTMDBRating(rating))
+        }
+
+        if let firstGenre = entry.tmdbGenreIds.first {
+            signals.append(.genreAffinity(firstGenre))
+        }
+
+        if entry.updatedAt > Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date.distantPast {
+            signals.append(.recentFavorite)
+        }
+
+        if let tag = entry.tags.first {
+            signals.append(.tagAffinity(tag))
+        }
+
+        return signals
     }
 
     private func rankCandidates(
@@ -180,22 +263,58 @@ final class QuickPickEngine {
             switch signal {
             case .moodContinuity:
                 score += 3
-            case .tagAffinity:
-                score += 3
-            case .strongSentiment:
-                score += 2
-            case .highIntensity:
-                score += 2
-            case .rewatchCandidate:
-                score += 4
             case .moodContrast:
                 score += 2
+            case .tagAffinity:
+                score += 3
+            case .genreAffinity(let genreId):
+                score += genreScore(genreId, history: history)
+            case .strongSentiment:
+                score += 4
+            case .highIntensity:
+                score += 2
+            case .highTMDBRating(let rating):
+                score += rating >= 8 ? 3 : 2
+            case .recentFavorite:
+                score += 2
+            case .rewatchCandidate:
+                score += 5
             case .fallback:
                 score += 1
             }
         }
 
+        if candidate.posterPath != nil {
+            score += 1
+        }
+
+        if candidate.overview != nil {
+            score += 1
+        }
+
+        if candidate.isAlreadyWatched && candidate.isRewatchCandidate == false {
+            score -= 1
+        }
+
         return score
+    }
+
+    private func genreScore(
+        _ genreId: Int,
+        history: [Entry]
+    ) -> Int {
+        let count = history.filter { $0.tmdbGenreIds.contains(genreId) }.count
+
+        switch count {
+        case 3...:
+            return 5
+        case 2:
+            return 4
+        case 1:
+            return 2
+        default:
+            return 1
+        }
     }
 
     private func mostFrequentMood(in history: [Entry]) -> String? {
@@ -216,6 +335,18 @@ final class QuickPickEngine {
             .sorted { $0.updatedAt > $1.updatedAt }
             .compactMap { $0.quickSentiment }
             .first { $0 == .loved || $0 == .stayedWithMe }
+    }
+
+    private func mostFrequentGenreId(in history: [Entry]) -> Int? {
+        let genreIds = history.flatMap { $0.tmdbGenreIds }
+
+        let counts = Dictionary(grouping: genreIds, by: { $0 })
+            .mapValues { $0.count }
+
+        return counts
+            .sorted { $0.value > $1.value }
+            .first?
+            .key
     }
 
     private func mostFrequentValue(in values: [String]) -> String? {

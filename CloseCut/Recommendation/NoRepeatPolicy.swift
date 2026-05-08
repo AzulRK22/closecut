@@ -26,3 +26,4 @@ struct NoRepeatPolicy {
         recentlyShownCandidateIds.removeAll()
     }
 }
+

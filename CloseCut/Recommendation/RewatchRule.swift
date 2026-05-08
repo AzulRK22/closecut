@@ -17,15 +17,24 @@ enum RewatchRule {
                 return nil
             }
 
+            var signals: [QuickPickSignal] = [.rewatchCandidate]
+
+            if entry.intensity >= 4 {
+                signals.append(.highIntensity(entry.intensity))
+            }
+
+            if let sentiment = entry.quickSentiment,
+               sentiment == .loved || sentiment == .stayedWithMe {
+                signals.append(.strongSentiment(sentiment))
+            }
+
+            if let rating = entry.tmdbRating, rating >= 7.5 {
+                signals.append(.highTMDBRating(rating))
+            }
+
             return SuggestionCandidate(
-                id: "rewatch-\(entry.id)",
-                title: entry.title,
-                type: entry.type,
-                releaseYear: entry.releaseYear,
-                sourceEntryId: entry.id,
-                isAlreadyWatched: true,
-                isRewatchCandidate: true,
-                signals: [.rewatchCandidate]
+                rewatchEntry: entry,
+                signals: signals
             )
         }
     }
@@ -44,10 +53,11 @@ enum RewatchRule {
             to: now
         ).day ?? 0
 
-        let isOldEnough = daysSinceWatch >= 180
+        let isOldEnough = daysSinceWatch >= 120
         let hasStrongSentiment = entry.quickSentiment == .loved || entry.quickSentiment == .stayedWithMe
         let hasHighIntensity = entry.intensity >= 4
+        let hasStrongRating = (entry.tmdbRating ?? 0) >= 7.5
 
-        return isOldEnough && (hasStrongSentiment || hasHighIntensity)
+        return isOldEnough && (hasStrongSentiment || hasHighIntensity || hasStrongRating)
     }
 }

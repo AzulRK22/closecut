@@ -14,6 +14,14 @@ struct QuickPickView: View {
 
     @StateObject private var viewModel = QuickPickViewModel()
 
+    private var quickPickRefreshKey: String {
+        entries
+            .map {
+                "\($0.id)-\($0.updatedAt.timeIntervalSince1970)-\($0.tmdbId ?? -1)-\($0.quickSentiment?.rawValue ?? "")"
+            }
+            .joined(separator: "|")
+    }
+
     var body: some View {
         Group {
             switch viewModel.state {
@@ -43,7 +51,7 @@ struct QuickPickView: View {
         .onAppear {
             viewModel.generate(history: entries)
         }
-        .onChange(of: entries.count) { _, _ in
+        .onChange(of: quickPickRefreshKey) { _, _ in
             viewModel.generate(history: entries)
         }
     }
