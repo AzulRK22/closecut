@@ -23,6 +23,10 @@ struct TimelineView: View {
         }
     }
 
+    private var timelineSections: [TimelineSection] {
+        TimelineSectionBuilder.buildSections(from: entries)
+    }
+
     private var isLowHistory: Bool {
         entries.count > 0 && entries.count < quickPickTargetCount
     }
@@ -78,6 +82,7 @@ struct TimelineView: View {
                     onQuickAdd: onQuickAdd,
                     onCreateEntry: onCreateEntry
                 )
+
                 if isLowHistory {
                     HistoryProgressModule(
                         currentCount: entries.count,
@@ -87,30 +92,38 @@ struct TimelineView: View {
                     )
                 }
 
-                TimelineSectionHeader(
-                    title: "Recently watched",
-                    subtitle: isLowHistory
-                        ? "Add a few more memories to unlock stronger picks."
-                        : "Your latest memories, quick adds, and shared moments."
-                )
-
-                LazyVStack(spacing: 14) {
-                    ForEach(sortedEntries) { entry in
-                        NavigationLink {
-                            EntryDetailView(
-                                entry: entry,
-                                user: user,
-                                profile: profile
-                            )
-                        } label: {
-                            EntryCardView(entry: entry)
-                        }
-                        .buttonStyle(.plain)
-                    }
+                ForEach(timelineSections) { section in
+                    timelineSectionView(section)
                 }
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
+        }
+    }
+
+    private func timelineSectionView(
+        _ section: TimelineSection
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            TimelineSectionHeader(
+                title: section.title,
+                subtitle: section.subtitle
+            )
+
+            LazyVStack(spacing: 14) {
+                ForEach(section.entries) { entry in
+                    NavigationLink {
+                        EntryDetailView(
+                            entry: entry,
+                            user: user,
+                            profile: profile
+                        )
+                    } label: {
+                        EntryCardView(entry: entry)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
     }
 }
