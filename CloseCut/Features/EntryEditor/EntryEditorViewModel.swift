@@ -26,6 +26,8 @@ final class EntryEditorViewModel: ObservableObject {
     // Kept for compatibility with older UI/code, but no longer drives sharing.
     @Published var isSharedWithCircle: Bool = false
 
+    @Published private(set) var selectedTMDBResult: TMDBMediaSearchResult?
+
     @Published var isSaving: Bool = false
     @Published var errors: [String] = []
 
@@ -68,6 +70,71 @@ final class EntryEditorViewModel: ObservableObject {
         return nil
     }
 
+    var existingExternalMetadata: EntryExternalMetadata? {
+        editingEntry?.externalMetadata
+    }
+
+    var resolvedExternalMetadata: EntryExternalMetadata? {
+        if let selectedTMDBResult {
+            return EntryExternalMetadata(tmdbResult: selectedTMDBResult)
+        }
+
+        return editingEntry?.externalMetadata
+    }
+
+    var currentReleaseYear: Int? {
+        selectedTMDBResult?.releaseYear ?? editingEntry?.releaseYear
+    }
+
+    var metadataDisplayTitle: String? {
+        selectedTMDBResult?.title ?? editingEntry?.title
+    }
+
+    var metadataPosterPath: String? {
+        selectedTMDBResult?.posterPath ?? editingEntry?.posterPath
+    }
+
+    var metadataMediaType: TMDBMediaType {
+        if let selectedTMDBResult {
+            return selectedTMDBResult.mediaType
+        }
+
+        if let raw = editingEntry?.tmdbMediaTypeRaw {
+            return TMDBMediaType(rawValue: raw) ?? .unknown
+        }
+
+        return type == .series ? .tv : .movie
+    }
+
+    var metadataSubtitle: String? {
+        if let selectedTMDBResult {
+            return selectedTMDBResult.subtitle
+        }
+
+        guard let editingEntry,
+              editingEntry.hasTMDBMetadata else {
+            return nil
+        }
+
+        var parts: [String] = []
+
+        if let releaseYear = editingEntry.releaseYear {
+            parts.append("\(releaseYear)")
+        }
+
+        parts.append(editingEntry.type.displayName)
+
+        if let rating = editingEntry.tmdbRating, rating > 0 {
+            parts.append(String(format: "%.1f TMDB", rating))
+        }
+
+        return parts.joined(separator: " • ")
+    }
+
+    var hasMetadataSelectionOrExistingMetadata: Bool {
+        selectedTMDBResult != nil || editingEntry?.hasTMDBMetadata == true
+    }
+
     var isDirty: Bool {
         if let editingEntry {
             return hasChanges(comparedTo: editingEntry)
@@ -77,7 +144,8 @@ final class EntryEditorViewModel: ObservableObject {
         selectedMood != nil ||
         !takeaway.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
         !keyMoment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-        !tags.isEmpty
+        !tags.isEmpty ||
+        selectedTMDBResult != nil
     }
 
     var canSave: Bool {
@@ -104,6 +172,7 @@ final class EntryEditorViewModel: ObservableObject {
         cinemaScreen = nil
         cinemaComfort = nil
         isSharedWithCircle = false
+        selectedTMDBResult = nil
         errors = []
     }
 
@@ -122,7 +191,19 @@ final class EntryEditorViewModel: ObservableObject {
         cinemaScreen = entry.cinemaScreen
         cinemaComfort = entry.cinemaComfort
         isSharedWithCircle = entry.isSharedWithCircle
+        selectedTMDBResult = nil
         errors = []
+    }
+
+    func selectTMDBResult(_ result: TMDBMediaSearchResult) {
+        selectedTMDBResult = result
+        title = result.title
+        type = result.entryType
+        errors.removeAll { $0 == "Title is required." }
+    }
+
+    func clearSelectedTMDBResult() {
+        selectedTMDBResult = nil
     }
 
     func save(
@@ -162,7 +243,7 @@ final class EntryEditorViewModel: ObservableObject {
                     entryId: editingEntry.id,
                     title: title,
                     type: type,
-                    releaseYear: editingEntry.releaseYear,
+                    releaseYear: selectedTMDBResult?.releaseYear ?? editingEntry.releaseYear,
                     mood: selectedMood.label,
                     quickSentiment: editingEntry.quickSentiment,
                     takeaway: takeaway,
@@ -177,6 +258,7 @@ final class EntryEditorViewModel: ObservableObject {
                     visibility: visibility,
                     sharedCircleIds: cleanedSelectedCircleIds,
                     sourceType: .fullEntry,
+                    externalMetadata: resolvedExternalMetadata,
                     watchedAt: editingEntry.watchedAt,
                     modelContext: modelContext
                 )
@@ -185,7 +267,7 @@ final class EntryEditorViewModel: ObservableObject {
                     ownerId: ownerId,
                     title: title,
                     type: type,
-                    releaseYear: nil,
+                    releaseYear: selectedTMDBResult?.releaseYear,
                     mood: selectedMood.label,
                     quickSentiment: nil,
                     takeaway: takeaway,
@@ -200,6 +282,7 @@ final class EntryEditorViewModel: ObservableObject {
                     visibility: visibility,
                     sharedCircleIds: cleanedSelectedCircleIds,
                     sourceType: .fullEntry,
+                    externalMetadata: resolvedExternalMetadata,
                     watchedAt: Date(),
                     modelContext: modelContext
                 )
@@ -230,7 +313,8 @@ final class EntryEditorViewModel: ObservableObject {
         cinemaAudio != entry.cinemaAudio ||
         cinemaScreen != entry.cinemaScreen ||
         cinemaComfort != entry.cinemaComfort ||
-        cleanedSelectedCircleIds != cleanCircleIds(entry.sharedCircleIds)
+        cleanedSelectedCircleIds != cleanCircleIds(entry.sharedCircleIds) ||
+        selectedTMDBResult != nil
     }
 
     private func hasChanges(comparedTo entry: Entry) -> Bool {
@@ -247,7 +331,8 @@ final class EntryEditorViewModel: ObservableObject {
         cinemaAudio != entry.cinemaAudio ||
         cinemaScreen != entry.cinemaScreen ||
         cinemaComfort != entry.cinemaComfort ||
-        isSharedWithCircle != entry.isSharedWithCircle
+        isSharedWithCircle != entry.isSharedWithCircle ||
+        selectedTMDBResult != nil
     }
 
     private func cleanCircleIds(_ ids: [String]) -> [String] {

@@ -9,6 +9,7 @@ import SwiftUI
 
 struct MediaPosterView: View {
     let posterPath: String?
+    var mediaType: TMDBMediaType = .movie
     var width: CGFloat = 54
     var height: CGFloat = 80
     var cornerRadius: CGFloat = 10
@@ -18,6 +19,10 @@ struct MediaPosterView: View {
             path: posterPath,
             size: .posterMedium
         )
+    }
+
+    private var fallbackIcon: String {
+        mediaType == .tv ? "tv.fill" : "film.fill"
     }
 
     var body: some View {
@@ -54,11 +59,12 @@ struct MediaPosterView: View {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
+        .accessibilityHidden(true)
     }
 
     private var fallbackPoster: some View {
         VStack(spacing: 6) {
-            Image(systemName: "film.fill")
+            Image(systemName: fallbackIcon)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(CloseCutColors.textTertiary)
 
