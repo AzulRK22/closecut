@@ -720,9 +720,11 @@ struct BattleView: View {
         ),
         profile: UserProfile(
             id: "preview-user",
-            displayName: "Preview User",
+            displayName: "Preview",
             email: "preview@closecut.dev",
             photoURL: nil,
+            circleId: nil,
+            circleIds: [],
             defaultVisibility: .privateOnly,
             createdAt: Date(),
             updatedAt: Date(),

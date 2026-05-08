@@ -28,6 +28,7 @@ final class UserProfileRepository {
                 email: authUser.email,
                 photoURL: authUser.photoURL?.absoluteString,
                 circleId: nil,
+                circleIds: [],
                 defaultVisibility: .privateOnly,
                 createdAt: Date(),
                 updatedAt: Date(),
@@ -91,14 +92,7 @@ final class UserProfileRepository {
             userId: profile.id,
             modelContext: modelContext
         ) {
-            existing.displayName = profile.displayName
-            existing.email = profile.email
-            existing.photoURL = profile.photoURL
-            existing.circleId = profile.circleId
-            existing.defaultVisibilityRaw = profile.defaultVisibility.rawValue
-            existing.createdAt = profile.createdAt
-            existing.updatedAt = profile.updatedAt
-            existing.syncStatusRaw = profile.syncStatus.rawValue
+            existing.update(from: profile)
         } else {
             let localProfile = LocalUserProfile(
                 id: profile.id,
@@ -106,6 +100,7 @@ final class UserProfileRepository {
                 email: profile.email,
                 photoURL: profile.photoURL,
                 circleId: profile.circleId,
+                circleIds: profile.circleIds,
                 defaultVisibility: profile.defaultVisibility,
                 createdAt: profile.createdAt,
                 updatedAt: profile.updatedAt,
@@ -131,6 +126,9 @@ final class UserProfileRepository {
             modelContext: modelContext
         ) {
             localProfile.circleId = circleId
+            localProfile.circleIds = cleanCircleIds(
+                (localProfile.circleIds ?? []) + [circleId].compactMap { $0 }
+            )
             localProfile.updatedAt = Date()
             localProfile.syncStatusRaw = SyncStatus.pending.rawValue
 
@@ -145,6 +143,79 @@ final class UserProfileRepository {
 
         var newProfile = fallbackProfile
         newProfile.circleId = circleId
+        newProfile.circleIds = cleanCircleIds(
+            newProfile.circleIds + [circleId].compactMap { $0 }
+        )
+        newProfile.updatedAt = Date()
+        newProfile.syncStatus = .pending
+
+        try upsertLocalProfile(
+            newProfile,
+            modelContext: modelContext
+        )
+
+        return newProfile
+    }
+
+    func addLocalCircleId(
+        userId: String,
+        circleId: String,
+        fallbackProfile: UserProfile? = nil,
+        modelContext: ModelContext
+    ) throws -> UserProfile {
+        if let localProfile = try fetchLocalProfile(
+            userId: userId,
+            modelContext: modelContext
+        ) {
+            localProfile.addCircleId(circleId)
+            try modelContext.save()
+            return localProfile.domain
+        }
+
+        guard let fallbackProfile else {
+            throw UserProfileRepositoryError.profileNotFound
+        }
+
+        var newProfile = fallbackProfile
+        newProfile.circleId = newProfile.circleId ?? circleId
+        newProfile.circleIds = cleanCircleIds(newProfile.circleIds + [circleId])
+        newProfile.updatedAt = Date()
+        newProfile.syncStatus = .pending
+
+        try upsertLocalProfile(
+            newProfile,
+            modelContext: modelContext
+        )
+
+        return newProfile
+    }
+
+    func removeLocalCircleId(
+        userId: String,
+        circleId: String,
+        fallbackProfile: UserProfile? = nil,
+        modelContext: ModelContext
+    ) throws -> UserProfile {
+        if let localProfile = try fetchLocalProfile(
+            userId: userId,
+            modelContext: modelContext
+        ) {
+            localProfile.removeCircleId(circleId)
+            try modelContext.save()
+            return localProfile.domain
+        }
+
+        guard let fallbackProfile else {
+            throw UserProfileRepositoryError.profileNotFound
+        }
+
+        var newProfile = fallbackProfile
+        newProfile.circleIds = cleanCircleIds(newProfile.circleIds.filter { $0 != circleId })
+
+        if newProfile.circleId == circleId {
+            newProfile.circleId = newProfile.circleIds.first
+        }
+
         newProfile.updatedAt = Date()
         newProfile.syncStatus = .pending
 
@@ -160,11 +231,69 @@ final class UserProfileRepository {
         userId: String,
         circleId: String?
     ) async throws {
+        var circleIds: [String] = []
+
+        if let remoteProfile = try await fetchRemoteProfile(userId: userId) {
+            circleIds = cleanCircleIds(
+                remoteProfile.circleIds + [circleId].compactMap { $0 }
+            )
+        } else if let circleId {
+            circleIds = [circleId]
+        }
+
         try await FirestorePaths
             .user(userId)
             .setData(
                 [
                     "circleId": circleId as Any,
+                    "circleIds": circleIds,
+                    "updatedAt": Timestamp(date: Date())
+                ],
+                merge: true
+            )
+    }
+
+    func addRemoteCircleId(
+        userId: String,
+        circleId: String
+    ) async throws {
+        let remoteProfile = try await fetchRemoteProfile(userId: userId)
+
+        let existingCircleIds = remoteProfile?.circleIds ?? []
+        let resolvedCircleId = remoteProfile?.circleId ?? circleId
+
+        let updatedCircleIds = cleanCircleIds(existingCircleIds + [circleId])
+
+        try await FirestorePaths
+            .user(userId)
+            .setData(
+                [
+                    "circleId": resolvedCircleId,
+                    "circleIds": updatedCircleIds,
+                    "updatedAt": Timestamp(date: Date())
+                ],
+                merge: true
+            )
+    }
+
+    func removeRemoteCircleId(
+        userId: String,
+        circleId: String
+    ) async throws {
+        let remoteProfile = try await fetchRemoteProfile(userId: userId)
+
+        let existingCircleIds = remoteProfile?.circleIds ?? []
+        let updatedCircleIds = cleanCircleIds(existingCircleIds.filter { $0 != circleId })
+        let resolvedCircleId = remoteProfile?.circleId == circleId
+            ? updatedCircleIds.first
+            : remoteProfile?.circleId
+
+        try await FirestorePaths
+            .user(userId)
+            .setData(
+                [
+                    "circleId": resolvedCircleId as Any,
+                    "circleIds": updatedCircleIds,
                     "updatedAt": Timestamp(date: Date())
                 ],
                 merge: true
@@ -198,6 +327,17 @@ final class UserProfileRepository {
         }
 
         return "CloseCut User"
+    }
+
+    private func cleanCircleIds(_ ids: [String]) -> [String] {
+        Array(
+            Set(
+                ids
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+            )
+        )
+        .sorted()
     }
 }
 

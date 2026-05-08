@@ -69,7 +69,7 @@ final class EntryRemoteDataSource {
         let snapshot = try await db
             .collection("entries")
             .whereField("visibility", isEqualTo: EntryVisibility.circle.rawValue)
-            .whereField("circleId", isEqualTo: circleId)
+            .whereField("sharedCircleIds", arrayContains: circleId)
             .order(by: "updatedAt", descending: true)
             .getDocuments()
 

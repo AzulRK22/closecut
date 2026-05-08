@@ -711,11 +711,12 @@ struct CircleView: View {
             photoURL: nil
         ),
         profile: UserProfile(
-            id: "preview-user-1234",
-            displayName: "Preview User",
+            id: "preview-user",
+            displayName: "Preview",
             email: "preview@closecut.dev",
             photoURL: nil,
             circleId: nil,
+            circleIds: [],
             defaultVisibility: .privateOnly,
             createdAt: Date(),
             updatedAt: Date(),

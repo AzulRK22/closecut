@@ -164,6 +164,7 @@ struct HomeView: View {
             email: "preview@closecut.dev",
             photoURL: nil,
             circleId: nil,
+            circleIds: [],
             defaultVisibility: .privateOnly,
             createdAt: Date(),
             updatedAt: Date(),
