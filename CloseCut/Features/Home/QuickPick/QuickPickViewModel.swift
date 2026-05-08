@@ -16,16 +16,28 @@ final class QuickPickViewModel: ObservableObject {
     )
 
     private let engine = QuickPickEngine()
+    private var generationTask: Task<Void, Never>?
 
     func generate(history: [Entry]) {
-        state = engine.generateSuggestion(history: history)
+        generationTask?.cancel()
+
+        generationTask = Task {
+            let newState = await engine.generateSuggestion(history: history)
+
+            guard Task.isCancelled == false else {
+                return
+            }
+
+            state = newState
+        }
     }
 
     func refresh(history: [Entry]) {
-        state = engine.generateSuggestion(history: history)
+        generate(history: history)
     }
 
     func resetSession() {
+        generationTask?.cancel()
         engine.resetSession()
     }
 }

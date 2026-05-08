@@ -38,6 +38,23 @@ enum QuickPickReasonBuilder {
             )
         }
 
+        if candidate.sourceEntryId == nil && candidate.isAlreadyWatched == false {
+            if candidate.signals.contains(where: {
+                if case .genreAffinity = $0 { return true }
+                return false
+            }) {
+                return (
+                    "Your archive leans toward similar genres, so this TMDB discovery fits the pattern of what tends to stay with you.",
+                    .genreAffinity
+                )
+            }
+
+            return (
+                "This is a new TMDB discovery selected from patterns in your local watch history.",
+                .fallback
+            )
+        }
+
         if let signal = candidate.signals.first {
             switch signal {
             case .genreAffinity:
@@ -111,6 +128,10 @@ enum QuickPickReasonBuilder {
     static func confidenceLabel(
         for candidate: SuggestionCandidate
     ) -> String {
+        if candidate.sourceEntryId == nil && candidate.isAlreadyWatched == false {
+            return "TMDB discovery"
+        }
+
         if candidate.isRewatchCandidate {
             return "Rewatch signal"
         }

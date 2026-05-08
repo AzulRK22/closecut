@@ -170,3 +170,146 @@ extension TMDBMediaSearchResult {
         self.genreIds = dto.genreIds ?? []
     }
 }
+struct TMDBDiscoverMovieResponse: Decodable {
+    let page: Int
+    let results: [TMDBDiscoverMovieDTO]
+    let totalPages: Int
+    let totalResults: Int
+
+    enum CodingKeys: String, CodingKey {
+        case page
+        case results
+        case totalPages = "total_pages"
+        case totalResults = "total_results"
+    }
+}
+
+struct TMDBDiscoverTVResponse: Decodable {
+    let page: Int
+    let results: [TMDBDiscoverTVDTO]
+    let totalPages: Int
+    let totalResults: Int
+
+    enum CodingKeys: String, CodingKey {
+        case page
+        case results
+        case totalPages = "total_pages"
+        case totalResults = "total_results"
+    }
+}
+
+struct TMDBDiscoverMovieDTO: Decodable, Identifiable {
+    let id: Int
+    let title: String?
+    let overview: String?
+    let posterPath: String?
+    let backdropPath: String?
+    let releaseDate: String?
+    let voteAverage: Double?
+    let popularity: Double?
+    let genreIds: [Int]?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case overview
+        case posterPath = "poster_path"
+        case backdropPath = "backdrop_path"
+        case releaseDate = "release_date"
+        case voteAverage = "vote_average"
+        case popularity
+        case genreIds = "genre_ids"
+    }
+
+    var displayTitle: String {
+        (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var releaseYear: Int? {
+        guard let yearText = releaseDate?.prefix(4),
+              let year = Int(yearText) else {
+            return nil
+        }
+
+        return year
+    }
+}
+
+struct TMDBDiscoverTVDTO: Decodable, Identifiable {
+    let id: Int
+    let name: String?
+    let overview: String?
+    let posterPath: String?
+    let backdropPath: String?
+    let firstAirDate: String?
+    let voteAverage: Double?
+    let popularity: Double?
+    let genreIds: [Int]?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case overview
+        case posterPath = "poster_path"
+        case backdropPath = "backdrop_path"
+        case firstAirDate = "first_air_date"
+        case voteAverage = "vote_average"
+        case popularity
+        case genreIds = "genre_ids"
+    }
+
+    var displayTitle: String {
+        (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var releaseYear: Int? {
+        guard let yearText = firstAirDate?.prefix(4),
+              let year = Int(yearText) else {
+            return nil
+        }
+
+        return year
+    }
+}
+
+extension TMDBMediaSearchResult {
+    init?(movieDTO: TMDBDiscoverMovieDTO) {
+        let title = movieDTO.displayTitle
+
+        guard title.isEmpty == false else {
+            return nil
+        }
+
+        self.tmdbId = movieDTO.id
+        self.mediaType = .movie
+        self.id = "movie-\(movieDTO.id)"
+        self.title = title
+        self.releaseYear = movieDTO.releaseYear
+        self.overview = movieDTO.overview
+        self.posterPath = movieDTO.posterPath
+        self.backdropPath = movieDTO.backdropPath
+        self.voteAverage = movieDTO.voteAverage
+        self.popularity = movieDTO.popularity
+        self.genreIds = movieDTO.genreIds ?? []
+    }
+
+    init?(tvDTO: TMDBDiscoverTVDTO) {
+        let title = tvDTO.displayTitle
+
+        guard title.isEmpty == false else {
+            return nil
+        }
+
+        self.tmdbId = tvDTO.id
+        self.mediaType = .tv
+        self.id = "tv-\(tvDTO.id)"
+        self.title = title
+        self.releaseYear = tvDTO.releaseYear
+        self.overview = tvDTO.overview
+        self.posterPath = tvDTO.posterPath
+        self.backdropPath = tvDTO.backdropPath
+        self.voteAverage = tvDTO.voteAverage
+        self.popularity = tvDTO.popularity
+        self.genreIds = tvDTO.genreIds ?? []
+    }
+}
