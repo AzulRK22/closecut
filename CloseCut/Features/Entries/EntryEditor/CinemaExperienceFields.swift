@@ -13,16 +13,40 @@ struct CinemaExperienceFields: View {
     @Binding var comfort: Int?
 
     var body: some View {
-        VStack(spacing: 12) {
-            qualityRow(title: "Audio", value: $audio)
-            qualityRow(title: "Screen", value: $screen)
-            qualityRow(title: "Comfort", value: $comfort)
+        VStack(alignment: .leading, spacing: 14) {
+            header
+
+            VStack(spacing: 12) {
+                qualityRow(
+                    title: "Audio",
+                    subtitle: "Sound clarity and immersion",
+                    value: $audio
+                )
+
+                Divider()
+                    .overlay(CloseCutColors.separator)
+
+                qualityRow(
+                    title: "Screen",
+                    subtitle: "Image quality and room setup",
+                    value: $screen
+                )
+
+                Divider()
+                    .overlay(CloseCutColors.separator)
+
+                qualityRow(
+                    title: "Comfort",
+                    subtitle: "Seat, room, and overall experience",
+                    value: $comfort
+                )
+            }
         }
         .padding(16)
         .background(CloseCutColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
         .transition(.move(edge: .top).combined(with: .opacity))
@@ -30,13 +54,53 @@ struct CinemaExperienceFields: View {
         .accessibilityLabel("Cinema experience")
     }
 
-    private func qualityRow(title: String, value: Binding<Int?>) -> some View {
-        HStack(spacing: 12) {
-            Text(title)
-                .font(.subheadline)
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Cinema experience")
+                .font(.headline.weight(.semibold))
                 .foregroundStyle(CloseCutColors.textPrimary)
 
-            Spacer()
+            Text("Optional ratings for memories watched at the theater.")
+                .font(.caption)
+                .foregroundStyle(CloseCutColors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func qualityRow(
+        title: String,
+        subtitle: String,
+        value: Binding<Int?>
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
+
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                if value.wrappedValue != nil {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.16)) {
+                            value.wrappedValue = nil
+                        }
+                    } label: {
+                        Text("Clear")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear \(title) rating")
+                }
+            }
 
             HStack(spacing: 6) {
                 qualityButton("Poor", number: 1, value: value)
@@ -44,7 +108,6 @@ struct CinemaExperienceFields: View {
                 qualityButton("Great", number: 5, value: value)
             }
         }
-        .frame(minHeight: 44)
     }
 
     private func qualityButton(
@@ -52,18 +115,27 @@ struct CinemaExperienceFields: View {
         number: Int,
         value: Binding<Int?>
     ) -> some View {
-        Button {
-            value.wrappedValue = number
+        let isSelected = value.wrappedValue == number
+
+        return Button {
+            withAnimation(.easeInOut(duration: 0.16)) {
+                value.wrappedValue = number
+            }
         } label: {
             Text(label)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(value.wrappedValue == number ? .white : CloseCutColors.textSecondary)
-                .frame(width: 56, height: 32)
-                .background(value.wrappedValue == number ? CloseCutColors.accent : CloseCutColors.input)
+                .foregroundStyle(isSelected ? .white : CloseCutColors.textSecondary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 34)
+                .background(isSelected ? CloseCutColors.accent : CloseCutColors.input)
                 .clipShape(Capsule())
+                .overlay {
+                    Capsule()
+                        .stroke(isSelected ? CloseCutColors.accentLight : CloseCutColors.separator, lineWidth: 0.5)
+                }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(label)")
-        .accessibilityAddTraits(value.wrappedValue == number ? .isSelected : [])
+        .accessibilityLabel("\(label) \(number) out of 5")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

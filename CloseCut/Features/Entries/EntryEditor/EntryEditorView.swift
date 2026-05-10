@@ -24,14 +24,13 @@ struct EntryEditorView: View {
     @State private var isShowingMediaSearch = false
     @State private var didConfigureViewModel = false
     @State private var isMetadataSectionExpanded = false
+    @State private var selectedCircleIds: Set<String> = []
 
     @Query(sort: \LocalCircle.updatedAt, order: .reverse)
     private var localCircles: [LocalCircle]
 
     @Query(sort: \LocalCircleMembership.updatedAt, order: .reverse)
     private var localMemberships: [LocalCircleMembership]
-
-    @State private var selectedCircleIds: Set<String> = []
 
     private enum Field {
         case title
@@ -51,10 +50,42 @@ struct EntryEditorView: View {
 
         return localCircles
             .map { $0.domain }
-            .filter { activeCircleIds.contains($0.id) && $0.deletedAt == nil }
+            .filter { activeCircleIds.contains($0.id) }
+            .filter { $0.deletedAt == nil }
             .sorted { first, second in
                 first.updatedAt > second.updatedAt
             }
+    }
+
+    private var isEditorDirty: Bool {
+        if let entryToEdit {
+            return viewModel.hasChanges(
+                comparedTo: entryToEdit,
+                selectedCircleIds: Array(selectedCircleIds)
+            )
+        }
+
+        return viewModel.isDirty || selectedCircleIds.isEmpty == false
+    }
+
+    private var canSave: Bool {
+        viewModel.canSave && viewModel.isSaving == false
+    }
+
+    private var hasSelectedCircles: Bool {
+        selectedCircleIds.isEmpty == false
+    }
+
+    private var selectedCircleCountText: String {
+        if selectedCircleIds.isEmpty {
+            return "Private"
+        }
+
+        if selectedCircleIds.count == 1 {
+            return "Shared with 1 Circle"
+        }
+
+        return "Shared with \(selectedCircleIds.count) Circles"
     }
 
     var body: some View {
@@ -64,15 +95,10 @@ struct EntryEditorView: View {
                     .ignoresSafeArea()
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 22) {
                         dragHandle
 
-                        if let helperMessage = viewModel.helperMessage {
-                            Text(helperMessage)
-                                .font(.subheadline)
-                                .foregroundStyle(CloseCutColors.textSecondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
+                        editorHeader
 
                         mediaMetadataSection
 
@@ -101,12 +127,9 @@ struct EntryEditorView: View {
                             .animation(.easeInOut(duration: 0.2), value: viewModel.watchContext)
                         }
 
-                        CircleSharePickerView(
-                            circles: activeCircles,
-                            selectedCircleIds: $selectedCircleIds
-                        )
+                        sharingSection
 
-                        if !viewModel.errors.isEmpty {
+                        if viewModel.errors.isEmpty == false {
                             errorSection
                         }
 
@@ -115,6 +138,7 @@ struct EntryEditorView: View {
                     .padding(.horizontal, 20)
                     .padding(.bottom, 24)
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle(viewModel.navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
@@ -124,6 +148,7 @@ struct EntryEditorView: View {
                         handleDismiss()
                     }
                     .foregroundStyle(CloseCutColors.textSecondary)
+                    .disabled(viewModel.isSaving)
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
@@ -138,13 +163,13 @@ struct EntryEditorView: View {
                             Text(viewModel.saveButtonTitle)
                         }
                     }
-                    .disabled(!viewModel.canSave)
-                    .foregroundStyle(viewModel.canSave ? CloseCutColors.accent : CloseCutColors.inactive)
+                    .disabled(canSave == false)
+                    .foregroundStyle(canSave ? CloseCutColors.accent : CloseCutColors.inactive)
                 }
             }
         }
         .preferredColorScheme(.dark)
-        .interactiveDismissDisabled(isEditorDirty)
+        .interactiveDismissDisabled(isEditorDirty || viewModel.isSaving)
         .confirmationDialog(
             "Discard entry?",
             isPresented: $showDiscardConfirmation,
@@ -156,7 +181,7 @@ struct EntryEditorView: View {
 
             Button("Keep editing", role: .cancel) {}
         } message: {
-            Text("Your changes won't be saved.")
+            Text("Your changes won’t be saved.")
         }
         .sheet(isPresented: $isShowingMediaSearch) {
             MediaSearchView(
@@ -180,24 +205,11 @@ struct EntryEditorView: View {
             .presentationDragIndicator(.visible)
         }
         .onAppear {
-            guard didConfigureViewModel == false else {
-                return
-            }
-
-            didConfigureViewModel = true
-
-            if let entryToEdit {
-                viewModel.configureForEdit(entry: entryToEdit)
-                selectedCircleIds = Set(entryToEdit.sharedCircleIds)
-                isMetadataSectionExpanded = entryToEdit.hasTMDBMetadata == false
-            } else {
-                viewModel.configureForNewEntry()
-                selectedCircleIds = []
-                isMetadataSectionExpanded = true
-                focusedField = .title
-            }
+            configureViewModelIfNeeded()
         }
     }
+
+    // MARK: - Header
 
     private var dragHandle: some View {
         Capsule()
@@ -205,7 +217,79 @@ struct EntryEditorView: View {
             .frame(width: 36, height: 4)
             .frame(maxWidth: .infinity)
             .padding(.top, 8)
+            .accessibilityHidden(true)
     }
+
+    private var editorHeader: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: entryToEdit?.sourceType == .quickAdd ? "bolt.fill" : "film.stack.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.accentLight)
+                    .frame(width: 40, height: 40)
+                    .background(CloseCutColors.input)
+                    .clipShape(SwiftUI.Circle())
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(headerTitle)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(headerSubtitle)
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+            }
+
+            if hasSelectedCircles || entryToEdit?.isSharedWithCircle == true {
+                HStack(spacing: 8) {
+                    Image(systemName: hasSelectedCircles ? "person.2.fill" : "lock.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(hasSelectedCircles ? CloseCutColors.accentLight : CloseCutColors.textTertiary)
+
+                    Text(selectedCircleCountText)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(hasSelectedCircles ? CloseCutColors.accentLight : CloseCutColors.textTertiary)
+
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(CloseCutColors.input)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+        }
+    }
+
+    private var headerTitle: String {
+        if viewModel.isUpgradingQuickAdd {
+            return "Turn this Quick Add into a richer memory."
+        }
+
+        if viewModel.isEditing {
+            return "Update this memory."
+        }
+
+        return "Add a new watch memory."
+    }
+
+    private var headerSubtitle: String {
+        if viewModel.isUpgradingQuickAdd {
+            return "Add mood, takeaway, context, metadata, and Circle sharing when it makes sense."
+        }
+
+        if viewModel.isEditing {
+            return "Keep your Timeline accurate without losing the original watch memory."
+        }
+
+        return "Capture what you watched, how it felt, and whether it belongs only to you or also to a Circle."
+    }
+
+    // MARK: - Metadata
 
     private var mediaMetadataSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -278,7 +362,7 @@ struct EntryEditorView: View {
                                 .foregroundStyle(CloseCutColors.textTertiary)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 36)
-                                .background(CloseCutColors.input.opacity(0.7))
+                                .background(CloseCutColors.input.opacity(0.72))
                                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
                         .buttonStyle(.plain)
@@ -351,8 +435,14 @@ struct EntryEditorView: View {
         return "Add poster, overview, rating, and genres."
     }
 
+    // MARK: - Main Fields
+
     private var titleField: some View {
         VStack(alignment: .leading, spacing: 6) {
+            Text("Title")
+                .font(.caption)
+                .foregroundStyle(CloseCutColors.textSecondary)
+
             TextField("What did you watch?", text: $viewModel.title)
                 .focused($focusedField, equals: .title)
                 .font(.title3)
@@ -365,18 +455,26 @@ struct EntryEditorView: View {
                 .padding(.vertical, 10)
                 .overlay(alignment: .bottom) {
                     Rectangle()
-                        .fill(
-                            viewModel.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-                            viewModel.errors.contains("Title is required.")
-                            ? CloseCutColors.failed
-                            : CloseCutColors.separator
-                        )
+                        .fill(titleFieldBorderColor)
                         .frame(height: 0.5)
                 }
+                .onChange(of: viewModel.title) { _, newValue in
+                    if newValue.count > EntryValidation.maxTitleLength {
+                        viewModel.title = String(newValue.prefix(EntryValidation.maxTitleLength))
+                    }
+                }
 
-            if let releaseYear = viewModel.currentReleaseYear {
-                Text("Linked year: \(releaseYear)")
-                    .font(.caption2.weight(.semibold))
+            HStack {
+                if let releaseYear = viewModel.currentReleaseYear {
+                    Text("Linked year: \(releaseYear)")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                }
+
+                Spacer()
+
+                Text("\(viewModel.title.count)/\(EntryValidation.maxTitleLength)")
+                    .font(.caption2)
                     .foregroundStyle(CloseCutColors.textTertiary)
             }
 
@@ -386,6 +484,13 @@ struct EntryEditorView: View {
                     .foregroundStyle(CloseCutColors.failed)
             }
         }
+    }
+
+    private var titleFieldBorderColor: Color {
+        let isTitleMissing = viewModel.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            viewModel.errors.contains("Title is required.")
+
+        return isTitleMissing ? CloseCutColors.failed : CloseCutColors.separator
     }
 
     private var moodSection: some View {
@@ -418,10 +523,10 @@ struct EntryEditorView: View {
                 .frame(minHeight: 88)
                 .padding(10)
                 .background(CloseCutColors.card)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(CloseCutColors.separator, lineWidth: 0.5)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(takeawayBorderColor, lineWidth: 0.5)
                 }
                 .overlay(alignment: .topLeading) {
                     if viewModel.takeaway.isEmpty {
@@ -433,12 +538,27 @@ struct EntryEditorView: View {
                             .allowsHitTesting(false)
                     }
                 }
+                .onChange(of: viewModel.takeaway) { _, newValue in
+                    if newValue.count > EntryValidation.maxTakeawayLength {
+                        viewModel.takeaway = String(newValue.prefix(EntryValidation.maxTakeawayLength))
+                    }
+                }
 
             Text("\(viewModel.takeaway.count)/\(EntryValidation.maxTakeawayLength)")
                 .font(.caption2)
-                .foregroundStyle(CloseCutColors.textTertiary)
+                .foregroundStyle(
+                    viewModel.takeaway.count > EntryValidation.maxTakeawayLength
+                    ? CloseCutColors.failed
+                    : CloseCutColors.textTertiary
+                )
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
+    }
+
+    private var takeawayBorderColor: Color {
+        viewModel.takeaway.count > EntryValidation.maxTakeawayLength
+            ? CloseCutColors.failed
+            : CloseCutColors.separator
     }
 
     private var keyMomentSection: some View {
@@ -447,17 +567,38 @@ struct EntryEditorView: View {
                 .font(.caption)
                 .foregroundStyle(CloseCutColors.textSecondary)
 
-            TextField("A line that stayed with you…", text: $viewModel.keyMoment)
+            TextField("A line that stayed with you…", text: $viewModel.keyMoment, axis: .vertical)
                 .focused($focusedField, equals: .keyMoment)
                 .font(.body)
                 .foregroundStyle(CloseCutColors.textPrimary)
+                .lineLimit(1...3)
                 .padding(.vertical, 10)
                 .overlay(alignment: .bottom) {
                     Rectangle()
-                        .fill(CloseCutColors.separator)
+                        .fill(keyMomentBorderColor)
                         .frame(height: 0.5)
                 }
+                .onChange(of: viewModel.keyMoment) { _, newValue in
+                    if newValue.count > EntryValidation.maxQuoteLength {
+                        viewModel.keyMoment = String(newValue.prefix(EntryValidation.maxQuoteLength))
+                    }
+                }
+
+            Text("\(viewModel.keyMoment.count)/\(EntryValidation.maxQuoteLength)")
+                .font(.caption2)
+                .foregroundStyle(
+                    viewModel.keyMoment.count > EntryValidation.maxQuoteLength
+                    ? CloseCutColors.failed
+                    : CloseCutColors.textTertiary
+                )
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
+    }
+
+    private var keyMomentBorderColor: Color {
+        viewModel.keyMoment.count > EntryValidation.maxQuoteLength
+            ? CloseCutColors.failed
+            : CloseCutColors.separator
     }
 
     private var intensitySection: some View {
@@ -490,32 +631,94 @@ struct EntryEditorView: View {
         }
     }
 
-    private var isEditorDirty: Bool {
-        if let entryToEdit {
-            return viewModel.hasChanges(
-                comparedTo: entryToEdit,
-                selectedCircleIds: Array(selectedCircleIds)
-            )
-        }
+    // MARK: - Sharing
 
-        return viewModel.isDirty || selectedCircleIds.isEmpty == false
+    private var sharingSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            CircleSharePickerView(
+                circles: activeCircles,
+                selectedCircleIds: $selectedCircleIds
+            )
+
+            if selectedCircleIds.isEmpty == false {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "lock.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.accentLight)
+                        .padding(.top, 1)
+
+                    Text("This entry remains in your Personal Timeline. Selected Circles only get read-only access with reactions and short comments.")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(12)
+                .background(CloseCutColors.input)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+        }
     }
 
+    // MARK: - Errors
+
     private var errorSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(viewModel.errors, id: \.self) { error in
-                Text(error)
-                    .font(.caption)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(CloseCutColors.failed)
+
+                Text("Fix before saving")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+            }
+
+            ForEach(viewModel.errors, id: \.self) { error in
+                Text("• \(error)")
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(CloseCutColors.failedBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(CloseCutColors.failed.opacity(0.45), lineWidth: 0.5)
+        }
+    }
+
+    // MARK: - Actions
+
+    private func configureViewModelIfNeeded() {
+        guard didConfigureViewModel == false else {
+            return
+        }
+
+        didConfigureViewModel = true
+
+        if let entryToEdit {
+            viewModel.configureForEdit(entry: entryToEdit)
+            selectedCircleIds = Set(entryToEdit.sharedCircleIds)
+            isMetadataSectionExpanded = entryToEdit.hasTMDBMetadata == false
+        } else {
+            viewModel.configureForNewEntry()
+            selectedCircleIds = []
+            isMetadataSectionExpanded = true
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                focusedField = .title
+            }
+        }
     }
 
     private func handleDismiss() {
+        guard viewModel.isSaving == false else {
+            return
+        }
+
         if isEditorDirty {
             showDiscardConfirmation = true
         } else {

@@ -6,8 +6,8 @@
 //
 
 import Foundation
-import Combine
 import SwiftData
+import Combine
 
 @MainActor
 final class EntryEditorViewModel: ObservableObject {
@@ -23,7 +23,8 @@ final class EntryEditorViewModel: ObservableObject {
     @Published var cinemaScreen: Int? = nil
     @Published var cinemaComfort: Int? = nil
 
-    // Kept for compatibility with older UI/code, but no longer drives sharing.
+    // Kept only for compatibility with older UI/code.
+    // Multi-circle sharing is now driven by selectedCircleIds in EntryEditorView.
     @Published var isSharedWithCircle: Bool = false
 
     @Published private(set) var selectedTMDBResult: TMDBMediaSearchResult?
@@ -33,6 +34,8 @@ final class EntryEditorViewModel: ObservableObject {
 
     private let repository = EntryRepository()
     private(set) var editingEntry: Entry?
+
+    // MARK: - Editor Mode
 
     var isEditing: Bool {
         editingEntry != nil
@@ -69,6 +72,8 @@ final class EntryEditorViewModel: ObservableObject {
 
         return nil
     }
+
+    // MARK: - Metadata
 
     var existingExternalMetadata: EntryExternalMetadata? {
         editingEntry?.externalMetadata
@@ -135,31 +140,58 @@ final class EntryEditorViewModel: ObservableObject {
         selectedTMDBResult != nil || editingEntry?.hasTMDBMetadata == true
     }
 
+    // MARK: - State
+
     var isDirty: Bool {
         if let editingEntry {
             return hasChanges(comparedTo: editingEntry)
         }
 
-        return !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-        selectedMood != nil ||
-        !takeaway.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-        !keyMoment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-        !tags.isEmpty ||
-        selectedTMDBResult != nil
+        return cleanTitle.isEmpty == false ||
+            selectedMood != nil ||
+            cleanTakeaway.isEmpty == false ||
+            cleanKeyMoment.isEmpty == false ||
+            cleanTags.isEmpty == false ||
+            selectedTMDBResult != nil ||
+            type != .movie ||
+            intensity != 3 ||
+            watchContext != .home ||
+            cinemaAudio != nil ||
+            cinemaScreen != nil ||
+            cinemaComfort != nil
     }
 
     var canSave: Bool {
-        title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false &&
-        selectedMood != nil &&
-        isSaving == false
+        cleanTitle.isEmpty == false &&
+            selectedMood != nil &&
+            isSaving == false
     }
 
     var shouldShowCinemaFields: Bool {
         watchContext == .cinema
     }
 
+    private var cleanTitle: String {
+        title.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var cleanTakeaway: String {
+        takeaway.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var cleanKeyMoment: String {
+        keyMoment.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var cleanTags: [String] {
+        EntryValidation.normalizedTags(tags)
+    }
+
+    // MARK: - Configure
+
     func configureForNewEntry() {
         editingEntry = nil
+
         type = .movie
         title = ""
         selectedMood = nil
@@ -185,7 +217,7 @@ final class EntryEditorViewModel: ObservableObject {
         takeaway = entry.takeaway
         keyMoment = entry.quote ?? ""
         intensity = entry.intensity
-        tags = entry.tags
+        tags = EntryValidation.normalizedTags(entry.tags)
         watchContext = entry.watchContext
         cinemaAudio = entry.cinemaAudio
         cinemaScreen = entry.cinemaScreen
@@ -195,23 +227,33 @@ final class EntryEditorViewModel: ObservableObject {
         errors = []
     }
 
+    // MARK: - Metadata Actions
+
     func selectTMDBResult(_ result: TMDBMediaSearchResult) {
         selectedTMDBResult = result
         title = result.title
         type = result.entryType
-        errors.removeAll { $0 == "Title is required." }
+
+        errors.removeAll {
+            $0 == "Title is required." ||
+            $0 == "Title must be \(EntryValidation.maxTitleLength) characters or less."
+        }
     }
 
     func clearSelectedTMDBResult() {
         selectedTMDBResult = nil
     }
 
+    // MARK: - Save
+
     func save(
         ownerId: String,
-        defaultVisibility: EntryVisibility,
+        defaultVisibility _: EntryVisibility,
         selectedCircleIds: [String],
         modelContext: ModelContext
     ) async -> Bool {
+        normalizeInputsBeforeValidation()
+
         errors = EntryValidation.validate(
             title: title,
             mood: selectedMood,
@@ -229,32 +271,36 @@ final class EntryEditorViewModel: ObservableObject {
             return false
         }
 
+        guard isSaving == false else {
+            return false
+        }
+
         isSaving = true
         defer { isSaving = false }
 
         let cleanedSelectedCircleIds = cleanCircleIds(selectedCircleIds)
-        let visibility = cleanedSelectedCircleIds.isEmpty
-            ? EntryVisibility.privateOnly
-            : EntryVisibility.circle
+        let visibility = resolvedVisibility(
+            selectedCircleIds: cleanedSelectedCircleIds
+        )
 
         do {
             if let editingEntry {
                 _ = try repository.updateLocalEntry(
                     entryId: editingEntry.id,
-                    title: title,
+                    title: cleanTitle,
                     type: type,
-                    releaseYear: selectedTMDBResult?.releaseYear ?? editingEntry.releaseYear,
+                    releaseYear: resolvedReleaseYear(for: editingEntry),
                     mood: selectedMood.label,
                     quickSentiment: editingEntry.quickSentiment,
-                    takeaway: takeaway,
-                    quote: keyMoment,
-                    tags: tags,
-                    intensity: intensity,
+                    takeaway: cleanTakeaway,
+                    quote: cleanOptional(cleanKeyMoment),
+                    tags: cleanTags,
+                    intensity: clampedIntensity,
                     watchContext: watchContext,
                     watchedDateApprox: editingEntry.watchedDateApprox,
-                    cinemaAudio: cinemaAudio,
-                    cinemaScreen: cinemaScreen,
-                    cinemaComfort: cinemaComfort,
+                    cinemaAudio: resolvedCinemaAudio,
+                    cinemaScreen: resolvedCinemaScreen,
+                    cinemaComfort: resolvedCinemaComfort,
                     visibility: visibility,
                     sharedCircleIds: cleanedSelectedCircleIds,
                     sourceType: .fullEntry,
@@ -265,20 +311,20 @@ final class EntryEditorViewModel: ObservableObject {
             } else {
                 _ = try repository.createLocalEntry(
                     ownerId: ownerId,
-                    title: title,
+                    title: cleanTitle,
                     type: type,
                     releaseYear: selectedTMDBResult?.releaseYear,
                     mood: selectedMood.label,
                     quickSentiment: nil,
-                    takeaway: takeaway,
-                    quote: keyMoment,
-                    tags: tags,
-                    intensity: intensity,
+                    takeaway: cleanTakeaway,
+                    quote: cleanOptional(cleanKeyMoment),
+                    tags: cleanTags,
+                    intensity: clampedIntensity,
                     watchContext: watchContext,
                     watchedDateApprox: .exact(Date()),
-                    cinemaAudio: cinemaAudio,
-                    cinemaScreen: cinemaScreen,
-                    cinemaComfort: cinemaComfort,
+                    cinemaAudio: resolvedCinemaAudio,
+                    cinemaScreen: resolvedCinemaScreen,
+                    cinemaComfort: resolvedCinemaComfort,
                     visibility: visibility,
                     sharedCircleIds: cleanedSelectedCircleIds,
                     sourceType: .fullEntry,
@@ -295,6 +341,8 @@ final class EntryEditorViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Dirty State
+
     func hasChanges(
         comparedTo entry: Entry,
         selectedCircleIds: [String]
@@ -303,36 +351,87 @@ final class EntryEditorViewModel: ObservableObject {
         let cleanedSelectedCircleIds = cleanCircleIds(selectedCircleIds)
 
         return type != entry.type ||
-        title != entry.title ||
-        currentMood != entry.mood ||
-        takeaway != entry.takeaway ||
-        keyMoment != (entry.quote ?? "") ||
-        intensity != entry.intensity ||
-        tags != entry.tags ||
-        watchContext != entry.watchContext ||
-        cinemaAudio != entry.cinemaAudio ||
-        cinemaScreen != entry.cinemaScreen ||
-        cinemaComfort != entry.cinemaComfort ||
-        cleanedSelectedCircleIds != cleanCircleIds(entry.sharedCircleIds) ||
-        selectedTMDBResult != nil
+            cleanTitle != entry.title ||
+            currentMood != entry.mood ||
+            cleanTakeaway != entry.takeaway ||
+            cleanKeyMoment != (entry.quote ?? "") ||
+            clampedIntensity != entry.intensity ||
+            cleanTags != EntryValidation.normalizedTags(entry.tags) ||
+            watchContext != entry.watchContext ||
+            resolvedCinemaAudio != entry.cinemaAudio ||
+            resolvedCinemaScreen != entry.cinemaScreen ||
+            resolvedCinemaComfort != entry.cinemaComfort ||
+            cleanedSelectedCircleIds != cleanCircleIds(entry.sharedCircleIds) ||
+            selectedTMDBResult != nil
     }
 
     private func hasChanges(comparedTo entry: Entry) -> Bool {
         let currentMood = selectedMood?.label ?? ""
 
         return type != entry.type ||
-        title != entry.title ||
-        currentMood != entry.mood ||
-        takeaway != entry.takeaway ||
-        keyMoment != (entry.quote ?? "") ||
-        intensity != entry.intensity ||
-        tags != entry.tags ||
-        watchContext != entry.watchContext ||
-        cinemaAudio != entry.cinemaAudio ||
-        cinemaScreen != entry.cinemaScreen ||
-        cinemaComfort != entry.cinemaComfort ||
-        isSharedWithCircle != entry.isSharedWithCircle ||
-        selectedTMDBResult != nil
+            cleanTitle != entry.title ||
+            currentMood != entry.mood ||
+            cleanTakeaway != entry.takeaway ||
+            cleanKeyMoment != (entry.quote ?? "") ||
+            clampedIntensity != entry.intensity ||
+            cleanTags != EntryValidation.normalizedTags(entry.tags) ||
+            watchContext != entry.watchContext ||
+            resolvedCinemaAudio != entry.cinemaAudio ||
+            resolvedCinemaScreen != entry.cinemaScreen ||
+            resolvedCinemaComfort != entry.cinemaComfort ||
+            selectedTMDBResult != nil
+    }
+
+    // MARK: - Resolved Values
+
+    private var clampedIntensity: Int {
+        min(
+            max(intensity, EntryValidation.minIntensity),
+            EntryValidation.maxIntensity
+        )
+    }
+
+    private var resolvedCinemaAudio: Int? {
+        watchContext == .cinema ? cinemaAudio : nil
+    }
+
+    private var resolvedCinemaScreen: Int? {
+        watchContext == .cinema ? cinemaScreen : nil
+    }
+
+    private var resolvedCinemaComfort: Int? {
+        watchContext == .cinema ? cinemaComfort : nil
+    }
+
+    private func resolvedReleaseYear(for entry: Entry) -> Int? {
+        selectedTMDBResult?.releaseYear ?? entry.releaseYear
+    }
+
+    private func resolvedVisibility(
+        selectedCircleIds: [String]
+    ) -> EntryVisibility {
+        selectedCircleIds.isEmpty ? .privateOnly : .circle
+    }
+
+    // MARK: - Input Normalization
+
+    private func normalizeInputsBeforeValidation() {
+        title = String(cleanTitle.prefix(EntryValidation.maxTitleLength))
+        takeaway = String(cleanTakeaway.prefix(EntryValidation.maxTakeawayLength))
+        keyMoment = String(cleanKeyMoment.prefix(EntryValidation.maxQuoteLength))
+        tags = Array(cleanTags.prefix(EntryValidation.maxTags))
+        intensity = clampedIntensity
+
+        if watchContext != .cinema {
+            cinemaAudio = nil
+            cinemaScreen = nil
+            cinemaComfort = nil
+        }
+    }
+
+    private func cleanOptional(_ value: String) -> String? {
+        let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? nil : cleaned
     }
 
     private func cleanCircleIds(_ ids: [String]) -> [String] {
@@ -340,7 +439,7 @@ final class EntryEditorViewModel: ObservableObject {
             Set(
                 ids
                     .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                    .filter { !$0.isEmpty }
+                    .filter { $0.isEmpty == false }
             )
         )
         .sorted()
