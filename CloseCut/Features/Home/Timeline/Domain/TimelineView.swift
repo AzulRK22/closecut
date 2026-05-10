@@ -17,23 +17,25 @@ struct TimelineView: View {
 
     private let quickPickTargetCount = 3
 
-    private var sortedEntries: [Entry] {
-        entries.sorted { first, second in
-            first.watchedAt > second.watchedAt
-        }
+    private var activeEntries: [Entry] {
+        entries
+            .filter { $0.deletedAt == nil }
+            .sorted { first, second in
+                first.watchedAt > second.watchedAt
+            }
     }
 
     private var timelineSections: [TimelineSection] {
-        TimelineSectionBuilder.buildSections(from: entries)
+        TimelineSectionBuilder.buildSections(from: activeEntries)
     }
 
     private var isLowHistory: Bool {
-        entries.count > 0 && entries.count < quickPickTargetCount
+        activeEntries.count > 0 && activeEntries.count < quickPickTargetCount
     }
 
     var body: some View {
         Group {
-            if entries.isEmpty {
+            if activeEntries.isEmpty {
                 emptyTimelineState
             } else {
                 populatedTimeline
@@ -46,7 +48,7 @@ struct TimelineView: View {
         ScrollView {
             VStack(spacing: 18) {
                 PersonalTimelineSummaryCard(
-                    entries: entries,
+                    entries: activeEntries,
                     onQuickAdd: onQuickAdd,
                     onCreateEntry: onCreateEntry
                 )
@@ -78,14 +80,14 @@ struct TimelineView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 18) {
                 PersonalTimelineSummaryCard(
-                    entries: entries,
+                    entries: activeEntries,
                     onQuickAdd: onQuickAdd,
                     onCreateEntry: onCreateEntry
                 )
 
                 if isLowHistory {
                     HistoryProgressModule(
-                        currentCount: entries.count,
+                        currentCount: activeEntries.count,
                         targetCount: quickPickTargetCount,
                         onQuickAdd: onQuickAdd,
                         onOpenQuickPick: onOpenQuickPick

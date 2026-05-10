@@ -11,7 +11,9 @@ enum HomeSegment: String, CaseIterable, Identifiable {
     case timeline
     case quickPick
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var title: String {
         switch self {
@@ -19,6 +21,15 @@ enum HomeSegment: String, CaseIterable, Identifiable {
             return "Timeline"
         case .quickPick:
             return "QuickPick"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .timeline:
+            return "film.stack"
+        case .quickPick:
+            return "sparkles"
         }
     }
 }

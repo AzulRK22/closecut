@@ -11,10 +11,12 @@ enum TimelineSectionKind: String, CaseIterable, Identifiable {
     case recentlyWatched
     case stayedWithYou
     case rewatchCandidates
-    case highRatedMemories
+    case metadataHighlights
     case allHistory
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var title: String {
         switch self {
@@ -24,8 +26,8 @@ enum TimelineSectionKind: String, CaseIterable, Identifiable {
             return "Stayed with you"
         case .rewatchCandidates:
             return "Rewatch candidates"
-        case .highRatedMemories:
-            return "High-rated memories"
+        case .metadataHighlights:
+            return "Enriched memories"
         case .allHistory:
             return "All history"
         }
@@ -36,11 +38,11 @@ enum TimelineSectionKind: String, CaseIterable, Identifiable {
         case .recentlyWatched:
             return "Your latest memories will appear here."
         case .stayedWithYou:
-            return "Memories marked as loved or stayed with you will appear here."
+            return "Memories marked as loved or intense will appear here."
         case .rewatchCandidates:
             return "Older meaningful watches will appear here when they may be worth revisiting."
-        case .highRatedMemories:
-            return "TMDB-rated memories will appear here once metadata is available."
+        case .metadataHighlights:
+            return "Memories with useful metadata will appear here."
         case .allHistory:
             return "Your complete private archive."
         }

@@ -14,10 +14,18 @@ struct QuickPickView: View {
 
     @StateObject private var viewModel = QuickPickViewModel()
 
-    private var quickPickRefreshKey: String {
+    private var activeEntries: [Entry] {
         entries
+            .filter { $0.deletedAt == nil }
+            .sorted { first, second in
+                first.watchedAt > second.watchedAt
+            }
+    }
+
+    private var quickPickRefreshKey: String {
+        activeEntries
             .map {
-                "\($0.id)-\($0.updatedAt.timeIntervalSince1970)-\($0.tmdbId ?? -1)-\($0.quickSentiment?.rawValue ?? "")"
+                "\($0.id)-\($0.updatedAt.timeIntervalSince1970)-\($0.tmdbId ?? -1)-\($0.quickSentiment?.rawValue ?? "")-\($0.intensity)"
             }
             .joined(separator: "|")
     }
@@ -49,10 +57,13 @@ struct QuickPickView: View {
         }
         .background(CloseCutColors.backgroundPrimary)
         .onAppear {
-            viewModel.generate(history: entries)
+            viewModel.generate(history: activeEntries)
         }
         .onChange(of: quickPickRefreshKey) { _, _ in
-            viewModel.generate(history: entries)
+            viewModel.generate(history: activeEntries)
+        }
+        .onDisappear {
+            viewModel.cancelGeneration()
         }
     }
 
@@ -60,26 +71,29 @@ struct QuickPickView: View {
         currentCount: Int,
         targetCount: Int
     ) -> some View {
-        VStack(spacing: 18) {
-            EmptyStateView(
-                title: "QuickPick needs a little history",
-                message: "Add \(targetCount) watches so CloseCut can understand your taste. You have \(currentCount) so far.",
-                systemImage: "sparkles",
-                actionTitle: "Add past watches",
-                action: onQuickAdd
-            )
+        ScrollView {
+            VStack(spacing: 18) {
+                EmptyStateView(
+                    title: "QuickPick needs a little history",
+                    message: "Add \(targetCount) watches so CloseCut can understand your taste. You have \(currentCount) so far.",
+                    systemImage: "sparkles",
+                    actionTitle: "Add past watches",
+                    action: onQuickAdd
+                )
 
-            Button {
-                onCreateEntry()
-            } label: {
-                Text("Log a new watch")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .frame(minHeight: 44)
+                Button {
+                    onCreateEntry()
+                } label: {
+                    Text("Log a new watch")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 24)
         }
-        .padding(.horizontal, 20)
     }
 
     private func suggestionContent(
@@ -92,7 +106,7 @@ struct QuickPickView: View {
                     suggestion: suggestion,
                     isNoAlternatives: isNoAlternatives,
                     onRefresh: {
-                        viewModel.refresh(history: entries)
+                        viewModel.refresh(history: activeEntries)
                     }
                 )
 
@@ -123,7 +137,7 @@ struct QuickPickView: View {
                 .multilineTextAlignment(.center)
 
             Button {
-                viewModel.refresh(history: entries)
+                viewModel.refresh(history: activeEntries)
             } label: {
                 Text("Retry")
                     .font(.subheadline.weight(.semibold))

@@ -33,9 +33,11 @@ struct EntryCardView: View {
             return "Added to your history"
         }
 
-        return entry.takeaway.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let cleanedTakeaway = entry.takeaway.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return cleanedTakeaway.isEmpty
             ? "No takeaway added yet."
-            : entry.takeaway
+            : cleanedTakeaway
     }
 
     private var footerDateText: String {
@@ -59,11 +61,16 @@ struct EntryCardView: View {
             parts.append(String(format: "%.1f TMDB", rating))
         }
 
+        if entry.sourceType == .quickAdd {
+            parts.append("Quick Add")
+        }
+
         return parts.joined(separator: " • ")
     }
 
     private var sharingChipText: String {
-        if entry.sharedCircleIds.isEmpty || entry.visibility == .privateOnly {
+        guard entry.visibility == .circle,
+              entry.sharedCircleIds.isEmpty == false else {
             return "Private"
         }
 
@@ -75,9 +82,13 @@ struct EntryCardView: View {
     }
 
     private var sharingChipIcon: String {
-        entry.sharedCircleIds.isEmpty || entry.visibility == .privateOnly
-            ? "lock.fill"
-            : "person.2.fill"
+        entry.visibility == .circle && entry.sharedCircleIds.isEmpty == false
+            ? "person.2.fill"
+            : "lock.fill"
+    }
+
+    private var isShared: Bool {
+        entry.visibility == .circle && entry.sharedCircleIds.isEmpty == false
     }
 
     private var shouldShowSyncChip: Bool {
@@ -119,10 +130,9 @@ struct EntryCardView: View {
                         .foregroundStyle(CloseCutColors.textSecondary)
                         .lineLimit(variant == .timeline ? 2 : 1)
                         .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                    Spacer(minLength: 0)
-
-                    footerRow
+                    footerBlock
                 }
             }
             .padding(14)
@@ -135,7 +145,7 @@ struct EntryCardView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(entry.title), \(metadataText), \(footerDateText)"
+            "\(entry.title), \(metadataText), \(footerDateText), \(sharingChipText)"
         )
     }
 
@@ -157,35 +167,41 @@ struct EntryCardView: View {
         }
     }
 
-    private var footerRow: some View {
-        HStack(spacing: 8) {
-            Label(
-                entry.watchContext.displayName,
-                systemImage: entry.watchContext == .cinema ? "film.fill" : "house"
-            )
-            .font(.caption)
-            .foregroundStyle(CloseCutColors.textTertiary)
-            .lineLimit(1)
-
-            Text("•")
-                .font(.caption)
-                .foregroundStyle(CloseCutColors.textTertiary)
-
-            Text(footerDateText)
+    private var footerBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Label(
+                    entry.watchContext.displayName,
+                    systemImage: entry.watchContext == .cinema ? "film.fill" : "house"
+                )
                 .font(.caption)
                 .foregroundStyle(CloseCutColors.textTertiary)
                 .lineLimit(1)
 
-            Spacer(minLength: 6)
+                Text("•")
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textTertiary)
 
-            chip(
-                icon: sharingChipIcon,
-                text: sharingChipText,
-                isHighlighted: entry.visibility == .circle && entry.sharedCircleIds.isEmpty == false
-            )
+                Text(footerDateText)
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .lineLimit(1)
 
-            if shouldShowSyncChip {
-                PendingSyncBadge(status: entry.syncStatus)
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 8) {
+                chip(
+                    icon: sharingChipIcon,
+                    text: sharingChipText,
+                    isHighlighted: isShared
+                )
+
+                if shouldShowSyncChip {
+                    PendingSyncBadge(status: entry.syncStatus)
+                }
+
+                Spacer(minLength: 0)
             }
         }
     }
@@ -216,6 +232,7 @@ struct EntryCardView: View {
         }
 
         let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+
         return cleaned.isEmpty ? nil : cleaned
     }
 }

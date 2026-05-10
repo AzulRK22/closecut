@@ -27,6 +27,7 @@ enum TimelineSectionBuilder {
         var sections: [TimelineSection] = []
 
         let recentlyWatched = Array(sortedEntries.prefix(5))
+
         sections.append(
             TimelineSection(
                 kind: .recentlyWatched,
@@ -67,16 +68,21 @@ enum TimelineSectionBuilder {
             )
         }
 
-        let highRatedMemories = sortedEntries
-            .filter { ($0.tmdbRating ?? 0) >= 7.5 }
+        let metadataHighlights = sortedEntries
+            .filter { entry in
+                entry.hasTMDBMetadata ||
+                entry.tmdbRating != nil ||
+                entry.posterPath != nil ||
+                entry.overview?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            }
             .prefix(5)
 
-        if highRatedMemories.isEmpty == false {
+        if metadataHighlights.isEmpty == false {
             sections.append(
                 TimelineSection(
-                    kind: .highRatedMemories,
-                    subtitle: "Strong memories with useful TMDB metadata.",
-                    entries: Array(highRatedMemories)
+                    kind: .metadataHighlights,
+                    subtitle: "Memories enriched with posters, context, and useful metadata.",
+                    entries: Array(metadataHighlights)
                 )
             )
         }
@@ -105,8 +111,12 @@ enum TimelineSectionBuilder {
         let isOldEnough = daysSinceWatch >= 120
         let hasStrongSentiment = entry.quickSentiment == .loved || entry.quickSentiment == .stayedWithMe
         let hasHighIntensity = entry.intensity >= 4
-        let hasHighRating = (entry.tmdbRating ?? 0) >= 7.5
+        let hasUsefulMetadataSignal = (entry.tmdbRating ?? 0) >= 7.5
 
-        return isOldEnough && (hasStrongSentiment || hasHighIntensity || hasHighRating)
+        return isOldEnough && (
+            hasStrongSentiment ||
+            hasHighIntensity ||
+            hasUsefulMetadataSignal
+        )
     }
 }

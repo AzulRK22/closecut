@@ -9,11 +9,13 @@ import SwiftUI
 import SwiftData
 
 struct HomeView: View {
-    @EnvironmentObject private var authService: AuthService
     @Environment(\.modelContext) private var modelContext
 
     @Query(sort: \LocalEntry.watchedAt, order: .reverse)
     private var localEntries: [LocalEntry]
+
+    @Query(sort: \LocalCircleMembership.updatedAt, order: .reverse)
+    private var localMemberships: [LocalCircleMembership]
 
     let user: AuthUser
     let profile: UserProfile
@@ -27,31 +29,16 @@ struct HomeView: View {
             .filter { $0.ownerId == user.id }
             .filter { $0.deletedAt == nil }
             .map { $0.domain }
-    }
-    private var homeHeader: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Personal")
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textPrimary)
-
-                Text(selectedSegment == .timeline
-                     ? "Your private taste history."
-                     : "Suggestions shaped by your own history.")
-                    .font(.subheadline)
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .lineLimit(2)
+            .sorted { first, second in
+                first.watchedAt > second.watchedAt
             }
+    }
 
-            Spacer()
-
-            Image(systemName: selectedSegment == .timeline ? "film.stack" : "sparkles")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(CloseCutColors.accentLight)
-                .frame(width: 36, height: 36)
-                .background(CloseCutColors.input)
-                .clipShape(SwiftUI.Circle())
-        }
+    private var hasActiveCircleMemberships: Bool {
+        localMemberships
+            .filter { $0.userId == user.id }
+            .map { $0.domain }
+            .contains { $0.isActive }
     }
 
     var body: some View {
@@ -65,7 +52,7 @@ struct HomeView: View {
                         .padding(.horizontal, 20)
                         .padding(.top, 8)
                         .padding(.bottom, 10)
-                    
+
                     Picker("Home section", selection: $selectedSegment) {
                         ForEach(HomeSegment.allCases) { segment in
                             Text(segment.title)
@@ -77,37 +64,12 @@ struct HomeView: View {
                     .padding(.top, 4)
                     .padding(.bottom, 6)
 
-                    switch selectedSegment {
-                    case .timeline:
-                        TimelineView(
-                            entries: entries,
-                            user: user,
-                            profile: profile,
-                            onQuickAdd: {
-                                isShowingQuickAdd = true
-                            },
-                            onCreateEntry: {
-                                isShowingEntryEditor = true
-                            },
-                            onOpenQuickPick: {
-                                selectedSegment = .quickPick
-                            }
-                        )
-
-                    case .quickPick:
-                        QuickPickView(
-                            entries: entries,
-                            onQuickAdd: {
-                                isShowingQuickAdd = true
-                            },
-                            onCreateEntry: {
-                                isShowingEntryEditor = true
-                            }
-                        )
-                    }
+                    selectedContent
                 }
             }
             .navigationTitle("CloseCut")
+            .navigationBarTitleDisplayMode(.inline)
+            .preferredColorScheme(.dark)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -115,8 +77,8 @@ struct HomeView: View {
                     } label: {
                         Image(systemName: "bolt.fill")
                             .font(.system(size: 15, weight: .semibold))
+                            .frame(width: 44, height: 44)
                     }
-                    .frame(width: 44, height: 44)
                     .accessibilityLabel("Add past watches")
                 }
 
@@ -126,8 +88,8 @@ struct HomeView: View {
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 17, weight: .semibold))
+                            .frame(width: 44, height: 44)
                     }
-                    .frame(width: 44, height: 44)
                     .accessibilityLabel("New entry")
                 }
             }
@@ -135,17 +97,84 @@ struct HomeView: View {
                 EntryEditorView(
                     user: user,
                     profile: profile,
-                    hasCircleMembers: false
+                    hasCircleMembers: hasActiveCircleMemberships
                 )
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
             }
             .sheet(isPresented: $isShowingQuickAdd) {
-
                 QuickAddPastWatchesView(user: user)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
+        }
+    }
+
+    private var homeHeader: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Personal")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+
+                Text(headerSubtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+
+            Image(systemName: selectedSegment.systemImage)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(CloseCutColors.accentLight)
+                .frame(width: 36, height: 36)
+                .background(CloseCutColors.input)
+                .clipShape(SwiftUI.Circle())
+        }
+    }
+
+    @ViewBuilder
+    private var selectedContent: some View {
+        switch selectedSegment {
+        case .timeline:
+            TimelineView(
+                entries: entries,
+                user: user,
+                profile: profile,
+                onQuickAdd: {
+                    isShowingQuickAdd = true
+                },
+                onCreateEntry: {
+                    isShowingEntryEditor = true
+                },
+                onOpenQuickPick: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        selectedSegment = .quickPick
+                    }
+                }
+            )
+
+        case .quickPick:
+            QuickPickView(
+                entries: entries,
+                onQuickAdd: {
+                    isShowingQuickAdd = true
+                },
+                onCreateEntry: {
+                    isShowingEntryEditor = true
+                }
+            )
+        }
+    }
+
+    private var headerSubtitle: String {
+        switch selectedSegment {
+        case .timeline:
+            return "Your private taste history."
+        case .quickPick:
+            return "Suggestions shaped by your own history."
         }
     }
 }
@@ -171,7 +200,6 @@ struct HomeView: View {
             syncStatus: .synced
         )
     )
-    .environmentObject(AuthService())
     .modelContainer(for: [
         LocalEntry.self,
         LocalCircle.self,

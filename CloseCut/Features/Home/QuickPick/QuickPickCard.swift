@@ -20,6 +20,10 @@ struct QuickPickCard: View {
         cleanOptional(suggestion.candidate.overview)
     }
 
+    private var visibleSignals: [QuickPickSignal] {
+        Array(suggestion.signals.prefix(3))
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             hero
@@ -41,9 +45,15 @@ struct QuickPickCard: View {
 
             signalPills
 
-            Text("Local, rule-based, and private. No public ratings profile.")
-                .font(.caption)
-                .foregroundStyle(CloseCutColors.textTertiary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Local, rule-based, and private.")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textSecondary)
+
+                Text("No public ratings profile. No social graph. Just your archive.")
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+            }
 
             if isNoAlternatives {
                 Text("That is the strongest match right now.")
@@ -96,6 +106,7 @@ struct QuickPickCard: View {
                 Text(suggestion.candidate.metadata)
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textTertiary)
+                    .lineLimit(2)
 
                 Text(suggestion.confidenceLabel)
                     .font(.caption2.weight(.semibold))
@@ -112,19 +123,24 @@ struct QuickPickCard: View {
 
     @ViewBuilder
     private var signalPills: some View {
-        if suggestion.signals.isEmpty == false {
-            HStack(spacing: 8) {
-                ForEach(Array(suggestion.signals.enumerated()), id: \.offset) { _, signal in
+        if visibleSignals.isEmpty == false {
+            LazyVGrid(
+                columns: [
+                    GridItem(.adaptive(minimum: 92), spacing: 8)
+                ],
+                alignment: .leading,
+                spacing: 8
+            ) {
+                ForEach(Array(visibleSignals.enumerated()), id: \.offset) { _, signal in
                     Text(signal.displayLabel)
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textSecondary)
+                        .lineLimit(1)
                         .padding(.horizontal, 9)
                         .padding(.vertical, 6)
                         .background(CloseCutColors.input)
                         .clipShape(Capsule())
                 }
-
-                Spacer(minLength: 0)
             }
         }
     }
@@ -135,6 +151,7 @@ struct QuickPickCard: View {
         }
 
         let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+
         return cleaned.isEmpty ? nil : cleaned
     }
 }
