@@ -13,6 +13,8 @@ enum TMDBClientError: LocalizedError {
     case invalidResponse
     case requestFailed(statusCode: Int)
     case decodingFailed
+    case networkUnavailable
+    case requestTimedOut
 
     var errorDescription: String? {
         switch self {
@@ -26,6 +28,10 @@ enum TMDBClientError: LocalizedError {
             return "TMDB request failed with status code \(statusCode)."
         case .decodingFailed:
             return "TMDB response could not be decoded."
+        case .networkUnavailable:
+            return "Network unavailable. Please check your connection."
+        case .requestTimedOut:
+            return "TMDB request timed out. Please try again."
         }
     }
 }
@@ -59,7 +65,24 @@ final class TMDBClient {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json;charset=utf-8", forHTTPHeaderField: "Accept")
 
-        let (data, response) = try await session.data(for: request)
+        let data: Data
+        let response: URLResponse
+
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            let nsError = error as NSError
+
+            if nsError.code == NSURLErrorTimedOut {
+                throw TMDBClientError.requestTimedOut
+            }
+
+            if nsError.domain == NSURLErrorDomain {
+                throw TMDBClientError.networkUnavailable
+            }
+
+            throw error
+        }
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw TMDBClientError.invalidResponse

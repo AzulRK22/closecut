@@ -7,39 +7,48 @@
 
 import SwiftUI
 
-enum PillSize {
+enum CloseCutPillSize {
     case large
     case medium
     case small
 
     var font: Font {
         switch self {
-        case .large: return .subheadline.weight(.semibold)
-        case .medium: return .caption.weight(.semibold)
-        case .small: return .caption2.weight(.semibold)
+        case .large:
+            return .subheadline.weight(.semibold)
+        case .medium:
+            return .caption.weight(.semibold)
+        case .small:
+            return .caption2.weight(.semibold)
         }
     }
 
     var verticalPadding: CGFloat {
         switch self {
-        case .large: return 8
-        case .medium: return 6
-        case .small: return 4
+        case .large:
+            return 8
+        case .medium:
+            return 6
+        case .small:
+            return 4
         }
     }
 
     var horizontalPadding: CGFloat {
         switch self {
-        case .large: return 12
-        case .medium: return 10
-        case .small: return 8
+        case .large:
+            return 12
+        case .medium:
+            return 10
+        case .small:
+            return 8
         }
     }
 }
 
 struct MoodPill: View {
     let mood: Mood
-    var size: PillSize = .medium
+    var size: CloseCutPillSize = .medium
     var isSelected: Bool = false
     var showLabel: Bool = true
 
@@ -59,8 +68,13 @@ struct MoodPill: View {
         .clipShape(Capsule())
         .overlay {
             Capsule()
-                .stroke(isSelected ? Color.white : Color.clear, lineWidth: 1.5)
+                .stroke(
+                    isSelected ? Color.white.opacity(0.9) : Color.clear,
+                    lineWidth: 1.5
+                )
         }
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Mood: \(mood.label)")
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 }

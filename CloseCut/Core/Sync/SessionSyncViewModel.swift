@@ -21,24 +21,43 @@ final class SessionSyncViewModel: ObservableObject {
         userId: String,
         modelContext: ModelContext
     ) async {
-        guard refreshedUserIds.contains(userId) == false else {
+        let cleanedUserId = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard cleanedUserId.isEmpty == false else {
+            lastInitialCloudRefreshError = "Missing user."
             return
         }
 
-        refreshedUserIds.insert(userId)
+        guard refreshedUserIds.contains(cleanedUserId) == false else {
+            return
+        }
+
+        guard isInitialCloudRefreshRunning == false else {
+            return
+        }
+
         isInitialCloudRefreshRunning = true
         lastInitialCloudRefreshError = nil
 
-        let summary = await entrySyncService.pullRemoteEntries(
-            userId: userId,
+        defer {
+            isInitialCloudRefreshRunning = false
+        }
+
+        let pushSummary = await entrySyncService.syncPendingEntries(
+            userId: cleanedUserId,
             modelContext: modelContext
         )
 
-        if summary.failedCount > 0 {
-            lastInitialCloudRefreshError = "Cloud refresh failed."
-        }
+        let pullSummary = await entrySyncService.pullRemoteEntries(
+            userId: cleanedUserId,
+            modelContext: modelContext
+        )
 
-        isInitialCloudRefreshRunning = false
+        if pushSummary.hasFailures || pullSummary.hasFailures {
+            lastInitialCloudRefreshError = "Cloud refresh partially failed."
+        } else {
+            refreshedUserIds.insert(cleanedUserId)
+        }
     }
 
     func reset() {

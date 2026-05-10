@@ -15,15 +15,7 @@ struct CloseCutHeroHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let systemImage {
-                ZStack {
-                    SwiftUI.Circle()
-                        .fill(CloseCutColors.card)
-                        .frame(width: 56, height: 56)
-
-                    Image(systemName: systemImage)
-                        .font(.title2)
-                        .foregroundStyle(CloseCutColors.accentLight)
-                }
+                icon(systemImage)
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -35,9 +27,25 @@ struct CloseCutHeroHeader: View {
                 Text(subtitle)
                     .font(.subheadline)
                     .foregroundStyle(CloseCutColors.textSecondary)
+                    .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title). \(subtitle)")
+    }
+
+    private func icon(_ systemImage: String) -> some View {
+        ZStack {
+            SwiftUI.Circle()
+                .fill(CloseCutColors.card)
+                .frame(width: 56, height: 56)
+
+            Image(systemName: systemImage)
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(CloseCutColors.accentLight)
+        }
+        .accessibilityHidden(true)
     }
 }

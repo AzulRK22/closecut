@@ -733,8 +733,6 @@ struct BattleView: View {
     )
     .modelContainer(for: [
         LocalEntry.self,
-        LocalReaction.self,
-        LocalComment.self,
         LocalCircle.self,
         LocalCircleMembership.self,
         LocalUserProfile.self,

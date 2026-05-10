@@ -5,11 +5,6 @@
 //  Created by Azul Ramirez Kuri on 25/04/26.
 //
 
-//
-//  Array+Uniqued.swift
-//  CloseCut
-//
-
 import Foundation
 
 extension Array where Element: Hashable {
@@ -19,10 +14,37 @@ extension Array where Element: Hashable {
         return filter { element in
             if seen.contains(element) {
                 return false
-            } else {
-                seen.insert(element)
-                return true
             }
+
+            seen.insert(element)
+            return true
+        }
+    }
+}
+
+extension Array {
+    func uniqued<Key: Hashable>(
+        by keyPath: KeyPath<Element, Key>
+    ) -> [Element] {
+        uniqued { element in
+            element[keyPath: keyPath]
+        }
+    }
+
+    func uniqued<Key: Hashable>(
+        by keyProvider: (Element) -> Key
+    ) -> [Element] {
+        var seen = Set<Key>()
+
+        return filter { element in
+            let key = keyProvider(element)
+
+            if seen.contains(key) {
+                return false
+            }
+
+            seen.insert(key)
+            return true
         }
     }
 }

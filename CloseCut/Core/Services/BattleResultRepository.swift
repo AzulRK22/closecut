@@ -10,6 +10,9 @@ import SwiftData
 
 @MainActor
 final class BattleResultRepository {
+
+    // MARK: - Create
+
     func createRandomPickResult(
         ownerId: String,
         options: [Entry],
@@ -19,7 +22,7 @@ final class BattleResultRepository {
         try createResult(
             ownerId: ownerId,
             mode: .randomPick,
-            title: "Random Pick",
+            title: BattleMode.randomPick.displayName,
             options: options,
             winner: winner,
             modelContext: modelContext
@@ -35,21 +38,87 @@ final class BattleResultRepository {
         try createResult(
             ownerId: ownerId,
             mode: .headToHead,
-            title: "Movie vs Movie",
+            title: BattleMode.headToHead.displayName,
             options: options,
             winner: winner,
             modelContext: modelContext
         )
     }
 
+    func createResult(
+        ownerId: String,
+        mode: BattleMode,
+        title: String,
+        options: [Entry],
+        winner: Entry,
+        modelContext: ModelContext
+    ) throws -> BattleResult {
+        let cleanedOwnerId = ownerId.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard cleanedOwnerId.isEmpty == false else {
+            throw BattleResultRepositoryError.missingOwnerId
+        }
+
+        let cleanedOptions = cleanOptions(options)
+
+        guard cleanedOptions.count >= minimumOptionCount(for: mode) else {
+            throw BattleResultRepositoryError.notEnoughOptions
+        }
+
+        guard cleanedOptions.contains(where: { $0.id == winner.id }) else {
+            throw BattleResultRepositoryError.winnerNotInOptions
+        }
+
+        let optionEntryIds = cleanedOptions.map(\.id)
+
+        let isDuplicate = try hasRecentDuplicateResult(
+            ownerId: cleanedOwnerId,
+            mode: mode,
+            optionEntryIds: optionEntryIds,
+            winnerEntryId: winner.id,
+            modelContext: modelContext
+        )
+
+        if isDuplicate {
+            throw BattleResultRepositoryError.duplicateRecentResult
+        }
+
+        let cleanedTitle = title
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let localResult = LocalBattleResult(
+            ownerId: cleanedOwnerId,
+            mode: mode,
+            title: cleanedTitle.isEmpty ? mode.displayName : cleanedTitle,
+            optionEntryIds: optionEntryIds,
+            optionTitles: cleanedOptions.map(\.title),
+            winnerEntryId: winner.id,
+            winnerTitle: winner.title,
+            createdAt: Date()
+        )
+
+        modelContext.insert(localResult)
+        try modelContext.save()
+
+        return localResult.domain
+    }
+
+    // MARK: - Read
+
     func fetchLocalResults(
         ownerId: String,
         limit: Int? = nil,
         modelContext: ModelContext
     ) throws -> [BattleResult] {
+        let cleanedOwnerId = ownerId.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard cleanedOwnerId.isEmpty == false else {
+            return []
+        }
+
         let descriptor = FetchDescriptor<LocalBattleResult>(
             predicate: #Predicate { result in
-                result.ownerId == ownerId
+                result.ownerId == cleanedOwnerId
             },
             sortBy: [
                 SortDescriptor(\LocalBattleResult.createdAt, order: .reverse)
@@ -58,20 +127,40 @@ final class BattleResultRepository {
 
         let results = try modelContext.fetch(descriptor).map { $0.domain }
 
-        if let limit {
-            return Array(results.prefix(limit))
+        guard let limit, limit > 0 else {
+            return results
         }
 
-        return results
+        return Array(results.prefix(limit))
     }
+
+    func fetchRecentResult(
+        ownerId: String,
+        modelContext: ModelContext
+    ) throws -> BattleResult? {
+        try fetchLocalResults(
+            ownerId: ownerId,
+            limit: 1,
+            modelContext: modelContext
+        )
+        .first
+    }
+
+    // MARK: - Delete
 
     func deleteResult(
         resultId: String,
         modelContext: ModelContext
     ) throws {
+        let cleanedResultId = resultId.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard cleanedResultId.isEmpty == false else {
+            return
+        }
+
         let descriptor = FetchDescriptor<LocalBattleResult>(
             predicate: #Predicate { result in
-                result.id == resultId
+                result.id == cleanedResultId
             }
         )
 
@@ -82,13 +171,20 @@ final class BattleResultRepository {
         modelContext.delete(result)
         try modelContext.save()
     }
+
     func deleteAllResults(
         ownerId: String,
         modelContext: ModelContext
     ) throws -> Int {
+        let cleanedOwnerId = ownerId.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard cleanedOwnerId.isEmpty == false else {
+            return 0
+        }
+
         let descriptor = FetchDescriptor<LocalBattleResult>(
             predicate: #Predicate { result in
-                result.ownerId == ownerId
+                result.ownerId == cleanedOwnerId
             }
         )
 
@@ -102,6 +198,9 @@ final class BattleResultRepository {
 
         return results.count
     }
+
+    // MARK: - Duplicate Protection
+
     private func hasRecentDuplicateResult(
         ownerId: String,
         mode: BattleMode,
@@ -129,61 +228,58 @@ final class BattleResultRepository {
         }
     }
 
-    private func createResult(
-        ownerId: String,
-        mode: BattleMode,
-        title: String,
-        options: [Entry],
-        winner: Entry,
-        modelContext: ModelContext
-    ) throws -> BattleResult {
-        let cleanedOptions = options
-            .filter {
-                $0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    // MARK: - Helpers
+
+    private func cleanOptions(_ options: [Entry]) -> [Entry] {
+        var seenIds = Set<String>()
+
+        return options
+            .filter { entry in
+                let cleanedTitle = entry.title.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                guard cleanedTitle.isEmpty == false else {
+                    return false
+                }
+
+                guard entry.deletedAt == nil else {
+                    return false
+                }
+
+                guard seenIds.contains(entry.id) == false else {
+                    return false
+                }
+
+                seenIds.insert(entry.id)
+                return true
             }
+    }
 
-        guard cleanedOptions.contains(where: { $0.id == winner.id }) else {
-            throw BattleResultRepositoryError.winnerNotInOptions
+    private func minimumOptionCount(for mode: BattleMode) -> Int {
+        switch mode {
+        case .randomPick:
+            return 1
+        case .headToHead:
+            return 2
+        case .friend:
+            return 2
+        case .circle:
+            return 2
         }
-
-        let optionEntryIds = cleanedOptions.map { $0.id }
-
-        let isDuplicate = try hasRecentDuplicateResult(
-            ownerId: ownerId,
-            mode: mode,
-            optionEntryIds: optionEntryIds,
-            winnerEntryId: winner.id,
-            modelContext: modelContext
-        )
-
-        if isDuplicate {
-            throw BattleResultRepositoryError.duplicateRecentResult
-        }
-
-        let localResult = LocalBattleResult(
-            ownerId: ownerId,
-            mode: mode,
-            title: title,
-            optionEntryIds: optionEntryIds,
-            optionTitles: cleanedOptions.map { $0.title },
-            winnerEntryId: winner.id,
-            winnerTitle: winner.title,
-            createdAt: Date()
-        )
-
-        modelContext.insert(localResult)
-        try modelContext.save()
-
-        return localResult.domain
     }
 }
 
 enum BattleResultRepositoryError: LocalizedError {
+    case missingOwnerId
+    case notEnoughOptions
     case winnerNotInOptions
     case duplicateRecentResult
 
     var errorDescription: String? {
         switch self {
+        case .missingOwnerId:
+            return "A valid user is required to save this Battle result."
+        case .notEnoughOptions:
+            return "Not enough valid options were provided for this Battle."
         case .winnerNotInOptions:
             return "The selected winner must be one of the Battle options."
         case .duplicateRecentResult:

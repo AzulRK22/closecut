@@ -8,6 +8,11 @@
 import Foundation
 
 enum CircleInviteCodeGenerator {
+    private static let fallbackPrefix = "CLOSE"
+    private static let maxPrefixLength = 5
+    private static let defaultSuffixLength = 5
+    private static let separator = "-"
+
     static func generateCandidate(
         circleName: String,
         ownerDisplayName: String
@@ -15,34 +20,45 @@ enum CircleInviteCodeGenerator {
         let preferredBase = circleName.normalizedInviteCode
         let fallbackBase = ownerDisplayName.normalizedInviteCode
 
-        let base: String
+        let prefix = resolvedPrefix(
+            preferredBase: preferredBase,
+            fallbackBase: fallbackBase
+        )
 
+        return "\(prefix)\(separator)\(randomSuffix())"
+    }
+
+    static func generate(
+        displayName: String,
+        userId: String
+    ) -> String {
+        let preferredBase = displayName.normalizedInviteCode
+        let fallbackBase = userId.normalizedInviteCode
+
+        let prefix = resolvedPrefix(
+            preferredBase: preferredBase,
+            fallbackBase: fallbackBase
+        )
+
+        return "\(prefix)\(separator)\(randomSuffix())"
+    }
+
+    private static func resolvedPrefix(
+        preferredBase: String,
+        fallbackBase: String
+    ) -> String {
         if preferredBase.isEmpty == false {
-            base = String(preferredBase.prefix(5))
-        } else if fallbackBase.isEmpty == false {
-            base = String(fallbackBase.prefix(5))
-        } else {
-            base = "CLOSE"
+            return String(preferredBase.prefix(maxPrefixLength))
         }
 
-        return "\(base)-\(randomSuffix())"
-    }
-
-    static func generate(displayName: String, userId: String) -> String {
-        let base = displayName.normalizedInviteCode
-
-        let prefix: String
-
-        if base.isEmpty {
-            prefix = "CLOSE"
-        } else {
-            prefix = String(base.prefix(5))
+        if fallbackBase.isEmpty == false {
+            return String(fallbackBase.prefix(maxPrefixLength))
         }
 
-        return "\(prefix)-\(randomSuffix())"
+        return fallbackPrefix
     }
 
-    private static func randomSuffix(length: Int = 5) -> String {
+    private static func randomSuffix(length: Int = defaultSuffixLength) -> String {
         let characters = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
 
         return String(

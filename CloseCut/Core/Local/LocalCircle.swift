@@ -47,7 +47,7 @@ final class LocalCircle {
         self.ownerDisplayName = ownerDisplayName
         self.inviteCode = inviteCode
         self.inviteCodeNormalized = inviteCodeNormalized ?? inviteCode.normalizedInviteCode
-        self.memberIds = memberIds
+        self.memberIds = Self.cleanStringIds(memberIds)
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.deletedAt = deletedAt
@@ -65,7 +65,7 @@ extension LocalCircle {
             ownerDisplayName: ownerDisplayName,
             inviteCode: inviteCode,
             inviteCodeNormalized: inviteCodeNormalized,
-            memberIds: memberIds,
+            memberIds: Self.cleanStringIds(memberIds),
             createdAt: createdAt,
             updatedAt: updatedAt,
             deletedAt: deletedAt
@@ -79,10 +79,21 @@ extension LocalCircle {
         ownerDisplayName = circle.ownerDisplayName
         inviteCode = circle.inviteCode
         inviteCodeNormalized = circle.inviteCodeNormalized
-        memberIds = circle.memberIds
+        memberIds = Self.cleanStringIds(circle.memberIds)
         createdAt = circle.createdAt
         updatedAt = circle.updatedAt
         deletedAt = circle.deletedAt
         syncStatusRaw = syncStatus.rawValue
+    }
+
+    private static func cleanStringIds(_ ids: [String]) -> [String] {
+        Array(
+            Set(
+                ids
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+            )
+        )
+        .sorted()
     }
 }

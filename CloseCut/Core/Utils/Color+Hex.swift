@@ -9,16 +9,53 @@ import SwiftUI
 
 extension Color {
     init(hex: String) {
-        let hex = hex.replacingOccurrences(of: "#", with: "")
-        let scanner = Scanner(string: hex)
+        self = Color.fromHex(hex) ?? .clear
+    }
+
+    static func fromHex(_ hex: String) -> Color? {
+        let cleanedHex = hex
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "#", with: "")
+
+        guard cleanedHex.count == 6 || cleanedHex.count == 8 else {
+            #if DEBUG
+            print("⚠️ Invalid hex color length:", hex)
+            #endif
+            return nil
+        }
 
         var value: UInt64 = 0
-        scanner.scanHexInt64(&value)
+        let scanner = Scanner(string: cleanedHex)
 
-        let r = Double((value >> 16) & 0xFF) / 255.0
-        let g = Double((value >> 8) & 0xFF) / 255.0
-        let b = Double(value & 0xFF) / 255.0
+        guard scanner.scanHexInt64(&value) else {
+            #if DEBUG
+            print("⚠️ Invalid hex color value:", hex)
+            #endif
+            return nil
+        }
 
-        self.init(red: r, green: g, blue: b)
+        let red: Double
+        let green: Double
+        let blue: Double
+        let alpha: Double
+
+        if cleanedHex.count == 8 {
+            red = Double((value >> 24) & 0xFF) / 255.0
+            green = Double((value >> 16) & 0xFF) / 255.0
+            blue = Double((value >> 8) & 0xFF) / 255.0
+            alpha = Double(value & 0xFF) / 255.0
+        } else {
+            red = Double((value >> 16) & 0xFF) / 255.0
+            green = Double((value >> 8) & 0xFF) / 255.0
+            blue = Double(value & 0xFF) / 255.0
+            alpha = 1.0
+        }
+
+        return Color(
+            red: red,
+            green: green,
+            blue: blue,
+            opacity: alpha
+        )
     }
 }

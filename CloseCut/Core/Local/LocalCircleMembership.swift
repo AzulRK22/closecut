@@ -91,7 +91,7 @@ extension LocalCircleMembership {
         statusRaw = member.status.rawValue
 
         joinedAt = member.joinedAt
-        updatedAt = Date()
+        updatedAt = member.updatedAt
 
         syncStatusRaw = syncStatus.rawValue
     }

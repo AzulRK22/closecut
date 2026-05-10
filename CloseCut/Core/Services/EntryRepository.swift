@@ -37,14 +37,38 @@ final class EntryRepository {
         watchedAt: Date,
         modelContext: ModelContext
     ) throws -> Entry {
+        let cleanedOwnerId = ownerId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedTitle = title.trimmed
+
+        guard cleanedOwnerId.isEmpty == false else {
+            throw EntryRepositoryError.missingOwnerId
+        }
+
+        guard cleanedTitle.isEmpty == false else {
+            throw EntryRepositoryError.emptyTitle
+        }
+
+        if let duplicate = try findDuplicateLocalEntry(
+            ownerId: cleanedOwnerId,
+            title: cleanedTitle,
+            type: type,
+            releaseYear: releaseYear,
+            externalMetadata: externalMetadata,
+            modelContext: modelContext
+        ) {
+            return duplicate
+        }
+
         let now = Date()
-        let cleanedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanedSharedCircleIds = cleanCircleIds(sharedCircleIds)
-        let resolvedVisibility: EntryVisibility = cleanedSharedCircleIds.isEmpty ? .privateOnly : .circle
-        
+        let resolvedVisibility = resolveVisibility(
+            requestedVisibility: visibility,
+            sharedCircleIds: cleanedSharedCircleIds
+        )
+
         let localEntry = LocalEntry(
             id: UUID().uuidString,
-            ownerId: ownerId,
+            ownerId: cleanedOwnerId,
             title: cleanedTitle,
             normalizedTitle: cleanedTitle.normalizedTitleKey,
             type: type,
@@ -61,7 +85,7 @@ final class EntryRepository {
             cinemaScreen: watchContext == .cinema ? cinemaScreen : nil,
             cinemaComfort: watchContext == .cinema ? cinemaComfort : nil,
             visibility: resolvedVisibility,
-            sharedCircleIds: cleanedSharedCircleIds,
+            sharedCircleIds: resolvedVisibility == .circle ? cleanedSharedCircleIds : [],
             sourceType: sourceType,
             externalMetadata: externalMetadata,
             watchedAt: watchedAt,
@@ -77,8 +101,8 @@ final class EntryRepository {
         let entry = localEntry.domain
 
         try enqueueEntryAction(
-            userId: ownerId,
-            actionType: PendingActionType.createEntry,
+            userId: cleanedOwnerId,
+            actionType: .createEntry,
             entry: entry,
             modelContext: modelContext
         )
@@ -92,8 +116,14 @@ final class EntryRepository {
         visibility: EntryVisibility = .privateOnly,
         modelContext: ModelContext
     ) throws -> Entry {
+        let cleanedOwnerId = ownerId.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard cleanedOwnerId.isEmpty == false else {
+            throw EntryRepositoryError.missingOwnerId
+        }
+
         if let duplicate = try findDuplicateLocalEntry(
-            ownerId: ownerId,
+            ownerId: cleanedOwnerId,
             draft: draft,
             modelContext: modelContext
         ) {
@@ -104,7 +134,7 @@ final class EntryRepository {
         let watchedAt = approxDate.exactDate ?? Date()
 
         return try createLocalEntry(
-            ownerId: ownerId,
+            ownerId: cleanedOwnerId,
             title: draft.title,
             type: draft.type,
             releaseYear: draft.releaseYear,
@@ -135,18 +165,18 @@ final class EntryRepository {
         includeDeleted: Bool = false,
         modelContext: ModelContext
     ) throws -> [Entry] {
+        let cleanedOwnerId = ownerId.trimmingCharacters(in: .whitespacesAndNewlines)
+
         let descriptor = FetchDescriptor<LocalEntry>(
             predicate: #Predicate { entry in
-                entry.ownerId == ownerId
+                entry.ownerId == cleanedOwnerId
             },
             sortBy: [
                 SortDescriptor(\LocalEntry.watchedAt, order: .reverse)
             ]
         )
 
-        let localEntries = try modelContext.fetch(descriptor)
-
-        return localEntries
+        return try modelContext.fetch(descriptor)
             .filter { includeDeleted || $0.deletedAt == nil }
             .map { $0.domain }
     }
@@ -155,9 +185,11 @@ final class EntryRepository {
         id: String,
         modelContext: ModelContext
     ) throws -> Entry? {
+        let cleanedId = id.trimmingCharacters(in: .whitespacesAndNewlines)
+
         let descriptor = FetchDescriptor<LocalEntry>(
             predicate: #Predicate { entry in
-                entry.id == id
+                entry.id == cleanedId
             }
         )
 
@@ -168,14 +200,17 @@ final class EntryRepository {
         id: String,
         modelContext: ModelContext
     ) throws -> LocalEntry? {
+        let cleanedId = id.trimmingCharacters(in: .whitespacesAndNewlines)
+
         let descriptor = FetchDescriptor<LocalEntry>(
             predicate: #Predicate { entry in
-                entry.id == id
+                entry.id == cleanedId
             }
         )
 
         return try modelContext.fetch(descriptor).first
     }
+
     // MARK: - Remote Merge
 
     func upsertRemoteEntry(
@@ -261,6 +296,7 @@ final class EntryRepository {
         title: String,
         type: EntryType,
         releaseYear: Int?,
+        externalMetadata: EntryExternalMetadata? = nil,
         modelContext: ModelContext
     ) throws -> Entry? {
         let entries = try fetchLocalEntries(
@@ -273,6 +309,7 @@ final class EntryRepository {
             title: title,
             type: type,
             releaseYear: releaseYear,
+            externalMetadata: externalMetadata,
             in: entries
         )
     }
@@ -326,10 +363,18 @@ final class EntryRepository {
             throw EntryRepositoryError.entryNotFound
         }
 
-        let cleanedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedTitle = title.trimmed
+
+        guard cleanedTitle.isEmpty == false else {
+            throw EntryRepositoryError.emptyTitle
+        }
+
         let cleanedSharedCircleIds = cleanCircleIds(sharedCircleIds)
-        let resolvedVisibility: EntryVisibility = cleanedSharedCircleIds.isEmpty ? .privateOnly : .circle
-        
+        let resolvedVisibility = resolveVisibility(
+            requestedVisibility: visibility,
+            sharedCircleIds: cleanedSharedCircleIds
+        )
+
         localEntry.title = cleanedTitle
         localEntry.normalizedTitle = cleanedTitle.normalizedTitleKey
         localEntry.typeRaw = type.rawValue
@@ -354,20 +399,13 @@ final class EntryRepository {
         localEntry.cinemaComfort = watchContext == .cinema ? cinemaComfort : nil
 
         localEntry.visibilityRaw = resolvedVisibility.rawValue
-        localEntry.sharedCircleIds = cleanedSharedCircleIds
+        localEntry.sharedCircleIds = resolvedVisibility == .circle ? cleanedSharedCircleIds : []
         localEntry.sourceTypeRaw = sourceType.rawValue
-        
-        if let externalMetadata {
-            localEntry.externalSourceRaw = externalMetadata.source.rawValue
-            localEntry.tmdbId = externalMetadata.tmdbId
-            localEntry.tmdbMediaTypeRaw = externalMetadata.tmdbMediaTypeRaw
-            localEntry.posterPath = externalMetadata.posterPath
-            localEntry.backdropPath = externalMetadata.backdropPath
-            localEntry.overview = externalMetadata.overview
-            localEntry.tmdbRating = externalMetadata.tmdbRating
-            localEntry.tmdbPopularity = externalMetadata.tmdbPopularity
-            localEntry.tmdbGenreIds = externalMetadata.tmdbGenreIds
-        }
+
+        applyExternalMetadata(
+            externalMetadata,
+            to: localEntry
+        )
 
         localEntry.watchedAt = watchedAt
         localEntry.updatedAt = Date()
@@ -379,7 +417,7 @@ final class EntryRepository {
 
         try enqueueEntryAction(
             userId: entry.ownerId,
-            actionType: PendingActionType.updateEntry,
+            actionType: .updateEntry,
             entry: entry,
             modelContext: modelContext
         )
@@ -404,6 +442,7 @@ final class EntryRepository {
             localEntry.visibilityRaw = EntryVisibility.privateOnly.rawValue
         } else {
             let cleanedSharedCircleIds = cleanCircleIds(localEntry.sharedCircleIds)
+
             localEntry.sharedCircleIds = cleanedSharedCircleIds
             localEntry.visibilityRaw = cleanedSharedCircleIds.isEmpty
                 ? EntryVisibility.privateOnly.rawValue
@@ -419,13 +458,14 @@ final class EntryRepository {
 
         try enqueueEntryAction(
             userId: entry.ownerId,
-            actionType: PendingActionType.updateVisibility,
+            actionType: .updateVisibility,
             entry: entry,
             modelContext: modelContext
         )
 
         return entry
     }
+
     func updateLocalSharedCircles(
         entryId: String,
         sharedCircleIds: [String],
@@ -454,13 +494,14 @@ final class EntryRepository {
 
         try enqueueEntryAction(
             userId: entry.ownerId,
-            actionType: PendingActionType.updateVisibility,
+            actionType: .updateVisibility,
             entry: entry,
             modelContext: modelContext
         )
 
         return entry
     }
+
     func markLocalEntrySynced(
         entryId: String,
         modelContext: ModelContext
@@ -516,7 +557,7 @@ final class EntryRepository {
 
         try enqueueEntryAction(
             userId: entry.ownerId,
-            actionType: PendingActionType.deleteEntry,
+            actionType: .deleteEntry,
             entry: entry,
             modelContext: modelContext
         )
@@ -566,10 +607,53 @@ final class EntryRepository {
         )
     }
 
-    // MARK: - Helpers
+    // MARK: - Metadata Helpers
+
+    private func applyExternalMetadata(
+        _ externalMetadata: EntryExternalMetadata?,
+        to localEntry: LocalEntry
+    ) {
+        guard let externalMetadata else {
+            localEntry.externalSourceRaw = nil
+            localEntry.tmdbId = nil
+            localEntry.tmdbMediaTypeRaw = nil
+            localEntry.posterPath = nil
+            localEntry.backdropPath = nil
+            localEntry.overview = nil
+            localEntry.tmdbRating = nil
+            localEntry.tmdbPopularity = nil
+            localEntry.tmdbGenreIds = []
+            return
+        }
+
+        localEntry.externalSourceRaw = externalMetadata.source.rawValue
+        localEntry.tmdbId = externalMetadata.tmdbId
+        localEntry.tmdbMediaTypeRaw = externalMetadata.tmdbMediaTypeRaw
+        localEntry.posterPath = externalMetadata.posterPath
+        localEntry.backdropPath = externalMetadata.backdropPath
+        localEntry.overview = externalMetadata.overview
+        localEntry.tmdbRating = externalMetadata.tmdbRating
+        localEntry.tmdbPopularity = externalMetadata.tmdbPopularity
+        localEntry.tmdbGenreIds = externalMetadata.tmdbGenreIds
+    }
+
+    // MARK: - Cleaning Helpers
+
+    private func resolveVisibility(
+        requestedVisibility: EntryVisibility,
+        sharedCircleIds: [String]
+    ) -> EntryVisibility {
+        guard requestedVisibility == .circle else {
+            return .privateOnly
+        }
+
+        return sharedCircleIds.isEmpty ? .privateOnly : .circle
+    }
 
     private func cleanOptionalText(_ value: String?) -> String? {
-        guard let value else { return nil }
+        guard let value else {
+            return nil
+        }
 
         let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -577,26 +661,41 @@ final class EntryRepository {
     }
 
     private func cleanTags(_ tags: [String]) -> [String] {
-        tags
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-            .filter { !$0.isEmpty }
-            .uniqued()
+        Array(
+            Set(
+                tags
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+                    .filter { !$0.isEmpty }
+            )
+        )
+        .sorted()
     }
+
     private func cleanCircleIds(_ ids: [String]) -> [String] {
-        ids
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .uniqued()
+        Array(
+            Set(
+                ids
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+            )
+        )
+        .sorted()
     }
 }
 
 enum EntryRepositoryError: LocalizedError {
     case entryNotFound
+    case missingOwnerId
+    case emptyTitle
 
     var errorDescription: String? {
         switch self {
         case .entryNotFound:
             return "Entry was not found."
+        case .missingOwnerId:
+            return "A valid owner is required."
+        case .emptyTitle:
+            return "Title is required."
         }
     }
 }

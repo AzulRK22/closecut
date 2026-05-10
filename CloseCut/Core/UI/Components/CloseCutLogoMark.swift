@@ -9,6 +9,7 @@ import SwiftUI
 
 struct CloseCutLogoMark: View {
     var size: CGFloat = 72
+    var showShadow: Bool = true
 
     var body: some View {
         ZStack {
@@ -29,7 +30,12 @@ struct CloseCutLogoMark: View {
                 .foregroundStyle(.white)
         }
         .frame(width: size, height: size)
-        .shadow(color: CloseCutColors.accent.opacity(0.25), radius: 18, x: 0, y: 10)
+        .shadow(
+            color: showShadow ? CloseCutColors.accent.opacity(0.25) : .clear,
+            radius: showShadow ? 18 : 0,
+            x: 0,
+            y: showShadow ? 10 : 0
+        )
         .accessibilityHidden(true)
     }
 }

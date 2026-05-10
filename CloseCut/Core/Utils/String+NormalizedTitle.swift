@@ -9,11 +9,14 @@ import Foundation
 
 extension String {
     var normalizedTitleKey: String {
-        self
+        trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
-            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .folding(
+                options: [.diacriticInsensitive, .caseInsensitive],
+                locale: Locale(identifier: "en_US_POSIX")
+            )
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
-            .filter { !$0.isEmpty }
+            .filter { $0.isEmpty == false }
             .joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }

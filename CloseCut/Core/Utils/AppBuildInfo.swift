@@ -9,11 +9,11 @@ import Foundation
 
 enum AppBuildInfo {
     static var version: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        value(for: "CFBundleShortVersionString", fallback: "1.0")
     }
 
     static var build: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+        value(for: "CFBundleVersion", fallback: "1")
     }
 
     static var displayVersion: String {
@@ -22,5 +22,18 @@ enum AppBuildInfo {
 
     static var bundleIdentifier: String {
         Bundle.main.bundleIdentifier ?? "unknown.bundle"
+    }
+
+    private static func value(
+        for key: String,
+        fallback: String
+    ) -> String {
+        guard let value = Bundle.main.infoDictionary?[key] as? String else {
+            return fallback
+        }
+
+        let cleanedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return cleanedValue.isEmpty ? fallback : cleanedValue
     }
 }

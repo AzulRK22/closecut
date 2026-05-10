@@ -12,12 +12,6 @@ enum PendingActionType: String, Codable, CaseIterable {
     case updateEntry
     case deleteEntry
     case updateVisibility
-    case updateProfile
-    case joinCircle
-    case setReaction
-    case removeReaction
-    case createComment
-    case createCircle
 }
 
 enum PendingActionStatus: String, Codable, CaseIterable {
@@ -34,6 +28,8 @@ struct PendingEntryPayload: Codable, Equatable {
     let sourceType: String
     let updatedAt: Date
 }
+
 enum PendingActionCleanupPolicy {
     static let completedActionRetentionDays: Int = 7
+    static let maxRetryAttempts: Int = 5
 }

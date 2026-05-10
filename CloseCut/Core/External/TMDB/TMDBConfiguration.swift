@@ -29,16 +29,4 @@ enum TMDBConfiguration {
     }
 
     static let apiBaseURL = URL(string: "https://api.themoviedb.org/3")!
-
-    #if DEBUG
-    static func debugPrintTokenStatus() {
-        let token = readAccessToken
-
-        if token.isEmpty {
-            print("❌ TMDB token is empty.")
-        } else {
-            print("✅ TMDB token loaded. Prefix:", String(token.prefix(12)))
-        }
-    }
-    #endif
 }

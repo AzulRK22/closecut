@@ -14,23 +14,42 @@ final class EntrySyncService {
     private let repository = EntryRepository()
     private let remote = EntryRemoteDataSource()
 
+    // MARK: - Push Local Pending Changes
+
     func syncPendingEntries(
         userId: String,
         modelContext: ModelContext
     ) async -> EntrySyncSummary {
+        let cleanedUserId = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard cleanedUserId.isEmpty == false else {
+            return EntrySyncSummary(
+                syncedCount: 0,
+                failedCount: 1,
+                pulledCount: 0
+            )
+        }
+
         var syncedEntryIds = Set<String>()
         var syncedCount = 0
         var failedCount = 0
 
         do {
             let actions = try queue.fetchSyncableActions(
-                userId: userId,
+                userId: cleanedUserId,
                 modelContext: modelContext
             )
 
             for action in actions where isEntryAction(action) {
                 do {
-                    let syncedEntryId = try await sync(action: action, modelContext: modelContext)
+                    action.markSyncing()
+                    try modelContext.save()
+
+                    let syncedEntryId = try await sync(
+                        action: action,
+                        modelContext: modelContext
+                    )
+
                     syncedEntryIds.insert(syncedEntryId)
                     action.markCompleted()
                     syncedCount += 1
@@ -43,7 +62,7 @@ final class EntrySyncService {
             }
 
             let orphanSummary = await syncOrphanPendingEntries(
-                userId: userId,
+                userId: cleanedUserId,
                 excludingEntryIds: syncedEntryIds,
                 modelContext: modelContext
             )
@@ -63,22 +82,37 @@ final class EntrySyncService {
 
             return EntrySyncSummary(
                 syncedCount: syncedCount,
-                failedCount: failedCount
+                failedCount: failedCount,
+                pulledCount: 0
             )
         } catch {
             return EntrySyncSummary(
                 syncedCount: syncedCount,
-                failedCount: failedCount + 1
+                failedCount: failedCount + 1,
+                pulledCount: 0
             )
         }
     }
+
+    // MARK: - Pull Remote Personal Entries
+
     func pullRemoteEntries(
         userId: String,
         modelContext: ModelContext
     ) async -> EntrySyncSummary {
+        let cleanedUserId = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard cleanedUserId.isEmpty == false else {
+            return EntrySyncSummary(
+                syncedCount: 0,
+                failedCount: 1,
+                pulledCount: 0
+            )
+        }
+
         do {
             let remoteEntries = try await remote.fetchEntries(
-                ownerId: userId
+                ownerId: cleanedUserId
             )
 
             var pulledCount = 0
@@ -98,6 +132,10 @@ final class EntrySyncService {
                 pulledCount: pulledCount
             )
         } catch {
+            #if DEBUG
+            print("⚠️ Failed to pull remote entries:", error.localizedDescription)
+            #endif
+
             return EntrySyncSummary(
                 syncedCount: 0,
                 failedCount: 1,
@@ -105,6 +143,8 @@ final class EntrySyncService {
             )
         }
     }
+
+    // MARK: - Private Sync Logic
 
     private func sync(
         action: PendingAction,
@@ -127,26 +167,22 @@ final class EntrySyncService {
         }
 
         switch action.actionType {
-        case PendingActionType.createEntry,
-             PendingActionType.updateEntry,
-             PendingActionType.updateVisibility:
+        case .createEntry, .updateEntry, .updateVisibility:
             try await remote.upsertEntry(entry)
+
             try repository.markLocalEntrySynced(
                 entryId: entry.id,
                 modelContext: modelContext
             )
 
-        case PendingActionType.deleteEntry:
+        case .deleteEntry:
             try await remote.softDeleteEntry(entry)
+
             try repository.markLocalEntrySynced(
                 entryId: entry.id,
                 modelContext: modelContext
             )
-
-        default:
-            break
         }
-
         return entry.id
     }
 
@@ -191,12 +227,14 @@ final class EntrySyncService {
 
             return EntrySyncSummary(
                 syncedCount: syncedCount,
-                failedCount: failedCount
+                failedCount: failedCount,
+                pulledCount: 0
             )
         } catch {
             return EntrySyncSummary(
                 syncedCount: 0,
-                failedCount: 1
+                failedCount: 1,
+                pulledCount: 0
             )
         }
     }
@@ -206,10 +244,13 @@ final class EntrySyncService {
         excludingEntryIds: Set<String>,
         modelContext: ModelContext
     ) throws -> [Entry] {
+        let pendingRaw = SyncStatus.pending.rawValue
+        let cleanedUserId = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+
         let descriptor = FetchDescriptor<LocalEntry>(
             predicate: #Predicate { entry in
-                entry.ownerId == userId &&
-                entry.syncStatusRaw == "pending"
+                entry.ownerId == cleanedUserId &&
+                entry.syncStatusRaw == pendingRaw
             },
             sortBy: [
                 SortDescriptor(\LocalEntry.updatedAt, order: .forward)
@@ -223,13 +264,8 @@ final class EntrySyncService {
 
     private func isEntryAction(_ action: PendingAction) -> Bool {
         switch action.actionType {
-        case PendingActionType.createEntry,
-             PendingActionType.updateEntry,
-             PendingActionType.deleteEntry,
-             PendingActionType.updateVisibility:
+        case .createEntry, .updateEntry, .deleteEntry, .updateVisibility:
             return true
-        default:
-            return false
         }
     }
 }
@@ -248,11 +284,20 @@ struct EntrySyncSummary: Equatable {
         self.failedCount = failedCount
         self.pulledCount = pulledCount
     }
+
+    var hasFailures: Bool {
+        failedCount > 0
+    }
+
+    var didSyncAnything: Bool {
+        syncedCount > 0 || pulledCount > 0
+    }
 }
 
 enum EntrySyncError: LocalizedError {
     case missingPayload
     case entryNotFound
+    case unsupportedAction(String)
 
     var errorDescription: String? {
         switch self {
@@ -260,6 +305,8 @@ enum EntrySyncError: LocalizedError {
             return "Missing sync payload."
         case .entryNotFound:
             return "Entry was not found locally."
+        case .unsupportedAction(let action):
+            return "Unsupported entry sync action: \(action)."
         }
     }
 }

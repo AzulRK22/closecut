@@ -51,11 +51,23 @@ final class PendingAction {
 
 extension PendingAction {
     var actionType: PendingActionType {
-        PendingActionType(rawValue: actionTypeRaw) ?? PendingActionType.createEntry
+        PendingActionType(rawValue: actionTypeRaw) ?? .createEntry
     }
 
     var status: PendingActionStatus {
-        PendingActionStatus(rawValue: statusRaw) ?? PendingActionStatus.pending
+        PendingActionStatus(rawValue: statusRaw) ?? .pending
+    }
+
+    var canRetry: Bool {
+        attempts < 3
+    }
+
+    var isTerminal: Bool {
+        status == .completed
+    }
+
+    var isSyncable: Bool {
+        status == .pending || status == .failed
     }
 
     func markPending() {

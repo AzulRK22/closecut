@@ -10,7 +10,8 @@ import FirebaseFirestore
 
 @MainActor
 final class EntryRemoteDataSource {
-    private let db = Firestore.firestore()
+
+    // MARK: - Write
 
     func upsertEntry(
         _ entry: Entry,
@@ -21,9 +22,8 @@ final class EntryRemoteDataSource {
             circleId: circleId
         )
 
-        try db
-            .collection("entries")
-            .document(entry.id)
+        try FirestorePaths
+            .entry(entry.id)
             .setData(from: dto, merge: true)
     }
 
@@ -40,34 +40,37 @@ final class EntryRemoteDataSource {
             circleId: circleId
         )
 
-        try db
-            .collection("entries")
-            .document(entry.id)
+        try FirestorePaths
+            .entry(entry.id)
             .setData(from: dto, merge: true)
     }
+
+    // MARK: - Read
 
     func fetchEntries(
         ownerId: String
     ) async throws -> [Entry] {
-        let snapshot = try await db
-            .collection("entries")
+        let snapshot = try await FirestorePaths
+            .entriesCollection()
             .whereField("ownerId", isEqualTo: ownerId)
             .order(by: "updatedAt", descending: true)
             .getDocuments()
 
         return try snapshot.documents.map { document in
             let dto = try document.data(as: FirestoreEntryDTO.self)
+
             return dto.domain(
                 id: document.documentID,
                 syncStatus: .synced
             )
         }
     }
+
     func fetchSharedEntries(
         circleId: String
     ) async throws -> [Entry] {
-        let snapshot = try await db
-            .collection("entries")
+        let snapshot = try await FirestorePaths
+            .entriesCollection()
             .whereField("visibility", isEqualTo: EntryVisibility.circle.rawValue)
             .whereField("sharedCircleIds", arrayContains: circleId)
             .order(by: "updatedAt", descending: true)

@@ -27,7 +27,7 @@ struct QuickAddDraft: Equatable, Identifiable {
         watchedDateApprox: WatchedDateApprox? = nil,
         externalMetadata: EntryExternalMetadata? = nil
     ) {
-        let cleanedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedTitle = title.trimmed
 
         self.id = id
         self.title = cleanedTitle

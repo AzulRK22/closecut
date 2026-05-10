@@ -30,15 +30,7 @@ struct EmptyStateView: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            ZStack {
-                SwiftUI.Circle()
-                    .fill(CloseCutColors.card)
-                    .frame(width: 92, height: 92)
-
-                Image(systemName: systemImage)
-                    .font(.system(size: 34, weight: .semibold))
-                    .foregroundStyle(CloseCutColors.accentLight)
-            }
+            icon
 
             VStack(spacing: 8) {
                 Text(title)
@@ -71,6 +63,7 @@ struct EmptyStateView: View {
                 .buttonStyle(.plain)
                 .padding(.horizontal, 20)
                 .padding(.top, 2)
+                .accessibilityLabel(actionTitle)
             }
         }
         .padding(24)
@@ -81,7 +74,19 @@ struct EmptyStateView: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title). \(message)")
+        .accessibilityElement(children: .contain)
+    }
+
+    private var icon: some View {
+        ZStack {
+            SwiftUI.Circle()
+                .fill(CloseCutColors.card)
+                .frame(width: 92, height: 92)
+
+            Image(systemName: systemImage)
+                .font(.system(size: 34, weight: .semibold))
+                .foregroundStyle(CloseCutColors.accentLight)
+        }
+        .accessibilityHidden(true)
     }
 }

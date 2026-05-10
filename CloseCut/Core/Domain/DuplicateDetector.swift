@@ -8,6 +8,9 @@
 import Foundation
 
 enum DuplicateDetector {
+
+    // MARK: - Public API
+
     static func isDuplicate(
         draft: QuickAddDraft,
         existingEntry: Entry
@@ -16,6 +19,7 @@ enum DuplicateDetector {
             normalizedTitle: draft.normalizedTitle,
             type: draft.type,
             releaseYear: draft.releaseYear,
+            externalMetadata: draft.externalMetadata,
             existingEntry: existingEntry
         )
     }
@@ -24,12 +28,14 @@ enum DuplicateDetector {
         title: String,
         type: EntryType,
         releaseYear: Int?,
+        externalMetadata: EntryExternalMetadata? = nil,
         existingEntry: Entry
     ) -> Bool {
         isDuplicate(
             normalizedTitle: title.normalizedTitleKey,
             type: type,
             releaseYear: releaseYear,
+            externalMetadata: externalMetadata,
             existingEntry: existingEntry
         )
     }
@@ -38,13 +44,95 @@ enum DuplicateDetector {
         normalizedTitle: String,
         type: EntryType,
         releaseYear: Int?,
+        externalMetadata: EntryExternalMetadata? = nil,
         existingEntry: Entry
     ) -> Bool {
         guard existingEntry.deletedAt == nil else {
             return false
         }
 
-        guard existingEntry.normalizedTitle == normalizedTitle else {
+        if isSameTMDBMedia(
+            externalMetadata: externalMetadata,
+            existingEntry: existingEntry
+        ) {
+            return true
+        }
+
+        return isSameTitleTypeAndCompatibleYear(
+            normalizedTitle: normalizedTitle,
+            type: type,
+            releaseYear: releaseYear,
+            existingEntry: existingEntry
+        )
+    }
+
+    static func findDuplicate(
+        draft: QuickAddDraft,
+        in entries: [Entry]
+    ) -> Entry? {
+        entries.first { entry in
+            isDuplicate(
+                draft: draft,
+                existingEntry: entry
+            )
+        }
+    }
+
+    static func findDuplicate(
+        title: String,
+        type: EntryType,
+        releaseYear: Int?,
+        externalMetadata: EntryExternalMetadata? = nil,
+        in entries: [Entry]
+    ) -> Entry? {
+        entries.first { entry in
+            isDuplicate(
+                title: title,
+                type: type,
+                releaseYear: releaseYear,
+                externalMetadata: externalMetadata,
+                existingEntry: entry
+            )
+        }
+    }
+
+    // MARK: - Matching Rules
+
+    private static func isSameTMDBMedia(
+        externalMetadata: EntryExternalMetadata?,
+        existingEntry: Entry
+    ) -> Bool {
+        guard let externalMetadata else {
+            return false
+        }
+
+        guard existingEntry.externalSourceRaw == ExternalMediaSource.tmdb.rawValue else {
+            return false
+        }
+
+        guard let existingTMDBId = existingEntry.tmdbId,
+              let existingMediaTypeRaw = existingEntry.tmdbMediaTypeRaw else {
+            return false
+        }
+
+        return existingTMDBId == externalMetadata.tmdbId &&
+            existingMediaTypeRaw == externalMetadata.tmdbMediaTypeRaw
+    }
+
+    private static func isSameTitleTypeAndCompatibleYear(
+        normalizedTitle: String,
+        type: EntryType,
+        releaseYear: Int?,
+        existingEntry: Entry
+    ) -> Bool {
+        let cleanedNormalizedTitle = normalizedTitle
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard cleanedNormalizedTitle.isEmpty == false else {
+            return false
+        }
+
+        guard existingEntry.normalizedTitle == cleanedNormalizedTitle else {
             return false
         }
 
@@ -57,30 +145,5 @@ enum DuplicateDetector {
         }
 
         return releaseYear == nil || existingEntry.releaseYear == nil
-    }
-
-    static func findDuplicate(
-        draft: QuickAddDraft,
-        in entries: [Entry]
-    ) -> Entry? {
-        entries.first { entry in
-            isDuplicate(draft: draft, existingEntry: entry)
-        }
-    }
-
-    static func findDuplicate(
-        title: String,
-        type: EntryType,
-        releaseYear: Int?,
-        in entries: [Entry]
-    ) -> Entry? {
-        entries.first { entry in
-            isDuplicate(
-                title: title,
-                type: type,
-                releaseYear: releaseYear,
-                existingEntry: entry
-            )
-        }
     }
 }

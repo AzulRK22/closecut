@@ -10,6 +10,42 @@ import SwiftUI
 enum PendingSyncBadgeSize {
     case inline
     case banner
+
+    var font: Font {
+        switch self {
+        case .inline:
+            return .caption2
+        case .banner:
+            return .caption.weight(.semibold)
+        }
+    }
+
+    var horizontalPadding: CGFloat {
+        switch self {
+        case .inline:
+            return 8
+        case .banner:
+            return 12
+        }
+    }
+
+    var verticalPadding: CGFloat {
+        switch self {
+        case .inline:
+            return 5
+        case .banner:
+            return 8
+        }
+    }
+
+    var cornerRadius: CGFloat {
+        switch self {
+        case .inline:
+            return 6
+        case .banner:
+            return 10
+        }
+    }
 }
 
 struct PendingSyncBadge: View {
@@ -30,17 +66,25 @@ struct PendingSyncBadge: View {
             )
 
         case .failed:
-            Button {
-                onRetry?()
-            } label: {
+            if let onRetry {
+                Button {
+                    onRetry()
+                } label: {
+                    badge(
+                        dotColor: CloseCutColors.failed,
+                        background: CloseCutColors.failedBackground,
+                        text: "Tap to retry"
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Attempts to sync this item again.")
+            } else {
                 badge(
                     dotColor: CloseCutColors.failed,
                     background: CloseCutColors.failedBackground,
-                    text: onRetry == nil ? "Sync failed" : "Tap to retry"
+                    text: "Sync failed"
                 )
             }
-            .buttonStyle(.plain)
-            .disabled(onRetry == nil)
         }
     }
 
@@ -53,15 +97,16 @@ struct PendingSyncBadge: View {
             SwiftUI.Circle()
                 .fill(dotColor)
                 .frame(width: 6, height: 6)
+                .accessibilityHidden(true)
 
             Text(text)
-                .font(.caption2)
+                .font(size.font)
                 .foregroundStyle(CloseCutColors.textPrimary)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
+        .padding(.horizontal, size.horizontalPadding)
+        .padding(.vertical, size.verticalPadding)
         .background(background)
-        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: size.cornerRadius, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(text)
     }

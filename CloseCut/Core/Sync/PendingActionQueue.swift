@@ -10,6 +10,9 @@ import SwiftData
 
 @MainActor
 final class PendingActionQueue {
+
+    // MARK: - Enqueue
+
     func enqueue(
         userId: String,
         actionType: PendingActionType,
@@ -17,11 +20,19 @@ final class PendingActionQueue {
         dedupeKey: String? = nil,
         modelContext: ModelContext
     ) throws {
-        let normalizedDedupeKey = dedupeKey
+        let cleanedUserId = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard cleanedUserId.isEmpty == false else {
+            throw PendingActionQueueError.missingUserId
+        }
+
+        let normalizedDedupeKey = dedupeKey?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
 
         if let normalizedDedupeKey,
+           normalizedDedupeKey.isEmpty == false,
            let existing = try fetchActionByDedupeKey(
-                userId: userId,
+                userId: cleanedUserId,
                 dedupeKey: normalizedDedupeKey,
                 modelContext: modelContext
            ) {
@@ -36,11 +47,11 @@ final class PendingActionQueue {
         }
 
         let action = PendingAction(
-            userId: userId,
+            userId: cleanedUserId,
             actionType: actionType,
-            status: PendingActionStatus.pending,
+            status: .pending,
             payloadData: payloadData,
-            dedupeKey: normalizedDedupeKey
+            dedupeKey: normalizedDedupeKey?.isEmpty == false ? normalizedDedupeKey : nil
         )
 
         modelContext.insert(action)
@@ -54,53 +65,52 @@ final class PendingActionQueue {
         payloadData: Data?,
         modelContext: ModelContext
     ) throws {
+        let cleanedEntryId = entryId.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard cleanedEntryId.isEmpty == false else {
+            throw PendingActionQueueError.missingEntryId
+        }
+
         switch actionType {
-        case PendingActionType.createEntry:
+        case .createEntry:
             try enqueueCreateEntryAction(
                 userId: userId,
-                entryId: entryId,
+                entryId: cleanedEntryId,
                 payloadData: payloadData,
                 modelContext: modelContext
             )
 
-        case PendingActionType.updateEntry,
-             PendingActionType.updateVisibility:
+        case .updateEntry, .updateVisibility:
             try enqueueUpdateLikeEntryAction(
                 userId: userId,
-                entryId: entryId,
+                entryId: cleanedEntryId,
                 actionType: actionType,
                 payloadData: payloadData,
                 modelContext: modelContext
             )
 
-        case PendingActionType.deleteEntry:
+        case .deleteEntry:
             try enqueueDeleteEntryAction(
                 userId: userId,
-                entryId: entryId,
+                entryId: cleanedEntryId,
                 payloadData: payloadData,
-                modelContext: modelContext
-            )
-
-        default:
-            try enqueue(
-                userId: userId,
-                actionType: actionType,
-                payloadData: payloadData,
-                dedupeKey: "entry:\(actionType.rawValue):\(entryId)",
                 modelContext: modelContext
             )
         }
     }
+
+    // MARK: - Fetch
 
     func fetchPendingActions(
         userId: String,
         modelContext: ModelContext
     ) throws -> [PendingAction] {
         let pendingRaw = PendingActionStatus.pending.rawValue
+        let cleanedUserId = userId.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let descriptor = FetchDescriptor<PendingAction>(
             predicate: #Predicate { action in
-                action.userId == userId &&
+                action.userId == cleanedUserId &&
                 action.statusRaw == pendingRaw
             },
             sortBy: [
@@ -116,10 +126,11 @@ final class PendingActionQueue {
         modelContext: ModelContext
     ) throws -> [PendingAction] {
         let failedRaw = PendingActionStatus.failed.rawValue
+        let cleanedUserId = userId.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let descriptor = FetchDescriptor<PendingAction>(
             predicate: #Predicate { action in
-                action.userId == userId &&
+                action.userId == cleanedUserId &&
                 action.statusRaw == failedRaw
             },
             sortBy: [
@@ -136,11 +147,17 @@ final class PendingActionQueue {
     ) throws -> [PendingAction] {
         let pendingRaw = PendingActionStatus.pending.rawValue
         let failedRaw = PendingActionStatus.failed.rawValue
+        let cleanedUserId = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let maxAttempts = PendingActionCleanupPolicy.maxRetryAttempts
 
         let descriptor = FetchDescriptor<PendingAction>(
             predicate: #Predicate { action in
-                action.userId == userId &&
-                (action.statusRaw == pendingRaw || action.statusRaw == failedRaw)
+                action.userId == cleanedUserId &&
+                action.attempts < maxAttempts &&
+                (
+                    action.statusRaw == pendingRaw ||
+                    action.statusRaw == failedRaw
+                )
             },
             sortBy: [
                 SortDescriptor(\PendingAction.createdAt, order: .forward)
@@ -159,6 +176,8 @@ final class PendingActionQueue {
             modelContext: modelContext
         ).count
     }
+
+    // MARK: - Cleanup
 
     @discardableResult
     func cleanupCompletedActions(
@@ -200,10 +219,11 @@ final class PendingActionQueue {
         modelContext: ModelContext
     ) throws -> Int {
         let completedRaw = PendingActionStatus.completed.rawValue
+        let cleanedUserId = userId.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let descriptor = FetchDescriptor<PendingAction>(
             predicate: #Predicate { action in
-                action.userId == userId &&
+                action.userId == cleanedUserId &&
                 action.statusRaw == completedRaw
             }
         )
@@ -221,16 +241,17 @@ final class PendingActionQueue {
         return actionsToDelete.count
     }
 
+    // MARK: - Entry Action Strategy
+
     private func enqueueCreateEntryAction(
         userId: String,
         entryId: String,
         payloadData: Data?,
         modelContext: ModelContext
     ) throws {
-        // If create already exists, just update its payload.
         try enqueue(
             userId: userId,
-            actionType: PendingActionType.createEntry,
+            actionType: .createEntry,
             payloadData: payloadData,
             dedupeKey: entryCreateKey(entryId),
             modelContext: modelContext
@@ -244,8 +265,6 @@ final class PendingActionQueue {
         payloadData: Data?,
         modelContext: ModelContext
     ) throws {
-        // If create is still pending/failed, update the create payload instead.
-        // Firestore setData(merge:) with the latest full payload is enough.
         if let createAction = try fetchActionByDedupeKey(
             userId: userId,
             dedupeKey: entryCreateKey(entryId),
@@ -259,7 +278,6 @@ final class PendingActionQueue {
             return
         }
 
-        // If delete is already pending, do not add updates after delete.
         if try fetchActionByDedupeKey(
             userId: userId,
             dedupeKey: entryDeleteKey(entryId),
@@ -268,7 +286,7 @@ final class PendingActionQueue {
             return
         }
 
-        let key = actionType == PendingActionType.updateVisibility
+        let key = actionType == .updateVisibility
             ? entryVisibilityKey(entryId)
             : entryUpdateKey(entryId)
 
@@ -287,7 +305,6 @@ final class PendingActionQueue {
         payloadData: Data?,
         modelContext: ModelContext
     ) throws {
-        // Delete should dominate pending updates/visibility changes.
         try deleteActionIfExists(
             userId: userId,
             dedupeKey: entryUpdateKey(entryId),
@@ -300,16 +317,16 @@ final class PendingActionQueue {
             modelContext: modelContext
         )
 
-        // If create exists and the entry has never reached remote, we still keep delete
-        // for now because sync can upsert deletedAt safely. This is simpler for MVP.
         try enqueue(
             userId: userId,
-            actionType: PendingActionType.deleteEntry,
+            actionType: .deleteEntry,
             payloadData: payloadData,
             dedupeKey: entryDeleteKey(entryId),
             modelContext: modelContext
         )
     }
+
+    // MARK: - Private Fetch Helpers
 
     private func fetchActionByDedupeKey(
         userId: String,
@@ -317,10 +334,11 @@ final class PendingActionQueue {
         modelContext: ModelContext
     ) throws -> PendingAction? {
         let completedRaw = PendingActionStatus.completed.rawValue
+        let cleanedUserId = userId.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let descriptor = FetchDescriptor<PendingAction>(
             predicate: #Predicate { action in
-                action.userId == userId &&
+                action.userId == cleanedUserId &&
                 action.dedupeKey == dedupeKey &&
                 action.statusRaw != completedRaw
             }
@@ -344,6 +362,8 @@ final class PendingActionQueue {
         }
     }
 
+    // MARK: - Dedupe Keys
+
     private func entryCreateKey(_ entryId: String) -> String {
         "entry:create:\(entryId)"
     }
@@ -358,5 +378,19 @@ final class PendingActionQueue {
 
     private func entryVisibilityKey(_ entryId: String) -> String {
         "entry:visibility:\(entryId)"
+    }
+}
+
+enum PendingActionQueueError: LocalizedError {
+    case missingUserId
+    case missingEntryId
+
+    var errorDescription: String? {
+        switch self {
+        case .missingUserId:
+            return "A valid user is required to enqueue this sync action."
+        case .missingEntryId:
+            return "A valid entry is required to enqueue this sync action."
+        }
     }
 }

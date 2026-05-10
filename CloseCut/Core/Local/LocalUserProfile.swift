@@ -16,12 +16,11 @@ final class LocalUserProfile {
     var email: String?
     var photoURL: String?
 
-    // Legacy single-circle field.
+    // Legacy single-circle field kept for migration/backward compatibility.
     var circleId: String?
 
     // Multi-circle field.
     // Important: optional for SwiftData lightweight migration.
-    // Existing stores do not have this attribute, so making it non-optional breaks migration.
     var circleIds: [String]?
 
     var defaultVisibilityRaw: String
@@ -98,18 +97,18 @@ extension LocalUserProfile {
 
     func addCircleId(_ circleId: String) {
         let cleanedCircleIds = Self.cleanCircleIds(
-            (circleIds ?? []) + [circleId]
+            resolvedCircleIds + [circleId]
         )
 
         circleIds = cleanedCircleIds
-        self.circleId = self.circleId ?? circleId
+        self.circleId = self.circleId ?? cleanedCircleIds.first
         updatedAt = Date()
         syncStatusRaw = SyncStatus.pending.rawValue
     }
 
     func removeCircleId(_ circleId: String) {
         let cleanedCircleIds = Self.cleanCircleIds(
-            (circleIds ?? []).filter { $0 != circleId }
+            resolvedCircleIds.filter { $0 != circleId }
         )
 
         circleIds = cleanedCircleIds

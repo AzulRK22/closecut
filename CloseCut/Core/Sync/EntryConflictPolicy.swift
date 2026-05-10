@@ -31,6 +31,10 @@ enum EntryConflictPolicy {
             return .applyRemote
         }
 
+        if localEntry.deletedAt != nil && remoteEntry.deletedAt == nil {
+            return .keepLocal
+        }
+
         if remoteEntry.updatedAt > localEntry.updatedAt {
             return .applyRemote
         }

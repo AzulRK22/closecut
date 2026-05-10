@@ -9,7 +9,6 @@ import Foundation
 import FirebaseAuth
 import Combine
 
-
 @MainActor
 final class AuthService: ObservableObject {
     @Published private(set) var authState: AuthState = .loading
@@ -27,15 +26,22 @@ final class AuthService: ObservableObject {
     }
 
     func listenToAuthState() {
+        if let authStateHandle {
+            Auth.auth().removeStateDidChangeListener(authStateHandle)
+            self.authStateHandle = nil
+        }
+
         authState = .loading
 
         authStateHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
             guard let self else { return }
 
-            if let user {
-                self.authState = .signedIn(AuthUser(firebaseUser: user))
-            } else {
-                self.authState = .signedOut
+            Task { @MainActor in
+                if let user {
+                    self.authState = .signedIn(AuthUser(firebaseUser: user))
+                } else {
+                    self.authState = .signedOut
+                }
             }
         }
     }
@@ -43,7 +49,7 @@ final class AuthService: ObservableObject {
     func signUp(email: String, password: String) async {
         do {
             let result = try await Auth.auth().createUser(
-                withEmail: email,
+                withEmail: cleanEmail(email),
                 password: password
             )
 
@@ -56,7 +62,7 @@ final class AuthService: ObservableObject {
     func signIn(email: String, password: String) async {
         do {
             let result = try await Auth.auth().signIn(
-                withEmail: email,
+                withEmail: cleanEmail(email),
                 password: password
             )
 
@@ -81,6 +87,10 @@ final class AuthService: ObservableObject {
         }
 
         return AuthUser(firebaseUser: user)
+    }
+
+    private func cleanEmail(_ email: String) -> String {
+        email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     private static func readableError(_ error: Error) -> String {
