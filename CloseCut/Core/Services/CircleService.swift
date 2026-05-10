@@ -14,6 +14,8 @@ final class CircleService {
     private let circleRemoteDataSource = CircleRemoteDataSource()
     private let userProfileRepository = UserProfileRepository()
 
+    // MARK: - Create Circle
+
     func createCircle(
         user: AuthUser,
         profile: UserProfile,
@@ -51,13 +53,11 @@ final class CircleService {
             updatedAt: Date()
         )
 
-        // Critical: create the actual Circle document first.
         try await circleRemoteDataSource.createCircle(
             closeCircle: circle,
             ownerMember: ownerMember
         )
 
-        // Activity should never break the main Circle creation flow.
         try? await circleRemoteDataSource.createActivity(
             circleId: circle.id,
             type: .circleCreated,
@@ -72,12 +72,12 @@ final class CircleService {
             modelContext: modelContext
         )
 
-        try? await userProfileRepository.updateRemoteCircleId(
+        try await userProfileRepository.addRemoteCircleId(
             userId: user.id,
             circleId: circle.id
         )
 
-        _ = try? userProfileRepository.updateLocalCircleId(
+        _ = try userProfileRepository.addLocalCircleId(
             userId: user.id,
             circleId: circle.id,
             fallbackProfile: profile,
@@ -91,6 +91,8 @@ final class CircleService {
 
         return circle
     }
+
+    // MARK: - Preview Circle
 
     func previewCircle(
         inviteCode: String,
@@ -122,6 +124,8 @@ final class CircleService {
             currentUserMembership: existingMembership
         )
     }
+
+    // MARK: - Join Circle
 
     func joinCircle(
         user: AuthUser,
@@ -155,13 +159,11 @@ final class CircleService {
             updatedAt: Date()
         )
 
-        // Critical: join first. This creates/updates member doc + memberIds.
         try await circleRemoteDataSource.joinCircle(
             circle: remoteCircle,
             member: member
         )
 
-        // Activity should never break join.
         try? await circleRemoteDataSource.createActivity(
             circleId: remoteCircle.id,
             type: .memberJoined,
@@ -170,7 +172,7 @@ final class CircleService {
             message: "\(profile.displayName) joined the Circle."
         )
 
-        try? await userProfileRepository.updateRemoteCircleId(
+        try await userProfileRepository.addRemoteCircleId(
             userId: user.id,
             circleId: remoteCircle.id
         )
@@ -194,7 +196,7 @@ final class CircleService {
             modelContext: modelContext
         )
 
-        _ = try? userProfileRepository.updateLocalCircleId(
+        _ = try userProfileRepository.addLocalCircleId(
             userId: user.id,
             circleId: remoteCircle.id,
             fallbackProfile: profile,
@@ -203,6 +205,8 @@ final class CircleService {
 
         return localCircle
     }
+
+    // MARK: - Leave Circle
 
     func leaveCircle(
         circle: CloseCircle,
@@ -227,12 +231,25 @@ final class CircleService {
             message: "\(actorDisplayName) left the Circle."
         )
 
+        try await userProfileRepository.removeRemoteCircleId(
+            userId: membership.userId,
+            circleId: circle.id
+        )
+
         try circleRepository.markLocalMembershipRemoved(
             circleId: circle.id,
             userId: membership.userId,
             modelContext: modelContext
         )
+
+        _ = try? userProfileRepository.removeLocalCircleId(
+            userId: membership.userId,
+            circleId: circle.id,
+            modelContext: modelContext
+        )
     }
+
+    // MARK: - Update Circle
 
     func updateCircleDetails(
         circle: CloseCircle,
@@ -275,6 +292,8 @@ final class CircleService {
         )
     }
 
+    // MARK: - Delete Circle
+
     func deleteCircle(
         circle: CloseCircle,
         membership: CircleMembership,
@@ -284,7 +303,6 @@ final class CircleService {
             throw CircleServiceError.ownerOnlyAction
         }
 
-        // Activity before soft-delete is fine, but non-blocking.
         try? await circleRemoteDataSource.createActivity(
             circleId: circle.id,
             type: .circleDeleted,
@@ -306,10 +324,25 @@ final class CircleService {
             circleId: circle.id,
             modelContext: modelContext
         )
+
+        try await userProfileRepository.removeRemoteCircleId(
+            userId: membership.userId,
+            circleId: circle.id
+        )
+
+        _ = try? userProfileRepository.removeLocalCircleId(
+            userId: membership.userId,
+            circleId: circle.id,
+            modelContext: modelContext
+        )
     }
 
+    // MARK: - Helpers
+
     private func cleanOptionalText(_ value: String?) -> String? {
-        guard let value else { return nil }
+        guard let value else {
+            return nil
+        }
 
         let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -337,6 +370,8 @@ final class CircleService {
 
         throw CircleServiceError.inviteCodeUnavailable
     }
+
+    // MARK: - Errors
 
     enum CircleServiceError: LocalizedError {
         case invalidInviteCode

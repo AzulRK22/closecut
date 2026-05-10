@@ -259,7 +259,7 @@ final class UserProfileRepository {
     ) async throws {
         let remoteProfile = try await fetchRemoteProfile(userId: userId)
 
-        let existingCircleIds = remoteProfile?.circleIds ?? []
+        let existingCircleIds = remoteProfile?.activeCircleIds ?? []
         let resolvedCircleId = remoteProfile?.circleId ?? circleId
 
         let updatedCircleIds = cleanCircleIds(existingCircleIds + [circleId])
@@ -282,22 +282,29 @@ final class UserProfileRepository {
     ) async throws {
         let remoteProfile = try await fetchRemoteProfile(userId: userId)
 
-        let existingCircleIds = remoteProfile?.circleIds ?? []
-        let updatedCircleIds = cleanCircleIds(existingCircleIds.filter { $0 != circleId })
+        let existingCircleIds = remoteProfile?.activeCircleIds ?? []
+        let updatedCircleIds = cleanCircleIds(
+            existingCircleIds.filter { $0 != circleId }
+        )
+
         let resolvedCircleId = remoteProfile?.circleId == circleId
             ? updatedCircleIds.first
             : remoteProfile?.circleId
 
+        var payload: [String: Any] = [
+            "circleIds": updatedCircleIds,
+            "updatedAt": Timestamp(date: Date())
+        ]
+
+        if let resolvedCircleId {
+            payload["circleId"] = resolvedCircleId
+        } else {
+            payload["circleId"] = FieldValue.delete()
+        }
+
         try await FirestorePaths
             .user(userId)
-            .setData(
-                [
-                    "circleId": resolvedCircleId as Any,
-                    "circleIds": updatedCircleIds,
-                    "updatedAt": Timestamp(date: Date())
-                ],
-                merge: true
-            )
+            .setData(payload, merge: true)
     }
 
     func markProfileSynced(

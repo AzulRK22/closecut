@@ -51,7 +51,10 @@ final class LocalEntry {
     var overview: String?
     var tmdbRating: Double?
     var tmdbPopularity: Double?
-    var tmdbGenreIds: [Int]
+
+    // Optional for SwiftData lightweight migration.
+    // Existing local stores do not have this attribute.
+    var tmdbGenreIds: [Int]?
 
     var watchedAt: Date
     var createdAt: Date
@@ -117,6 +120,7 @@ final class LocalEntry {
 
         self.visibilityRaw = visibility.rawValue
         self.sharedCircleIds = sharedCircleIds
+
         self.sourceTypeRaw = sourceType.rawValue
 
         self.externalSourceRaw = externalMetadata?.source.rawValue
@@ -169,7 +173,7 @@ extension LocalEntry {
             overview: overview,
             tmdbRating: tmdbRating,
             tmdbPopularity: tmdbPopularity,
-            tmdbGenreIds: tmdbGenreIds
+            tmdbGenreIds: tmdbGenreIds ?? []
         )
     }
 
@@ -203,7 +207,7 @@ extension LocalEntry {
             overview: overview,
             tmdbRating: tmdbRating,
             tmdbPopularity: tmdbPopularity,
-            tmdbGenreIds: tmdbGenreIds,
+            tmdbGenreIds: tmdbGenreIds ?? [],
             watchedAt: watchedAt,
             createdAt: createdAt,
             updatedAt: updatedAt,
@@ -240,6 +244,7 @@ extension LocalEntry {
 
         visibilityRaw = entry.visibility.rawValue
         sharedCircleIds = entry.sharedCircleIds
+
         sourceTypeRaw = entry.sourceType.rawValue
 
         externalSourceRaw = entry.externalSourceRaw
