@@ -14,6 +14,7 @@ enum CircleSocialRemoteDataSourceError: LocalizedError {
     case invalidEntryId
     case invalidCircleId
     case invalidUserId
+    case invalidCommentId
 
     var errorDescription: String? {
         switch self {
@@ -27,6 +28,8 @@ enum CircleSocialRemoteDataSourceError: LocalizedError {
             return "Circle ID is invalid."
         case .invalidUserId:
             return "User ID is invalid."
+        case .invalidCommentId:
+            return "Comment ID is invalid."
         }
     }
 }
@@ -38,16 +41,23 @@ final class CircleSocialRemoteDataSource {
     // MARK: - Reactions
 
     func fetchReactions(
-        entryId: String
+        entryId: String,
+        circleId: String
     ) async throws -> [CircleReaction] {
         let cleanedEntryId = clean(entryId)
+        let cleanedCircleId = clean(circleId)
 
         guard cleanedEntryId.isEmpty == false else {
             throw CircleSocialRemoteDataSourceError.invalidEntryId
         }
 
+        guard cleanedCircleId.isEmpty == false else {
+            throw CircleSocialRemoteDataSourceError.invalidCircleId
+        }
+
         let snapshot = try await FirestorePaths
             .entryReactions(cleanedEntryId)
+            .whereField("circleId", isEqualTo: cleanedCircleId)
             .getDocuments()
 
         return try snapshot.documents.map { document in
@@ -142,10 +152,21 @@ final class CircleSocialRemoteDataSource {
         entryId: String,
         userId: String
     ) async throws -> CircleReaction? {
+        let cleanedEntryId = clean(entryId)
+        let cleanedUserId = clean(userId)
+
+        guard cleanedEntryId.isEmpty == false else {
+            throw CircleSocialRemoteDataSourceError.invalidEntryId
+        }
+
+        guard cleanedUserId.isEmpty == false else {
+            throw CircleSocialRemoteDataSourceError.invalidUserId
+        }
+
         let document = try await FirestorePaths
             .entryReaction(
-                entryId: entryId,
-                userId: userId
+                entryId: cleanedEntryId,
+                userId: cleanedUserId
             )
             .getDocument()
 
@@ -164,22 +185,30 @@ final class CircleSocialRemoteDataSource {
 
     func fetchComments(
         entryId: String,
+        circleId: String,
         limit: Int = 50
     ) async throws -> [CircleComment] {
         let cleanedEntryId = clean(entryId)
+        let cleanedCircleId = clean(circleId)
 
         guard cleanedEntryId.isEmpty == false else {
             throw CircleSocialRemoteDataSourceError.invalidEntryId
         }
 
+        guard cleanedCircleId.isEmpty == false else {
+            throw CircleSocialRemoteDataSourceError.invalidCircleId
+        }
+
         let snapshot = try await FirestorePaths
             .entryComments(cleanedEntryId)
+            .whereField("circleId", isEqualTo: cleanedCircleId)
             .order(by: "createdAt", descending: false)
             .limit(to: limit)
             .getDocuments()
 
         return try snapshot.documents.compactMap { document in
             let dto = try document.data(as: FirestoreCircleCommentDTO.self)
+
             let comment = dto.domain(
                 id: document.documentID
             )
@@ -264,7 +293,7 @@ final class CircleSocialRemoteDataSource {
         }
 
         guard cleanedCommentId.isEmpty == false else {
-            throw CircleSocialRemoteDataSourceError.emptyComment
+            throw CircleSocialRemoteDataSourceError.invalidCommentId
         }
 
         guard cleanedUserId.isEmpty == false else {

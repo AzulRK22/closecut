@@ -10,36 +10,39 @@ import SwiftData
 
 struct CircleView: View {
     @Environment(\.modelContext) private var modelContext
-
+    
     let user: AuthUser
     let profile: UserProfile
-
+    
     @Query(sort: \LocalCircle.updatedAt, order: .reverse)
     private var localCircles: [LocalCircle]
-
+    
     @Query(sort: \LocalCircleMembership.updatedAt, order: .reverse)
     private var localMemberships: [LocalCircleMembership]
-
+    
     @State private var showCircleActions = false
     @State private var showCreateCircleSheet = false
     @State private var showJoinCircleSheet = false
-
+    
     @State private var circleName = ""
     @State private var circleDescription = ""
     @State private var inviteCodeToJoin = ""
     @State private var circlePreview: CirclePreview?
-
+    
     @State private var isCreatingCircle = false
     @State private var isPreviewingCircle = false
     @State private var isJoiningCircle = false
-    @State private var isRefreshingCircles = false
-
+    @State private var isPullingRemoteMemberships = false
+    @State private var isRefreshingCircleDetails = false
+    @State private var hasLoadedInitialCircles = false
+    
     @State private var circleErrorMessage: String?
-
+    @State private var circleInlineMessage: String?
+    
     private let circleService = CircleService()
     private let circleRepository = CircleRepository()
     private let circleRemoteDataSource = CircleRemoteDataSource()
-
+    
     private var memberships: [CircleMembership] {
         localMemberships
             .filter { $0.userId == user.id }
@@ -49,60 +52,72 @@ struct CircleView: View {
                 if first.isOwner != second.isOwner {
                     return first.isOwner && !second.isOwner
                 }
-
+                
                 return first.updatedAt > second.updatedAt
             }
     }
-
+    
     private var circlesById: [String: CloseCircle] {
         Dictionary(
             uniqueKeysWithValues: localCircles.map { ($0.id, $0.domain) }
         )
     }
-
+    
     private var circleRows: [(circle: CloseCircle, membership: CircleMembership)] {
         memberships.compactMap { membership in
             guard let circle = circlesById[membership.circleId],
                   circle.deletedAt == nil else {
                 return nil
             }
-
+            
             return (circle, membership)
         }
     }
+    
     private var ownedCircleCount: Int {
         circleRows.filter { $0.membership.isOwner }.count
     }
-
+    
     private var joinedCircleCount: Int {
         circleRows.filter { $0.membership.isOwner == false }.count
     }
-    private var membershipRefreshKey: String {
-        localMemberships
-            .filter { $0.userId == user.id }
-            .map { membership in
-                "\(membership.id)-\(membership.statusRaw)-\(membership.updatedAt.timeIntervalSince1970)"
-            }
-            .joined(separator: "|")
+    
+    private var isLoadingCircles: Bool {
+        isPullingRemoteMemberships || isRefreshingCircleDetails
     }
-
+    
+    private var loadingMessage: String {
+        if isPullingRemoteMemberships {
+            return "Finding your Circles…"
+        }
+        
+        return "Refreshing your Circles…"
+    }
+    
     var body: some View {
         NavigationStack {
             ZStack {
                 CloseCutColors.backgroundPrimary
                     .ignoresSafeArea()
-
+                
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         heroSection
-
-                        if isRefreshingCircles {
+                        
+                        if isLoadingCircles {
                             SyncResultBanner(
-                                message: "Refreshing your Circles…",
+                                message: loadingMessage,
                                 style: .neutral
                             )
                         }
-
+                        
+                        if let circleInlineMessage {
+                            SyncResultBanner(
+                                message: circleInlineMessage,
+                                style: .warning
+                            )
+                        }
+                        
                         if circleRows.isEmpty {
                             CircleEmptyStateView(
                                 onCreateCircle: openCreateCircle,
@@ -111,15 +126,18 @@ struct CircleView: View {
                         } else {
                             circlesListSection
                         }
-
+                        
                         CirclePrivacyCard()
-
+                        
                         comingSoonSection
-
+                        
                         Spacer(minLength: 24)
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 16)
+                }
+                .refreshable {
+                    await loadCircles(force: true)
                 }
             }
             .navigationTitle("Circle")
@@ -162,16 +180,11 @@ struct CircleView: View {
             } message: {
                 Text(circleErrorMessage ?? "Unknown error.")
             }
-            .task(id: membershipRefreshKey) {
-                if memberships.isEmpty {
-                    await pullRemoteCirclesForCurrentUser()
-                }
-
-                await refreshLocalCirclesFromRemote()
+            .task {
+                await loadCirclesIfNeeded()
             }
         }
     }
-
     private var heroSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
@@ -179,15 +192,15 @@ struct CircleView: View {
                     Text("Share with the people who matter.")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(CloseCutColors.accentLight)
-
+                    
                     Text("Create private spaces for friends, family, your partner, or movie clubs. Your personal Timeline stays private unless you choose to share.")
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-
+                
                 Spacer()
-
+                
                 Image(systemName: "person.2.fill")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(CloseCutColors.accentLight)
@@ -195,7 +208,7 @@ struct CircleView: View {
                     .background(CloseCutColors.input)
                     .clipShape(SwiftUI.Circle())
             }
-
+            
             if circleRows.isEmpty == false {
                 HStack(spacing: 10) {
                     circleStatPill(
@@ -203,13 +216,13 @@ struct CircleView: View {
                         label: circleRows.count == 1 ? "circle" : "circles",
                         icon: "circle.grid.2x2.fill"
                     )
-
+                    
                     circleStatPill(
                         value: "\(ownedCircleCount)",
                         label: "owned",
                         icon: "crown.fill"
                     )
-
+                    
                     circleStatPill(
                         value: "\(joinedCircleCount)",
                         label: "joined",
@@ -219,7 +232,7 @@ struct CircleView: View {
             }
         }
     }
-
+    
     private var circlesListSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -227,15 +240,15 @@ struct CircleView: View {
                     Text("Your Circles")
                         .font(.headline)
                         .foregroundStyle(CloseCutColors.textPrimary)
-
+                    
                     Text(circleRows.count == 1 ? "1 private space" : "\(circleRows.count) private spaces")
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textSecondary)
                 }
-
+                
                 Spacer()
             }
-
+            
             LazyVStack(spacing: 12) {
                 ForEach(circleRows, id: \.membership.id) { row in
                     NavigationLink {
@@ -256,7 +269,7 @@ struct CircleView: View {
             }
         }
     }
-
+    
     private var comingSoonSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Circle features")
@@ -265,26 +278,26 @@ struct CircleView: View {
                 .foregroundStyle(CloseCutColors.textTertiary)
                 .textCase(.uppercase)
                 .padding(.horizontal, 2)
-
+            
             VStack(alignment: .leading, spacing: 16) {
                 CircleComingSoonRow(
                     icon: "film.stack.fill",
                     title: "Shared timeline",
                     message: "See memories intentionally shared with each Circle."
                 )
-
+                
                 Divider()
                     .overlay(CloseCutColors.separator)
-
+                
                 CircleComingSoonRow(
                     icon: "heart.circle.fill",
                     title: "Reactions and comments",
                     message: "React once, leave short comments, and keep the signal lightweight."
                 )
-
+                
                 Divider()
                     .overlay(CloseCutColors.separator)
-
+                
                 CircleComingSoonRow(
                     icon: "sparkles",
                     title: "Group QuickPick",
@@ -300,29 +313,30 @@ struct CircleView: View {
             }
         }
     }
-
+    
     private var createCircleSheet: some View {
         NavigationStack {
             ZStack {
                 CloseCutColors.backgroundPrimary
                     .ignoresSafeArea()
-
+                
                 VStack(alignment: .leading, spacing: 18) {
                     Text("Name your Circle")
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
-
+                    
                     Text("Keep it small and personal. You decide what gets shared.")
                         .font(.subheadline)
                         .foregroundStyle(CloseCutColors.textSecondary)
-
+                        .fixedSize(horizontal: false, vertical: true)
+                    
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Circle name")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(CloseCutColors.textTertiary)
                             .textCase(.uppercase)
                             .tracking(0.8)
-
+                        
                         TextField("Friends, Family, Movie Club…", text: $circleName)
                             .font(.body)
                             .foregroundStyle(CloseCutColors.textPrimary)
@@ -331,14 +345,14 @@ struct CircleView: View {
                             .background(CloseCutColors.input)
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
-
+                    
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Description optional")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(CloseCutColors.textTertiary)
                             .textCase(.uppercase)
                             .tracking(0.8)
-
+                        
                         TextField("What is this Circle for?", text: $circleDescription)
                             .font(.body)
                             .foregroundStyle(CloseCutColors.textPrimary)
@@ -347,17 +361,17 @@ struct CircleView: View {
                             .background(CloseCutColors.input)
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
-
+                    
                     if isCreatingCircle {
                         HStack(spacing: 10) {
                             ProgressView()
-
+                            
                             Text("Creating Circle…")
                                 .font(.caption)
                                 .foregroundStyle(CloseCutColors.textSecondary)
                         }
                     }
-
+                    
                     Spacer()
                 }
                 .padding(20)
@@ -371,45 +385,48 @@ struct CircleView: View {
                     }
                     .disabled(isCreatingCircle)
                 }
-
+                
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create") {
                         Task {
                             await createCircle()
                         }
                     }
-                    .disabled(isCreatingCircle || circleName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(
+                        isCreatingCircle ||
+                        circleName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    )
                 }
             }
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }
-
+    
     private var joinCircleSheet: some View {
         NavigationStack {
             ZStack {
                 CloseCutColors.backgroundPrimary
                     .ignoresSafeArea()
-
+                
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         Text("Join a Circle")
                             .font(.title2.weight(.semibold))
                             .foregroundStyle(CloseCutColors.textPrimary)
-
+                        
                         Text("Enter the invite code from someone you trust. You’ll preview the Circle before joining.")
                             .font(.subheadline)
                             .foregroundStyle(CloseCutColors.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
-
+                        
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Invite code")
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(CloseCutColors.textTertiary)
                                 .textCase(.uppercase)
                                 .tracking(0.8)
-
+                            
                             TextField("Invite code", text: $inviteCodeToJoin)
                                 .font(.title3.monospaced().weight(.semibold))
                                 .foregroundStyle(CloseCutColors.textPrimary)
@@ -420,45 +437,45 @@ struct CircleView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 .onChange(of: inviteCodeToJoin) { _, newValue in
                                     let normalized = newValue.normalizedInviteCode
-
+                                    
                                     if normalized != newValue {
                                         inviteCodeToJoin = normalized
                                     }
-
+                                    
                                     if circlePreview?.circle.inviteCodeNormalized != normalized {
                                         circlePreview = nil
                                     }
                                 }
-
+                            
                             Text("Example: AZULR-12345")
                                 .font(.caption)
                                 .foregroundStyle(CloseCutColors.textTertiary)
                         }
-
+                        
                         if isPreviewingCircle {
                             HStack(spacing: 10) {
                                 ProgressView()
-
+                                
                                 Text("Finding Circle…")
                                     .font(.caption)
                                     .foregroundStyle(CloseCutColors.textSecondary)
                             }
                         }
-
+                        
                         if let circlePreview {
                             CirclePreviewCard(preview: circlePreview)
                         }
-
+                        
                         if isJoiningCircle {
                             HStack(spacing: 10) {
                                 ProgressView()
-
+                                
                                 Text("Joining Circle…")
                                     .font(.caption)
                                     .foregroundStyle(CloseCutColors.textSecondary)
                             }
                         }
-
+                        
                         Spacer(minLength: 24)
                     }
                     .padding(20)
@@ -473,7 +490,7 @@ struct CircleView: View {
                     }
                     .disabled(isJoiningCircle || isPreviewingCircle)
                 }
-
+                
                 ToolbarItem(placement: .confirmationAction) {
                     if let circlePreview {
                         Button(circlePreview.isAlreadyMember ? "Done" : "Join") {
@@ -504,27 +521,46 @@ struct CircleView: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }
-
     private func openCreateCircle() {
         circleName = ""
         circleDescription = ""
+        circleErrorMessage = nil
+        circleInlineMessage = nil
         showCreateCircleSheet = true
     }
 
     private func openJoinCircle() {
         inviteCodeToJoin = ""
         circlePreview = nil
+        circleErrorMessage = nil
+        circleInlineMessage = nil
         showJoinCircleSheet = true
     }
+
     private func previewCircle() async {
+        guard isPreviewingCircle == false else {
+            return
+        }
+
+        let cleanedInviteCode = inviteCodeToJoin.normalizedInviteCode
+
+        guard cleanedInviteCode.isEmpty == false else {
+            circleErrorMessage = "Enter a valid invite code."
+            return
+        }
+
         isPreviewingCircle = true
         circleErrorMessage = nil
+        circleInlineMessage = nil
         circlePreview = nil
-        defer { isPreviewingCircle = false }
+
+        defer {
+            isPreviewingCircle = false
+        }
 
         do {
             let preview = try await circleService.previewCircle(
-                inviteCode: inviteCodeToJoin,
+                inviteCode: cleanedInviteCode,
                 currentUserId: user.id
             )
 
@@ -535,54 +571,157 @@ struct CircleView: View {
     }
 
     private func createCircle() async {
+        guard isCreatingCircle == false else {
+            return
+        }
+
+        let cleanedName = circleName.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard cleanedName.isEmpty == false else {
+            circleErrorMessage = "Circle name is required."
+            return
+        }
+
         isCreatingCircle = true
         circleErrorMessage = nil
-        defer { isCreatingCircle = false }
+        circleInlineMessage = nil
+
+        defer {
+            isCreatingCircle = false
+        }
 
         do {
             _ = try await circleService.createCircle(
                 user: user,
                 profile: profile,
-                circleName: circleName,
+                circleName: cleanedName,
                 circleDescription: circleDescription,
                 modelContext: modelContext
             )
 
             showCreateCircleSheet = false
-            await refreshLocalCirclesFromRemote()
+            circleName = ""
+            circleDescription = ""
+
+            await loadCircles(force: true)
         } catch {
             circleErrorMessage = error.localizedDescription
         }
     }
 
     private func joinCircle() async {
+        guard isJoiningCircle == false else {
+            return
+        }
+
+        let resolvedInviteCode = circlePreview?.circle.inviteCodeNormalized ?? inviteCodeToJoin
+        let cleanedInviteCode = resolvedInviteCode.normalizedInviteCode
+
+        guard cleanedInviteCode.isEmpty == false else {
+            circleErrorMessage = "Enter a valid invite code."
+            return
+        }
+
         isJoiningCircle = true
         circleErrorMessage = nil
-        defer { isJoiningCircle = false }
+        circleInlineMessage = nil
+
+        defer {
+            isJoiningCircle = false
+        }
 
         do {
             _ = try await circleService.joinCircle(
                 user: user,
                 profile: profile,
-                inviteCode: circlePreview?.circle.inviteCodeNormalized ?? inviteCodeToJoin,
+                inviteCode: cleanedInviteCode,
                 modelContext: modelContext
             )
 
             showJoinCircleSheet = false
+            inviteCodeToJoin = ""
             circlePreview = nil
 
-            await refreshLocalCirclesFromRemote()
+            await loadCircles(force: true)
         } catch {
             circleErrorMessage = error.localizedDescription
         }
     }
-    private func refreshLocalCirclesFromRemote() async {
-        guard isRefreshingCircles == false else {
+
+    private func loadCirclesIfNeeded() async {
+        guard hasLoadedInitialCircles == false else {
             return
         }
 
-        isRefreshingCircles = true
-        defer { isRefreshingCircles = false }
+        hasLoadedInitialCircles = true
+        await loadCircles(force: false)
+    }
+
+    private func loadCircles(force: Bool) async {
+        circleInlineMessage = nil
+
+        if force || memberships.isEmpty {
+            await pullRemoteCirclesForCurrentUser()
+        }
+
+        await refreshLocalCirclesFromRemote()
+
+        if force && circleRows.isEmpty {
+            circleInlineMessage = nil
+        }
+    }
+
+    private func pullRemoteCirclesForCurrentUser() async {
+        guard isPullingRemoteMemberships == false else {
+            return
+        }
+
+        isPullingRemoteMemberships = true
+
+        defer {
+            isPullingRemoteMemberships = false
+        }
+
+        do {
+            let remoteMemberships = try await circleRemoteDataSource.fetchMembershipsForUser(
+                userId: user.id
+            )
+
+            for item in remoteMemberships {
+                let circle = try circleRepository.upsertRemoteCircle(
+                    item.circle,
+                    modelContext: modelContext
+                )
+
+                _ = try circleRepository.upsertLocalMembership(
+                    circle: circle,
+                    member: item.member,
+                    modelContext: modelContext
+                )
+            }
+        } catch {
+            circleInlineMessage = "Couldn’t refresh your Circle memberships."
+
+            #if DEBUG
+            print("⚠️ Failed to pull remote Circles:", error.localizedDescription)
+            #endif
+        }
+    }
+
+    private func refreshLocalCirclesFromRemote() async {
+        guard isRefreshingCircleDetails == false else {
+            return
+        }
+
+        guard memberships.isEmpty == false else {
+            return
+        }
+
+        isRefreshingCircleDetails = true
+
+        defer {
+            isRefreshingCircleDetails = false
+        }
 
         for membership in memberships {
             do {
@@ -624,6 +763,7 @@ struct CircleView: View {
             }
         }
     }
+
     private func shouldRemoveLocalCircleAfterRefreshFailure(_ error: Error) -> Bool {
         if let remoteError = error as? CircleRemoteDataSourceError {
             switch remoteError {
@@ -639,37 +779,7 @@ struct CircleView: View {
             || message.contains("couldn't be read")
             || message.contains("incomplete")
     }
-    private func pullRemoteCirclesForCurrentUser() async {
-        guard isRefreshingCircles == false else {
-            return
-        }
 
-        isRefreshingCircles = true
-        defer { isRefreshingCircles = false }
-
-        do {
-            let remoteMemberships = try await circleRemoteDataSource.fetchMembershipsForUser(
-                userId: user.id
-            )
-
-            for item in remoteMemberships {
-                let circle = try circleRepository.upsertRemoteCircle(
-                    item.circle,
-                    modelContext: modelContext
-                )
-
-                _ = try circleRepository.upsertLocalMembership(
-                    circle: circle,
-                    member: item.member,
-                    modelContext: modelContext
-                )
-            }
-        } catch {
-            #if DEBUG
-            print("⚠️ Failed to pull remote Circles:", error.localizedDescription)
-            #endif
-        }
-    }
     private func circleStatPill(
         value: String,
         label: String,
@@ -715,7 +825,6 @@ struct CircleView: View {
             displayName: "Preview",
             email: "preview@closecut.dev",
             photoURL: nil,
-            circleId: nil,
             circleIds: [],
             defaultVisibility: .privateOnly,
             createdAt: Date(),
