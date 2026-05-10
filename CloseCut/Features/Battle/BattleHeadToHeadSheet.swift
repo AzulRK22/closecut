@@ -9,7 +9,6 @@ import SwiftUI
 
 struct BattleHeadToHeadSheet: View {
     let entries: [Entry]
-    let currentUserId: String
     let onCancel: () -> Void
     let onWinnerSelected: (Entry, [Entry]) -> Void
 
@@ -19,13 +18,20 @@ struct BattleHeadToHeadSheet: View {
     @State private var lastSavedWinnerId: String?
 
     private var availableEntries: [Entry] {
-        entries.sorted { first, second in
-            first.watchedAt > second.watchedAt
-        }
+        entries
+            .filter { $0.deletedAt == nil }
+            .filter { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+            .sorted { first, second in
+                first.watchedAt > second.watchedAt
+            }
     }
 
     private var canStartBattle: Bool {
-        firstEntry != nil && secondEntry != nil && firstEntry?.id != secondEntry?.id
+        guard let firstEntry, let secondEntry else {
+            return false
+        }
+
+        return firstEntry.id != secondEntry.id
     }
 
     var body: some View {
@@ -285,7 +291,10 @@ struct BattleHeadToHeadSheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(isWinner ? CloseCutColors.accentLight : CloseCutColors.separator, lineWidth: isWinner ? 1 : 0.5)
+                    .stroke(
+                        isWinner ? CloseCutColors.accentLight : CloseCutColors.separator,
+                        lineWidth: isWinner ? 1 : 0.5
+                    )
             }
         }
         .buttonStyle(.plain)

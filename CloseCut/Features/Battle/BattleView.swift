@@ -39,15 +39,16 @@ struct BattleView: View {
     }
 
     private var recentBattleResults: [BattleResult] {
-        localBattleResults
-            .filter { $0.ownerId == user.id }
-            .map { $0.domain }
-            .filter {
-                $0.winnerTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false &&
-                $0.optionTitles.isEmpty == false
-            }
-            .prefix(5)
-            .map { $0 }
+        Array(
+            localBattleResults
+                .filter { $0.ownerId == user.id }
+                .map { $0.domain }
+                .filter {
+                    $0.winnerTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false &&
+                    $0.optionTitles.isEmpty == false
+                }
+                .prefix(5)
+        )
     }
 
     private var entries: [Entry] {
@@ -68,104 +69,101 @@ struct BattleView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                CloseCutColors.backgroundPrimary
-                    .ignoresSafeArea()
+        ZStack {
+            CloseCutColors.backgroundPrimary
+                .ignoresSafeArea()
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        heroSection
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    heroSection
 
-                        readinessCard
+                    readinessCard
 
-                        if let battleErrorMessage {
-                            SyncResultBanner(
-                                message: battleErrorMessage,
-                                style: .warning
-                            )
-                        }
-
-                        if let pickedEntry {
-                            BattlePickResultCard(
-                                winner: pickedEntry,
-                                optionCount: selectedEntries.count,
-                                onPickAgain: pickRandomWinner,
-                                onClear: clearBattleSelection
-                            )
-                        }
-
-                        if selectedEntries.isEmpty == false {
-                            selectedOptionsSection
-                        }
-
-                        if recentBattleResults.isEmpty == false {
-                            recentResultsSection
-                        }
-
-                        battleModesSection
-
-                        futureSocialSection
-
-                        whyItMattersSection
-
-                        Spacer(minLength: 24)
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 16)
-                }
-            }
-            .navigationTitle("Battle")
-            .navigationBarTitleDisplayMode(.inline)
-            .preferredColorScheme(.dark)
-            .sheet(isPresented: $showOptionSelector) {
-                BattleOptionSelectorSheet(
-                    entries: eligibleEntries,
-                    initialSelection: selectedEntryIds,
-                    onCancel: {
-                        showOptionSelector = false
-                    },
-                    onConfirm: { entries in
-                        selectedEntries = entries
-                        pickedEntry = nil
-                        battleErrorMessage = nil
-                        showOptionSelector = false
-                    }
-                )
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-            }
-            .sheet(isPresented: $showHeadToHeadBattle) {
-                BattleHeadToHeadSheet(
-                    entries: eligibleEntries,
-                    currentUserId: user.id,
-                    onCancel: {
-                        showHeadToHeadBattle = false
-                    },
-                    onWinnerSelected: { winner, options in
-                        saveHeadToHeadResult(
-                            winner: winner,
-                            options: options
+                    if let battleErrorMessage {
+                        SyncResultBanner(
+                            message: battleErrorMessage,
+                            style: .warning
                         )
                     }
-                )
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-            }
-            .confirmationDialog(
-                "Clear Battle results?",
-                isPresented: $showClearResultsConfirmation,
-                titleVisibility: .visible
-            ) {
-                Button("Clear results", role: .destructive) {
-                    clearRecentResults()
-                }
-                .disabled(isClearingResults)
 
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This only clears your local Battle history. Your entries are not deleted.")
+                    if let pickedEntry {
+                        BattlePickResultCard(
+                            winner: pickedEntry,
+                            optionCount: selectedEntries.count,
+                            onPickAgain: pickRandomWinner,
+                            onClear: clearBattleSelection
+                        )
+                    }
+
+                    if selectedEntries.isEmpty == false {
+                        selectedOptionsSection
+                    }
+
+                    if recentBattleResults.isEmpty == false {
+                        recentResultsSection
+                    }
+
+                    battleModesSection
+
+                    futureSocialSection
+
+                    whyItMattersSection
+
+                    Spacer(minLength: 24)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
             }
+        }
+        .navigationTitle("Battle")
+        .navigationBarTitleDisplayMode(.inline)
+        .preferredColorScheme(.dark)
+        .sheet(isPresented: $showOptionSelector) {
+            BattleOptionSelectorSheet(
+                entries: eligibleEntries,
+                initialSelection: selectedEntryIds,
+                onCancel: {
+                    showOptionSelector = false
+                },
+                onConfirm: { entries in
+                    selectedEntries = entries
+                    pickedEntry = nil
+                    battleErrorMessage = nil
+                    showOptionSelector = false
+                }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showHeadToHeadBattle) {
+            BattleHeadToHeadSheet(
+                entries: eligibleEntries,
+                onCancel: {
+                    showHeadToHeadBattle = false
+                },
+                onWinnerSelected: { winner, options in
+                    saveHeadToHeadResult(
+                        winner: winner,
+                        options: options
+                    )
+                }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+        .confirmationDialog(
+            "Clear Battle results?",
+            isPresented: $showClearResultsConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Clear results", role: .destructive) {
+                clearRecentResults()
+            }
+            .disabled(isClearingResults)
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This only clears your local Battle history. Your entries are not deleted.")
         }
     }
 
@@ -572,6 +570,7 @@ struct BattleView: View {
         if entry.sourceType == .quickAdd {
             parts.append("Quick Add")
         }
+
         if let rating = entry.tmdbRating, rating > 0 {
             parts.append(String(format: "%.1f TMDB", rating))
         }
@@ -649,6 +648,7 @@ struct BattleView: View {
             #endif
         }
     }
+
     private func clearRecentResults() {
         guard isClearingResults == false else {
             return
@@ -664,6 +664,7 @@ struct BattleView: View {
             )
 
             isClearingResults = false
+            showClearResultsConfirmation = false
 
             #if DEBUG
             print("✅ Cleared \(deletedCount) Battle results.")
@@ -711,26 +712,28 @@ struct BattleView: View {
 }
 
 #Preview {
-    BattleView(
-        user: AuthUser(
-            id: "preview-user",
-            email: "preview@closecut.dev",
-            displayName: "Preview",
-            photoURL: nil
-        ),
-        profile: UserProfile(
-            id: "preview-user",
-            displayName: "Preview",
-            email: "preview@closecut.dev",
-            photoURL: nil,
-            circleId: nil,
-            circleIds: [],
-            defaultVisibility: .privateOnly,
-            createdAt: Date(),
-            updatedAt: Date(),
-            syncStatus: .synced
+    NavigationStack {
+        BattleView(
+            user: AuthUser(
+                id: "preview-user",
+                email: "preview@closecut.dev",
+                displayName: "Preview",
+                photoURL: nil
+            ),
+            profile: UserProfile(
+                id: "preview-user",
+                displayName: "Preview",
+                email: "preview@closecut.dev",
+                photoURL: nil,
+                circleId: nil,
+                circleIds: [],
+                defaultVisibility: .privateOnly,
+                createdAt: Date(),
+                updatedAt: Date(),
+                syncStatus: .synced
+            )
         )
-    )
+    }
     .modelContainer(for: [
         LocalEntry.self,
         LocalCircle.self,

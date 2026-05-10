@@ -16,9 +16,12 @@ struct BattleOptionSelectorSheet: View {
     @State private var selectedEntryIds: Set<String> = []
 
     private var sortedEntries: [Entry] {
-        entries.sorted { first, second in
-            first.watchedAt > second.watchedAt
-        }
+        entries
+            .filter { $0.deletedAt == nil }
+            .filter { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+            .sorted { first, second in
+                first.watchedAt > second.watchedAt
+            }
     }
 
     private var selectedEntries: [Entry] {
@@ -70,7 +73,8 @@ struct BattleOptionSelectorSheet: View {
         }
         .preferredColorScheme(.dark)
         .onAppear {
-            selectedEntryIds = initialSelection
+            let validEntryIds = Set(sortedEntries.map { $0.id })
+            selectedEntryIds = initialSelection.intersection(validEntryIds)
         }
     }
 
@@ -165,7 +169,10 @@ struct BattleOptionSelectorSheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(isSelected ? CloseCutColors.accentLight : CloseCutColors.separator, lineWidth: isSelected ? 1 : 0.5)
+                    .stroke(
+                        isSelected ? CloseCutColors.accentLight : CloseCutColors.separator,
+                        lineWidth: isSelected ? 1 : 0.5
+                    )
             }
         }
         .buttonStyle(.plain)
