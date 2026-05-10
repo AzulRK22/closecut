@@ -23,8 +23,24 @@ struct EntryDetailView: View {
 
     private let entryRepository = EntryRepository()
 
-    private var mood: Mood {
-        Mood.from(entry.mood)
+    private var cleanedMood: String {
+        entry.mood.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var mood: Mood? {
+        guard cleanedMood.isEmpty == false else {
+            return nil
+        }
+
+        return Mood.from(cleanedMood)
+    }
+
+    private var moodDisplayText: String? {
+        if cleanedMood.isEmpty == false {
+            return Mood.from(cleanedMood).label
+        }
+
+        return entry.quickSentiment?.displayName
     }
 
     private var hasCinemaRatings: Bool {
@@ -78,6 +94,10 @@ struct EntryDetailView: View {
 
         if let rating = entry.tmdbRating, rating > 0 {
             parts.append(String(format: "%.1f TMDB", rating))
+        }
+
+        if entry.sourceType == .quickAdd {
+            parts.append("Quick Add")
         }
 
         return parts.joined(separator: " • ")
@@ -162,7 +182,7 @@ struct EntryDetailView: View {
                             systemImage: "trash"
                         )
                     }
-                    .disabled(isDeletingEntry)
+                    .disabled(isDeletingEntry || entry.deletedAt != nil)
                 } label: {
                     Image(systemName: "ellipsis.circle")
                         .font(.system(size: 18, weight: .semibold))
@@ -232,29 +252,7 @@ struct EntryDetailView: View {
                     )
 
                     VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 6) {
-                            EntryDetailStatusChip(
-                                icon: entry.type == .movie ? "film.fill" : "tv.fill",
-                                text: entry.type.displayName,
-                                isHighlighted: false
-                            )
-
-                            if entry.sourceType == .quickAdd {
-                                EntryDetailStatusChip(
-                                    icon: "bolt.fill",
-                                    text: "Quick Add",
-                                    isHighlighted: true
-                                )
-                            }
-
-                            if isShared {
-                                EntryDetailStatusChip(
-                                    icon: "person.2.fill",
-                                    text: "Shared",
-                                    isHighlighted: true
-                                )
-                            }
-                        }
+                        statusChips
 
                         Text(entry.title)
                             .font(.title2.weight(.semibold))
@@ -286,12 +284,20 @@ struct EntryDetailView: View {
                                 .lineLimit(1)
                         }
 
-                        MoodPill(
-                            mood: mood,
-                            size: .small,
-                            isSelected: false,
-                            showLabel: true
-                        )
+                        if let mood {
+                            MoodPill(
+                                mood: mood,
+                                size: .small,
+                                isSelected: false,
+                                showLabel: true
+                            )
+                        } else if let moodDisplayText {
+                            EntryDetailStatusChip(
+                                icon: "sparkles",
+                                text: moodDisplayText,
+                                isHighlighted: true
+                            )
+                        }
                     }
 
                     Spacer(minLength: 0)
@@ -311,13 +317,48 @@ struct EntryDetailView: View {
         }
     }
 
+    private var statusChips: some View {
+        HStack(spacing: 6) {
+            EntryDetailStatusChip(
+                icon: entry.type == .movie ? "film.fill" : "tv.fill",
+                text: entry.type.displayName,
+                isHighlighted: false
+            )
+
+            if entry.sourceType == .quickAdd {
+                EntryDetailStatusChip(
+                    icon: "bolt.fill",
+                    text: "Quick Add",
+                    isHighlighted: true
+                )
+            }
+
+            if isShared {
+                EntryDetailStatusChip(
+                    icon: "person.2.fill",
+                    text: "Shared",
+                    isHighlighted: true
+                )
+            }
+
+            if shouldShowSyncStatus {
+                EntryDetailStatusChip(
+                    icon: entry.syncStatus == .failed ? "exclamationmark.triangle.fill" : "clock.fill",
+                    text: syncText,
+                    isHighlighted: false,
+                    isWarning: entry.syncStatus == .failed
+                )
+            }
+        }
+    }
+
     @ViewBuilder
     private var backdropLayer: some View {
         if let backdropURL = entry.backdropURL {
             AsyncImage(url: backdropURL) { phase in
                 switch phase {
                 case .empty:
-                    CloseCutColors.card
+                    fallbackBackdrop
 
                 case .success(let image):
                     image
@@ -393,6 +434,7 @@ struct EntryDetailView: View {
                 )
                 .font(.body)
                 .foregroundStyle(CloseCutColors.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -407,7 +449,7 @@ struct EntryDetailView: View {
 
                 DetailInfoRow(
                     label: "Watched",
-                    value: entry.watchedAt.formatted(date: .abbreviated, time: .omitted)
+                    value: watchedDateText
                 )
 
                 DetailInfoRow(
@@ -435,6 +477,14 @@ struct EntryDetailView: View {
                 }
             }
         }
+    }
+
+    private var watchedDateText: String {
+        if let watchedDateApprox = entry.watchedDateApprox {
+            return watchedDateApprox.displayLabel
+        }
+
+        return entry.watchedAt.formatted(date: .abbreviated, time: .omitted)
     }
 
     private func keyMomentBlock(_ quote: String) -> some View {
@@ -488,6 +538,7 @@ struct EntryDetailView: View {
                         Text(isShared ? "Circle members can view, react, and comment." : "Only you can see this memory.")
                             .font(.caption)
                             .foregroundStyle(CloseCutColors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     Spacer()
@@ -497,6 +548,20 @@ struct EntryDetailView: View {
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    isShowingEditSheet = true
+                } label: {
+                    Text(isShared ? "Edit sharing" : "Share with a Circle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.accentLight)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 38)
+                        .background(CloseCutColors.input)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(isDeletingEntry)
             }
         }
     }
@@ -513,6 +578,11 @@ struct EntryDetailView: View {
 
     private func deleteEntry() async {
         guard isDeletingEntry == false else {
+            return
+        }
+
+        guard entry.deletedAt == nil else {
+            dismiss()
             return
         }
 
@@ -561,6 +631,8 @@ private struct EntryDetailStatusChip: View {
         .padding(.vertical, 6)
         .background(CloseCutColors.input)
         .clipShape(Capsule())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(text)
     }
 
     private var foregroundColor: Color {
