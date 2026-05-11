@@ -20,7 +20,7 @@ final class OnboardingViewModel: ObservableObject {
     private let repository = UserStateRepository()
 
     var canGoBack: Bool {
-        currentStep > 0
+        currentStep > 0 && isCompleting == false
     }
 
     var isLastStep: Bool {
@@ -28,18 +28,28 @@ final class OnboardingViewModel: ObservableObject {
     }
 
     func continueTapped() {
+        guard isCompleting == false else {
+            return
+        }
+
         guard currentStep < totalSteps - 1 else {
             return
         }
 
+        errorMessage = nil
         currentStep += 1
     }
 
     func backTapped() {
+        guard isCompleting == false else {
+            return
+        }
+
         guard currentStep > 0 else {
             return
         }
 
+        errorMessage = nil
         currentStep -= 1
     }
 
@@ -48,12 +58,24 @@ final class OnboardingViewModel: ObservableObject {
         path: OnboardingStartPath,
         modelContext: ModelContext
     ) async -> Bool {
+        let cleanedUserId = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard cleanedUserId.isEmpty == false else {
+            errorMessage = "Missing user. Please sign in again."
+            return false
+        }
+
+        guard isCompleting == false else {
+            return false
+        }
+
         isCompleting = true
+        errorMessage = nil
         defer { isCompleting = false }
 
         do {
             try repository.completeOnboarding(
-                userId: userId,
+                userId: cleanedUserId,
                 selectedStartPath: path,
                 quickAddCountAtCompletion: 0,
                 modelContext: modelContext

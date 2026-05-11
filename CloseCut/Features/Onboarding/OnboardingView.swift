@@ -38,7 +38,7 @@ struct OnboardingView: View {
                         onboardingPage(
                             index: 1,
                             title: "Know what moved you. Know what to watch next.",
-                            message: "CloseCut learns from your history to help you remember, revisit, and choose better.",
+                            message: "CloseCut uses your own history to help you remember, revisit, and choose better.",
                             systemImage: "sparkles"
                         )
                         .tag(1)
@@ -47,10 +47,11 @@ struct OnboardingView: View {
                             .tag(2)
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
+                    .disabled(viewModel.isCompleting)
 
                     pageDots
 
-                    if viewModel.currentStep < 2 {
+                    if viewModel.currentStep < viewModel.totalSteps - 1 {
                         continueButton
                             .padding(.horizontal, 20)
                             .padding(.bottom, 20)
@@ -59,6 +60,7 @@ struct OnboardingView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .interactiveDismissDisabled(viewModel.isCompleting)
         .sheet(isPresented: $isShowingQuickAdd, onDismiss: {
             onCompleted()
         }) {
@@ -75,9 +77,12 @@ struct OnboardingView: View {
                     viewModel.backTapped()
                 } label: {
                     Image(systemName: "chevron.left")
+                        .font(.subheadline.weight(.semibold))
                         .frame(width: 44, height: 44)
                 }
                 .foregroundStyle(CloseCutColors.textSecondary)
+                .disabled(viewModel.isCompleting)
+                .accessibilityLabel("Back")
             } else {
                 Color.clear
                     .frame(width: 44, height: 44)
@@ -85,14 +90,24 @@ struct OnboardingView: View {
 
             Spacer()
 
-            Button("Skip") {
+            Button {
                 Task {
                     await complete(path: .skipped)
                 }
+            } label: {
+                if viewModel.isCompleting {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                        .frame(minWidth: 44, minHeight: 44)
+                } else {
+                    Text("Skip")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
             }
-            .font(.subheadline)
-            .foregroundStyle(CloseCutColors.textSecondary)
-            .frame(minHeight: 44)
+            .buttonStyle(.plain)
+            .disabled(viewModel.isCompleting)
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)
@@ -110,6 +125,10 @@ struct OnboardingView: View {
             ZStack {
                 SwiftUI.Circle()
                     .fill(CloseCutColors.card)
+                    .frame(width: 188, height: 188)
+
+                SwiftUI.Circle()
+                    .stroke(CloseCutColors.separator, lineWidth: 0.5)
                     .frame(width: 188, height: 188)
 
                 if index == 0 {
@@ -132,7 +151,8 @@ struct OnboardingView: View {
                     .font(.body)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .multilineTextAlignment(.center)
-                    .lineLimit(3)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 28)
 
@@ -141,63 +161,74 @@ struct OnboardingView: View {
     }
 
     private var chooseStartPage: some View {
-        VStack(spacing: 24) {
-            Spacer()
+        ScrollView {
+            VStack(spacing: 24) {
+                Spacer(minLength: 44)
 
-            VStack(spacing: 12) {
-                Text("Choose your start")
-                    .font(.largeTitle.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textPrimary)
-                    .multilineTextAlignment(.center)
+                VStack(spacing: 12) {
+                    Text("Choose your start")
+                        .font(.largeTitle.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                Text("Add a few past watches to make your timeline and picks feel personal from day one.")
-                    .font(.body)
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-            }
+                    Text("Add a few past watches to make your Timeline and QuickPick feel personal from day one.")
+                        .font(.body)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 24)
+                }
 
-            VStack(spacing: 12) {
-                OnboardingChoiceCard(
-                    title: "Add past watches fast",
-                    message: "Search, tap, done. Add details later.",
-                    systemImage: "bolt.fill",
-                    isPrimary: true
-                ) {
-                    Task {
-                        let didComplete = await viewModel.complete(
-                            userId: user.id,
-                            path: .quickAdd,
-                            modelContext: modelContext
-                        )
+                VStack(spacing: 12) {
+                    OnboardingChoiceCard(
+                        title: "Add past watches fast",
+                        message: "Search, tap, done. Start with history now and add richer details later.",
+                        systemImage: "bolt.fill",
+                        isPrimary: true,
+                        isDisabled: viewModel.isCompleting
+                    ) {
+                        Task {
+                            await startQuickAddPath()
+                        }
+                    }
 
-                        if didComplete {
-                            isShowingQuickAdd = true
+                    OnboardingChoiceCard(
+                        title: "Start fresh",
+                        message: "Go straight to your Timeline and log when you're ready.",
+                        systemImage: "plus.circle",
+                        isPrimary: false,
+                        isDisabled: viewModel.isCompleting
+                    ) {
+                        Task {
+                            await complete(path: .startFresh)
                         }
                     }
                 }
+                .padding(.horizontal, 20)
 
-                OnboardingChoiceCard(
-                    title: "Start fresh",
-                    message: "Go to your timeline and log when you're ready.",
-                    systemImage: "plus.circle",
-                    isPrimary: false
-                ) {
-                    Task {
-                        await complete(path: .startFresh)
+                if viewModel.isCompleting {
+                    HStack(spacing: 10) {
+                        ProgressView()
+
+                        Text("Preparing your space…")
+                            .font(.caption)
+                            .foregroundStyle(CloseCutColors.textSecondary)
                     }
-                }
-            }
-            .padding(.horizontal, 20)
-
-            if let errorMessage = viewModel.errorMessage {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.failed)
                     .padding(.horizontal, 20)
-            }
+                }
 
-            Spacer()
+                if let errorMessage = viewModel.errorMessage {
+                    errorBanner(errorMessage)
+                        .padding(.horizontal, 20)
+                }
+
+                privacyNote
+                    .padding(.horizontal, 20)
+
+                Spacer(minLength: 40)
+            }
         }
     }
 
@@ -207,6 +238,7 @@ struct OnboardingView: View {
                 SwiftUI.Circle()
                     .fill(index == viewModel.currentStep ? CloseCutColors.accent : CloseCutColors.input)
                     .frame(width: 7, height: 7)
+                    .animation(.easeInOut(duration: 0.18), value: viewModel.currentStep)
             }
         }
         .padding(.bottom, 18)
@@ -218,7 +250,7 @@ struct OnboardingView: View {
             viewModel.continueTapped()
         } label: {
             Text("Continue")
-                .font(.headline)
+                .font(.headline.weight(.semibold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .frame(height: 52)
@@ -226,6 +258,52 @@ struct OnboardingView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
+        .disabled(viewModel.isCompleting)
+    }
+
+    private func errorBanner(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CloseCutColors.failed)
+                .padding(.top, 2)
+
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(CloseCutColors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(CloseCutColors.failedBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var privacyNote: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "lock.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textTertiary)
+                .padding(.top, 2)
+
+            Text("Private by default. Circle sharing only happens when you explicitly choose it.")
+                .font(.caption)
+                .foregroundStyle(CloseCutColors.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func startQuickAddPath() async {
+        let didComplete = await viewModel.complete(
+            userId: user.id,
+            path: .quickAdd,
+            modelContext: modelContext
+        )
+
+        if didComplete {
+            isShowingQuickAdd = true
+        }
     }
 
     private func complete(path: OnboardingStartPath) async {
