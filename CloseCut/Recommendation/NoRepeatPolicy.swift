@@ -8,15 +8,33 @@
 import Foundation
 
 struct NoRepeatPolicy {
-    private(set) var recentlyShownCandidateIds: Set<String> = []
+    private let maxRecentlyShownCount: Int
+    private(set) var recentlyShownCandidateIds: [String] = []
+
+    init(maxRecentlyShownCount: Int = 8) {
+        self.maxRecentlyShownCount = maxRecentlyShownCount
+    }
 
     mutating func markShown(_ candidateId: String) {
-        recentlyShownCandidateIds.insert(candidateId)
+        let cleanedCandidateId = candidateId.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard cleanedCandidateId.isEmpty == false else {
+            return
+        }
+
+        recentlyShownCandidateIds.removeAll { $0 == cleanedCandidateId }
+        recentlyShownCandidateIds.insert(cleanedCandidateId, at: 0)
+
+        if recentlyShownCandidateIds.count > maxRecentlyShownCount {
+            recentlyShownCandidateIds = Array(recentlyShownCandidateIds.prefix(maxRecentlyShownCount))
+        }
     }
 
     func filter(_ candidates: [SuggestionCandidate]) -> [SuggestionCandidate] {
-        let filtered = candidates.filter {
-            recentlyShownCandidateIds.contains($0.id) == false
+        let recentlyShownSet = Set(recentlyShownCandidateIds)
+
+        let filtered = candidates.filter { candidate in
+            recentlyShownSet.contains(candidate.id) == false
         }
 
         return filtered.isEmpty ? candidates : filtered
@@ -26,4 +44,3 @@ struct NoRepeatPolicy {
         recentlyShownCandidateIds.removeAll()
     }
 }
-

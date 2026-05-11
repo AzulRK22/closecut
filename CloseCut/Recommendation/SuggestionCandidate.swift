@@ -109,6 +109,32 @@ struct SuggestionCandidate: Identifiable, Equatable {
             size: .backdropMedium
         )
     }
+
+    var normalizedIdentityKey: String {
+        "\(title.normalizedTitleKey)|\(type.rawValue)"
+    }
+
+    var isTMDBDiscovery: Bool {
+        sourceEntryId == nil && isAlreadyWatched == false && id.hasPrefix("tmdb-")
+    }
+
+    var hasUsefulMetadata: Bool {
+        posterPath != nil ||
+        overview?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ||
+        tmdbRating != nil ||
+        tmdbGenreIds.isEmpty == false
+    }
+
+    var hasStrongSignal: Bool {
+        signals.contains { signal in
+            switch signal {
+            case .strongSentiment, .highIntensity, .highTMDBRating, .rewatchCandidate, .genreAffinity:
+                return true
+            case .moodContinuity, .moodContrast, .tagAffinity, .recentFavorite, .fallback:
+                return false
+            }
+        }
+    }
 }
 
 enum QuickPickSignal: Equatable {

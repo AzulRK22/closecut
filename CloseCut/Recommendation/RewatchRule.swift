@@ -8,35 +8,24 @@
 import Foundation
 
 enum RewatchRule {
+    private static let minimumDaysSinceWatch = 120
+    private static let strongRatingThreshold = 7.5
+
     static func candidates(
         from history: [Entry],
         now: Date = Date()
     ) -> [SuggestionCandidate] {
-        history.compactMap { entry in
-            guard qualifies(entry, now: now) else {
-                return nil
+        history
+            .filter { qualifies($0, now: now) }
+            .sorted { first, second in
+                score(first) > score(second)
             }
-
-            var signals: [QuickPickSignal] = [.rewatchCandidate]
-
-            if entry.intensity >= 4 {
-                signals.append(.highIntensity(entry.intensity))
+            .map { entry in
+                SuggestionCandidate(
+                    rewatchEntry: entry,
+                    signals: signals(for: entry)
+                )
             }
-
-            if let sentiment = entry.quickSentiment,
-               sentiment == .loved || sentiment == .stayedWithMe {
-                signals.append(.strongSentiment(sentiment))
-            }
-
-            if let rating = entry.tmdbRating, rating >= 7.5 {
-                signals.append(.highTMDBRating(rating))
-            }
-
-            return SuggestionCandidate(
-                rewatchEntry: entry,
-                signals: signals
-            )
-        }
     }
 
     private static func qualifies(
@@ -47,17 +36,75 @@ enum RewatchRule {
             return false
         }
 
+        guard entry.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            return false
+        }
+
         let daysSinceWatch = Calendar.current.dateComponents(
             [.day],
             from: entry.watchedAt,
             to: now
         ).day ?? 0
 
-        let isOldEnough = daysSinceWatch >= 120
-        let hasStrongSentiment = entry.quickSentiment == .loved || entry.quickSentiment == .stayedWithMe
-        let hasHighIntensity = entry.intensity >= 4
-        let hasStrongRating = (entry.tmdbRating ?? 0) >= 7.5
+        guard daysSinceWatch >= minimumDaysSinceWatch else {
+            return false
+        }
 
-        return isOldEnough && (hasStrongSentiment || hasHighIntensity || hasStrongRating)
+        return hasStrongSentiment(entry) ||
+            entry.intensity >= 4 ||
+            (entry.tmdbRating ?? 0) >= strongRatingThreshold
+    }
+
+    private static func signals(for entry: Entry) -> [QuickPickSignal] {
+        var signals: [QuickPickSignal] = [.rewatchCandidate]
+
+        if entry.intensity >= 4 {
+            signals.append(.highIntensity(entry.intensity))
+        }
+
+        if let sentiment = entry.quickSentiment,
+           sentiment == .loved || sentiment == .stayedWithMe {
+            signals.append(.strongSentiment(sentiment))
+        }
+
+        if let rating = entry.tmdbRating, rating >= strongRatingThreshold {
+            signals.append(.highTMDBRating(rating))
+        }
+
+        if let genreId = entry.tmdbGenreIds.first {
+            signals.append(.genreAffinity(genreId))
+        }
+
+        return signals
+    }
+
+    private static func score(_ entry: Entry) -> Int {
+        var score = 0
+
+        if hasStrongSentiment(entry) {
+            score += 5
+        }
+
+        if entry.intensity >= 4 {
+            score += entry.intensity
+        }
+
+        if let rating = entry.tmdbRating, rating >= strongRatingThreshold {
+            score += Int(rating.rounded())
+        }
+
+        if entry.posterPath != nil {
+            score += 1
+        }
+
+        if entry.overview?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            score += 1
+        }
+
+        return score
+    }
+
+    private static func hasStrongSentiment(_ entry: Entry) -> Bool {
+        entry.quickSentiment == .loved || entry.quickSentiment == .stayedWithMe
     }
 }
