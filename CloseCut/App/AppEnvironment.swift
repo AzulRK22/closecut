@@ -7,6 +7,8 @@
 
 import Foundation
 
-struct AppEnvironment {
+enum AppEnvironment {
     static let appName = "CloseCut"
+    static let minimumQuickPickHistoryCount = 3
+    static let firestoreCacheSizeBytes = 100 * 1024 * 1024
 }

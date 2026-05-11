@@ -8,7 +8,7 @@ import SwiftData
 
 @main
 struct CloseCutApp: App {
-    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     @StateObject private var authService = AuthService()
     @StateObject private var sessionViewModel = SessionViewModel()
@@ -21,7 +21,11 @@ struct CloseCutApp: App {
                 .environmentObject(sessionViewModel)
                 .environmentObject(sessionSyncViewModel)
         }
-        .modelContainer(for: [
+        .modelContainer(for: appModels)
+    }
+
+    private var appModels: [any PersistentModel.Type] {
+        [
             LocalEntry.self,
             LocalCircle.self,
             LocalCircleMembership.self,
@@ -29,6 +33,6 @@ struct CloseCutApp: App {
             LocalUserState.self,
             PendingAction.self,
             LocalBattleResult.self
-        ])
+        ]
     }
 }

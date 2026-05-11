@@ -34,6 +34,8 @@ struct RootView: View {
     }
 }
 
+// MARK: - Signed In Gate
+
 private struct SignedInSessionGate: View {
     @EnvironmentObject private var sessionViewModel: SessionViewModel
     @Environment(\.modelContext) private var modelContext
@@ -46,10 +48,7 @@ private struct SignedInSessionGate: View {
             case .idle:
                 LoadingProfileView()
                     .task {
-                        await sessionViewModel.prepareSession(
-                            authUser: user,
-                            modelContext: modelContext
-                        )
+                        await prepareSession()
                     }
 
             case .loading:
@@ -64,16 +63,23 @@ private struct SignedInSessionGate: View {
             case .error(let message):
                 ProfileErrorView(message: message) {
                     Task {
-                        await sessionViewModel.prepareSession(
-                            authUser: user,
-                            modelContext: modelContext
-                        )
+                        await prepareSession()
                     }
                 }
             }
         }
     }
+
+    private func prepareSession() async {
+        await sessionViewModel.prepareSession(
+            authUser: user,
+            modelContext: modelContext
+        )
+    }
 }
+
+// MARK: - Launch Gate
+
 private struct LaunchGateView: View {
     @Environment(\.modelContext) private var modelContext
     @StateObject private var launchViewModel = LaunchViewModel()
@@ -86,39 +92,38 @@ private struct LaunchGateView: View {
             if launchViewModel.isLoading {
                 LoadingProfileView()
             } else {
-                switch launchViewModel.destination {
-                case .onboarding:
-                    OnboardingView(user: user) {
-                        launchViewModel.completeToMain()
-                    }
-
-                case .mainHome:
-                    MainTabView(
-                        user: user,
-                        profile: profile
-                    )
-
-                case .none:
-                    LoadingProfileView()
-                        .task {
-                            launchViewModel.resolve(
-                                userId: user.id,
-                                modelContext: modelContext
-                            )
-                        }
-                }
+                destinationContent
             }
         }
-        .onAppear {
-            if launchViewModel.destination == nil {
-                launchViewModel.resolve(
-                    userId: user.id,
-                    modelContext: modelContext
-                )
+        .task(id: user.id) {
+            launchViewModel.resolveIfNeeded(
+                userId: user.id,
+                modelContext: modelContext
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var destinationContent: some View {
+        switch launchViewModel.destination {
+        case .onboarding:
+            OnboardingView(user: user) {
+                launchViewModel.completeToMain()
             }
+
+        case .mainHome:
+            MainTabView(
+                user: user,
+                profile: profile
+            )
+
+        case .none:
+            LoadingProfileView()
         }
     }
 }
+
+// MARK: - Loading Views
 
 private struct LoadingAuthView: View {
     var body: some View {
@@ -130,7 +135,7 @@ private struct LoadingAuthView: View {
                 CloseCutLogoMark(size: 76)
 
                 VStack(spacing: 6) {
-                    Text("CloseCut")
+                    Text(AppEnvironment.appName)
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
 
@@ -143,8 +148,9 @@ private struct LoadingAuthView: View {
                     .padding(.top, 4)
             }
         }
+        .preferredColorScheme(.dark)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Preparing CloseCut")
+        .accessibilityLabel("Preparing \(AppEnvironment.appName)")
     }
 }
 
@@ -164,6 +170,7 @@ private struct LoadingProfileView: View {
                 ProgressView()
             }
         }
+        .preferredColorScheme(.dark)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Preparing your profile")
     }
@@ -174,24 +181,39 @@ private struct ProfileErrorView: View {
     let retry: () -> Void
 
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.largeTitle)
+        ZStack {
+            CloseCutColors.backgroundPrimary
+                .ignoresSafeArea()
 
-            Text("We couldn't prepare your profile.")
-                .font(.headline)
+            VStack(spacing: 16) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.largeTitle)
+                    .foregroundStyle(CloseCutColors.failed)
 
-            Text(message)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+                Text("We couldn't prepare your profile.")
+                    .font(.headline)
+                    .foregroundStyle(CloseCutColors.textPrimary)
 
-            Button("Retry") {
-                retry()
+                Text(message)
+                    .font(.footnote)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .multilineTextAlignment(.center)
+
+                Button {
+                    retry()
+                } label: {
+                    Text("Retry")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 160, height: 44)
+                        .background(CloseCutColors.accent)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.borderedProminent)
+            .padding(24)
         }
-        .padding()
+        .preferredColorScheme(.dark)
     }
 }
 

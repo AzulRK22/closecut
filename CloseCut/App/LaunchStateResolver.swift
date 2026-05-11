@@ -13,7 +13,9 @@ enum LaunchDestination: Equatable {
 }
 
 enum LaunchStateResolver {
-    static func resolve(onboardingState: OnboardingState) -> LaunchDestination {
+    static func resolve(
+        onboardingState: OnboardingState
+    ) -> LaunchDestination {
         onboardingState.hasCompletedOnboarding ? .mainHome : .onboarding
     }
 }
