@@ -25,11 +25,24 @@ struct SettingsView: View {
     @Query(sort: \LocalEntry.updatedAt, order: .reverse)
     private var localEntries: [LocalEntry]
 
+    @Query(sort: \LocalCircle.updatedAt, order: .reverse)
+    private var localCircles: [LocalCircle]
+
+    @Query(sort: \LocalCircleMembership.updatedAt, order: .reverse)
+    private var localMemberships: [LocalCircleMembership]
+
     let user: AuthUser
     let profile: UserProfile
 
     private let entrySyncService = EntrySyncService()
     private let pendingActionQueue = PendingActionQueue()
+
+    private var currentUserEntries: [Entry] {
+        localEntries
+            .filter { $0.ownerId == user.id }
+            .filter { $0.deletedAt == nil }
+            .map { $0.domain }
+    }
 
     private var currentUserPendingActions: [PendingAction] {
         pendingActions.filter {
@@ -59,12 +72,49 @@ struct SettingsView: View {
         }
     }
 
+    private var currentUserFailedEntries: [LocalEntry] {
+        localEntries.filter {
+            $0.ownerId == user.id &&
+            $0.syncStatusRaw == SyncStatus.failed.rawValue
+        }
+    }
+
     private var visiblePendingCount: Int {
         max(currentUserPendingActions.count, currentUserPendingEntries.count)
     }
 
+    private var visibleFailedCount: Int {
+        max(currentUserFailedActions.count, currentUserFailedEntries.count)
+    }
+
     private var hasPendingOrFailedWork: Bool {
-        visiblePendingCount > 0 || currentUserFailedActions.isEmpty == false
+        visiblePendingCount > 0 || visibleFailedCount > 0
+    }
+
+    private var currentUserCircleCount: Int {
+        let activeMembershipCircleIds = Set(
+            localMemberships
+                .filter { $0.userId == user.id }
+                .map { $0.domain }
+                .filter { $0.isActive }
+                .map { $0.circleId }
+        )
+
+        return localCircles
+            .map { $0.domain }
+            .filter { activeMembershipCircleIds.contains($0.id) }
+            .filter { $0.deletedAt == nil }
+            .count
+    }
+
+    private var currentUserSharedEntryCount: Int {
+        currentUserEntries.filter {
+            $0.visibility == .circle && $0.sharedCircleIds.isEmpty == false
+        }.count
+    }
+
+    private var currentUserPrivateEntryCount: Int {
+        max(currentUserEntries.count - currentUserSharedEntryCount, 0)
     }
 
     var body: some View {
@@ -82,6 +132,19 @@ struct SettingsView: View {
                             profile: profile
                         )
 
+                        ArchiveHealthCard(
+                            entries: currentUserEntries,
+                            pendingCount: visiblePendingCount,
+                            failedCount: visibleFailedCount
+                        )
+
+                        CloseCutSystemStatusCard(
+                            entriesCount: currentUserEntries.count,
+                            circleCount: currentUserCircleCount,
+                            pendingCount: visiblePendingCount,
+                            failedCount: visibleFailedCount
+                        )
+
                         syncSection
 
                         privacySection
@@ -91,6 +154,8 @@ struct SettingsView: View {
                         accountSection
 
                         appInfoSection
+
+                        Spacer(minLength: 24)
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 16)
@@ -122,7 +187,7 @@ struct SettingsView: View {
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
 
-                Text("Manage your account, privacy, and local-first sync.")
+                Text("Manage your account, archive health, privacy, and local-first sync.")
                     .font(.subheadline)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -140,111 +205,154 @@ struct SettingsView: View {
     }
 
     private var syncSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("SYNC")
-                .font(.caption2.weight(.semibold))
-                .tracking(0.8)
-                .foregroundStyle(CloseCutColors.textTertiary)
-                .padding(.horizontal, 2)
+        settingsSection(title: "Sync") {
+            VStack(alignment: .leading, spacing: 12) {
+                if sessionSyncViewModel.isInitialCloudRefreshRunning {
+                    SyncResultBanner(
+                        message: "Refreshing your cloud entries…",
+                        style: .neutral
+                    )
+                }
 
-            if sessionSyncViewModel.isInitialCloudRefreshRunning {
-                SyncResultBanner(
-                    message: "Refreshing your cloud entries…",
-                    style: .neutral
+                if let initialRefreshError = sessionSyncViewModel.lastInitialCloudRefreshError {
+                    SyncResultBanner(
+                        message: initialRefreshError,
+                        style: .warning
+                    )
+                }
+
+                SyncStatusSummaryCard(
+                    pendingCount: visiblePendingCount,
+                    failedCount: visibleFailedCount,
+                    isSyncing: isSyncing
                 )
-            }
 
-            SyncStatusSummaryCard(
-                pendingCount: visiblePendingCount,
-                failedCount: currentUserFailedActions.count,
-                isSyncing: isSyncing
-            )
+                if hasPendingOrFailedWork {
+                    Button {
+                        Task {
+                            await syncNow()
+                        }
+                    } label: {
+                        HStack {
+                            if isSyncing {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Image(systemName: visibleFailedCount == 0 ? "arrow.triangle.2.circlepath" : "exclamationmark.arrow.triangle.2.circlepath")
+                            }
 
-            if hasPendingOrFailedWork {
+                            Text(syncButtonTitle)
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 46)
+                        .background(visibleFailedCount == 0 ? CloseCutColors.accent : CloseCutColors.failed)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isSyncing || isPullingFromCloud)
+                }
+
                 Button {
                     Task {
-                        await syncNow()
+                        await pullFromCloud()
                     }
                 } label: {
                     HStack {
-                        if isSyncing {
+                        if isPullingFromCloud {
                             ProgressView()
-                                .tint(.white)
+                                .tint(CloseCutColors.textSecondary)
                         } else {
-                            Image(systemName: currentUserFailedActions.isEmpty ? "arrow.triangle.2.circlepath" : "exclamationmark.arrow.triangle.2.circlepath")
+                            Image(systemName: "icloud.and.arrow.down")
                         }
 
-                        Text(syncButtonTitle)
+                        Text(isPullingFromCloud ? "Refreshing..." : "Refresh from cloud")
                     }
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(CloseCutColors.textSecondary)
                     .frame(maxWidth: .infinity)
                     .frame(height: 46)
-                    .background(currentUserFailedActions.isEmpty ? CloseCutColors.accent : CloseCutColors.failed)
+                    .background(CloseCutColors.input)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
                 .buttonStyle(.plain)
-                .disabled(isSyncing || isPullingFromCloud)
-            }
+                .disabled(isPullingFromCloud || isSyncing)
 
-            Button {
-                Task {
-                    await pullFromCloud()
+                if let lastSyncMessage {
+                    SyncResultBanner(
+                        message: lastSyncMessage,
+                        style: lastSyncBannerStyle
+                    )
                 }
-            } label: {
-                HStack {
-                    if isPullingFromCloud {
-                        ProgressView()
-                            .tint(CloseCutColors.textSecondary)
-                    } else {
-                        Image(systemName: "icloud.and.arrow.down")
-                    }
-
-                    Text(isPullingFromCloud ? "Refreshing..." : "Refresh from cloud")
-                }
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(CloseCutColors.textSecondary)
-                .frame(maxWidth: .infinity)
-                .frame(height: 46)
-                .background(CloseCutColors.input)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .disabled(isPullingFromCloud || isSyncing)
-
-            if let lastSyncMessage {
-                SyncResultBanner(
-                    message: lastSyncMessage,
-                    style: lastSyncBannerStyle
-                )
             }
         }
     }
 
     private var privacySection: some View {
         settingsSection(title: "Privacy & sharing") {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 settingsRow(
                     icon: "lock.fill",
                     title: "Default visibility",
                     value: profile.defaultVisibility.displayName
                 )
 
-                Text("Your Personal Timeline is private by default. Sharing only happens when you intentionally choose one or more Circles.")
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                settingsRow(
+                    icon: "film.stack",
+                    title: "Private memories",
+                    value: "\(currentUserPrivateEntryCount)"
+                )
+
+                settingsRow(
+                    icon: "person.2.fill",
+                    title: "Shared memories",
+                    value: "\(currentUserSharedEntryCount)"
+                )
+
+                settingsRow(
+                    icon: "circle.grid.2x2.fill",
+                    title: "Active Circles",
+                    value: "\(currentUserCircleCount)"
+                )
+
+                Divider()
+                    .overlay(CloseCutColors.separator)
+
+                privacySignalRow(
+                    icon: "eye.slash.fill",
+                    title: "No public profile",
+                    message: "CloseCut does not expose your taste history publicly."
+                )
+
+                privacySignalRow(
+                    icon: "person.crop.circle.badge.xmark",
+                    title: "No followers",
+                    message: "Sharing happens through selected private Circles only."
+                )
+
+                privacySignalRow(
+                    icon: "hand.tap.fill",
+                    title: "Manual sharing",
+                    message: "Entries stay private unless you intentionally select one or more Circles."
+                )
             }
         }
     }
 
     private var localDataSection: some View {
         settingsSection(title: "Local data") {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 settingsRow(
                     icon: "iphone",
                     title: "Local journal",
                     value: "Enabled"
+                )
+
+                settingsRow(
+                    icon: "film.stack",
+                    title: "Local entries",
+                    value: "\(currentUserEntries.count)"
                 )
 
                 settingsRow(
@@ -290,7 +398,7 @@ struct SettingsView: View {
 
     private var accountSection: some View {
         settingsSection(title: "Account") {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 settingsRow(
                     icon: "person.crop.circle.fill",
                     title: "Signed in as",
@@ -338,7 +446,7 @@ struct SettingsView: View {
                 settingsRow(
                     icon: "number",
                     title: "Version",
-                    value: appVersion
+                    value: AppBuildInfo.displayVersion
                 )
 
                 settingsRow(
@@ -350,16 +458,12 @@ struct SettingsView: View {
         }
     }
 
-    private var appVersion: String {
-        AppBuildInfo.displayVersion
-    }
-
     private var syncButtonTitle: String {
         if isSyncing {
             return "Syncing..."
         }
 
-        if currentUserFailedActions.isEmpty == false {
+        if visibleFailedCount > 0 {
             return "Retry sync"
         }
 
@@ -419,7 +523,39 @@ struct SettingsView: View {
         .frame(minHeight: 36)
     }
 
+    private func privacySignalRow(
+        icon: String,
+        title: String,
+        message: String
+    ) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textTertiary)
+                .frame(width: 30, height: 30)
+                .background(CloseCutColors.input)
+                .clipShape(SwiftUI.Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+        }
+    }
+
     private func syncNow() async {
+        guard isSyncing == false else {
+            return
+        }
+
         isSyncing = true
         lastSyncMessage = nil
         defer { isSyncing = false }
@@ -453,10 +589,18 @@ struct SettingsView: View {
         } catch {
             lastSyncBannerStyle = .warning
             lastSyncMessage = "Couldn’t clear completed sync history."
+
+            #if DEBUG
+            print("⚠️ Failed to clear completed sync history:", error.localizedDescription)
+            #endif
         }
     }
 
     private func pullFromCloud() async {
+        guard isPullingFromCloud == false else {
+            return
+        }
+
         isPullingFromCloud = true
         lastSyncMessage = nil
         defer { isPullingFromCloud = false }
@@ -477,4 +621,38 @@ struct SettingsView: View {
             lastSyncMessage = "No cloud entries found yet."
         }
     }
+}
+
+#Preview {
+    SettingsView(
+        user: AuthUser(
+            id: "preview-user",
+            email: "preview@closecut.dev",
+            displayName: "Preview",
+            photoURL: nil
+        ),
+        profile: UserProfile(
+            id: "preview-user",
+            displayName: "Preview",
+            email: "preview@closecut.dev",
+            photoURL: nil,
+            circleId: nil,
+            circleIds: [],
+            defaultVisibility: .privateOnly,
+            createdAt: Date(),
+            updatedAt: Date(),
+            syncStatus: .synced
+        )
+    )
+    .environmentObject(AuthService())
+    .environmentObject(SessionSyncViewModel())
+    .modelContainer(for: [
+        LocalEntry.self,
+        LocalCircle.self,
+        LocalCircleMembership.self,
+        LocalUserProfile.self,
+        LocalUserState.self,
+        PendingAction.self,
+        LocalBattleResult.self
+    ], inMemory: true)
 }

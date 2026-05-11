@@ -11,28 +11,59 @@ struct ProfileHeaderCard: View {
     let user: AuthUser
     let profile: UserProfile
 
-    private var initials: String {
-        let trimmed = profile.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+    private var displayName: String {
+        let cleaned = profile.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if trimmed.isEmpty {
-            return "CC"
+        if cleaned.isEmpty {
+            return user.displayName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                ? user.displayName ?? "CloseCut user"
+                : "CloseCut user"
         }
 
-        let parts = trimmed.split(separator: " ")
-        let letters = parts.prefix(2).compactMap { $0.first }
+        return cleaned
+    }
 
-        return String(letters).uppercased()
+    private var initials: String {
+        let parts = displayName
+            .split(separator: " ")
+            .map(String.init)
+
+        if parts.count >= 2 {
+            return "\(parts[0].prefix(1))\(parts[1].prefix(1))".uppercased()
+        }
+
+        return String(displayName.prefix(2)).uppercased()
     }
 
     private var emailText: String {
-        profile.email ?? user.email ?? user.id
+        let profileEmail = profile.email?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let authEmail = user.email?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let profileEmail, profileEmail.isEmpty == false {
+            return profileEmail
+        }
+
+        if let authEmail, authEmail.isEmpty == false {
+            return authEmail
+        }
+
+        return user.id
     }
 
     var body: some View {
         HStack(spacing: 14) {
             ZStack {
                 SwiftUI.Circle()
-                    .fill(CloseCutColors.accent)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                CloseCutColors.accent,
+                                CloseCutColors.accentLight
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
                     .frame(width: 58, height: 58)
 
                 Text(initials)
@@ -41,7 +72,7 @@ struct ProfileHeaderCard: View {
             }
 
             VStack(alignment: .leading, spacing: 5) {
-                Text(profile.displayName)
+                Text(displayName)
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
                     .lineLimit(1)
@@ -51,13 +82,17 @@ struct ProfileHeaderCard: View {
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .lineLimit(1)
 
-                Text("Private taste journal")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.accentLight)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(CloseCutColors.input)
-                    .clipShape(Capsule())
+                HStack(spacing: 6) {
+                    profilePill(
+                        icon: "lock.fill",
+                        text: "Private taste journal"
+                    )
+
+                    profilePill(
+                        icon: "iphone",
+                        text: "Local-first"
+                    )
+                }
             }
 
             Spacer()
@@ -70,6 +105,25 @@ struct ProfileHeaderCard: View {
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(profile.displayName), \(emailText)")
+        .accessibilityLabel("\(displayName), \(emailText)")
+    }
+
+    private func profilePill(
+        icon: String,
+        text: String
+    ) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.caption2.weight(.semibold))
+
+            Text(text)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(CloseCutColors.accentLight)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(CloseCutColors.input)
+        .clipShape(Capsule())
     }
 }
