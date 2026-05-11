@@ -22,7 +22,29 @@ struct MediaPosterView: View {
     }
 
     private var fallbackIcon: String {
-        mediaType == .tv ? "tv.fill" : "film.fill"
+        switch mediaType {
+        case .tv:
+            return "tv.fill"
+        case .movie:
+            return "film.fill"
+        case .person:
+            return "person.fill"
+        case .unknown:
+            return "photo.fill"
+        }
+    }
+
+    private var fallbackText: String {
+        switch mediaType {
+        case .tv:
+            return "Series"
+        case .movie:
+            return "Movie"
+        case .person:
+            return "Person"
+        case .unknown:
+            return "No poster"
+        }
     }
 
     var body: some View {
@@ -68,10 +90,11 @@ struct MediaPosterView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(CloseCutColors.textTertiary)
 
-            Text("No poster")
-                .font(.caption2)
+            Text(fallbackText)
+                .font(.caption2.weight(.semibold))
                 .foregroundStyle(CloseCutColors.textTertiary)
                 .multilineTextAlignment(.center)
+                .lineLimit(2)
         }
         .padding(6)
     }

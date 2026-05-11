@@ -21,7 +21,11 @@ struct MediaSearchView: View {
     @State private var errorMessage: String?
     @State private var searchTask: Task<Void, Never>?
 
+    @FocusState private var isSearchFocused: Bool
+
     private let repository = TMDBSearchRepository()
+    private let debounceNanoseconds: UInt64 = 450_000_000
+    private let maxDisplayedResults = 20
 
     private var trimmedQuery: String {
         query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -29,6 +33,10 @@ struct MediaSearchView: View {
 
     private var canSearch: Bool {
         trimmedQuery.count >= 2
+    }
+
+    private var displayedResults: [TMDBMediaSearchResult] {
+        Array(results.prefix(maxDisplayedResults))
     }
 
     var body: some View {
@@ -51,15 +59,18 @@ struct MediaSearchView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
-                        searchTask?.cancel()
+                        cancelSearch()
                         onCancel()
                     }
                     .foregroundStyle(CloseCutColors.textSecondary)
                 }
             }
         }
+        .onAppear {
+            isSearchFocused = true
+        }
         .onDisappear {
-            searchTask?.cancel()
+            cancelSearch()
         }
     }
 
@@ -89,6 +100,7 @@ struct MediaSearchView: View {
                     .foregroundStyle(CloseCutColors.textTertiary)
 
                 TextField(placeholder, text: $query)
+                    .focused($isSearchFocused)
                     .font(.body)
                     .foregroundStyle(CloseCutColors.textPrimary)
                     .textInputAutocapitalization(.words)
@@ -186,7 +198,7 @@ struct MediaSearchView: View {
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
 
-                Text("Try a different title or spelling.")
+                Text("Try a different title, spelling, or year.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -234,10 +246,9 @@ struct MediaSearchView: View {
     private var resultsList: some View {
         ScrollView {
             LazyVStack(spacing: 10) {
-                ForEach(results) { result in
+                ForEach(displayedResults) { result in
                     Button {
-                        selectedResultId = result.id
-                        onSelect(result)
+                        select(result)
                     } label: {
                         MediaSearchResultRow(
                             result: result,
@@ -245,6 +256,14 @@ struct MediaSearchView: View {
                         )
                     }
                     .buttonStyle(.plain)
+                }
+
+                if results.count > displayedResults.count {
+                    Text("Showing top \(displayedResults.count) results. Refine your search for better matches.")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 6)
                 }
             }
             .padding(.horizontal, 20)
@@ -261,11 +280,12 @@ struct MediaSearchView: View {
             results = []
             errorMessage = nil
             isSearching = false
+            selectedResultId = nil
             return
         }
 
         searchTask = Task {
-            try? await Task.sleep(nanoseconds: 450_000_000)
+            try? await Task.sleep(nanoseconds: debounceNanoseconds)
 
             guard Task.isCancelled == false else {
                 return
@@ -282,31 +302,54 @@ struct MediaSearchView: View {
             return
         }
 
+        let searchQuery = trimmedQuery
+
         searchTask = Task {
-            await performSearch(query: trimmedQuery)
+            await performSearch(query: searchQuery)
         }
     }
 
     @MainActor
-    private func performSearch(query: String) async {
+    private func performSearch(query searchQuery: String) async {
+        let normalizedSearchQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard normalizedSearchQuery.count >= 2 else {
+            results = []
+            errorMessage = nil
+            isSearching = false
+            return
+        }
+
         isSearching = true
         errorMessage = nil
 
         do {
-            let fetchedResults = try await repository.searchMedia(query: query)
+            let fetchedResults = try await repository.searchMedia(
+                query: normalizedSearchQuery
+            )
 
             guard Task.isCancelled == false else {
                 return
             }
 
+            guard trimmedQuery == normalizedSearchQuery else {
+                return
+            }
+
             results = fetchedResults
+            selectedResultId = nil
             isSearching = false
         } catch {
             guard Task.isCancelled == false else {
                 return
             }
 
+            guard trimmedQuery == normalizedSearchQuery else {
+                return
+            }
+
             results = []
+            selectedResultId = nil
             errorMessage = error.localizedDescription
             isSearching = false
 
@@ -316,12 +359,25 @@ struct MediaSearchView: View {
         }
     }
 
+    private func select(_ result: TMDBMediaSearchResult) {
+        selectedResultId = result.id
+        searchTask?.cancel()
+        onSelect(result)
+    }
+
     private func clearSearch() {
         searchTask?.cancel()
+        searchTask = nil
         query = ""
         results = []
         errorMessage = nil
         isSearching = false
         selectedResultId = nil
+        isSearchFocused = true
+    }
+
+    private func cancelSearch() {
+        searchTask?.cancel()
+        searchTask = nil
     }
 }

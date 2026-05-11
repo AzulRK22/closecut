@@ -11,10 +11,15 @@ struct MediaSearchResultRow: View {
     let result: TMDBMediaSearchResult
     var isSelected: Bool = false
 
+    private var overviewText: String? {
+        cleanOptional(result.overview)
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             MediaPosterView(
                 posterPath: result.posterPath,
+                mediaType: result.mediaType,
                 width: 58,
                 height: 86,
                 cornerRadius: 12
@@ -26,6 +31,7 @@ struct MediaSearchResultRow: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
                         .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
 
                     Spacer(minLength: 8)
 
@@ -33,6 +39,7 @@ struct MediaSearchResultRow: View {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(CloseCutColors.accentLight)
+                            .accessibilityHidden(true)
                     }
                 }
 
@@ -41,8 +48,8 @@ struct MediaSearchResultRow: View {
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .lineLimit(1)
 
-                if let overview = cleanOptional(result.overview) {
-                    Text(overview)
+                if let overviewText {
+                    Text(overviewText)
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textTertiary)
                         .lineLimit(2)
@@ -57,10 +64,23 @@ struct MediaSearchResultRow: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(isSelected ? CloseCutColors.accentLight : CloseCutColors.separator, lineWidth: isSelected ? 1 : 0.5)
+                .stroke(
+                    isSelected ? CloseCutColors.accentLight : CloseCutColors.separator,
+                    lineWidth: isSelected ? 1 : 0.5
+                )
         }
+        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(result.title), \(result.subtitle)")
+        .accessibilityLabel(accessibilityText)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var accessibilityText: String {
+        if isSelected {
+            return "\(result.title), \(result.subtitle), selected"
+        }
+
+        return "\(result.title), \(result.subtitle)"
     }
 
     private func cleanOptional(_ value: String?) -> String? {
