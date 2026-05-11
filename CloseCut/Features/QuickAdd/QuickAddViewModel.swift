@@ -14,6 +14,7 @@ final class QuickAddViewModel: ObservableObject {
     @Published var query: String = ""
     @Published var selectedSentiment: QuickSentiment? = .stayedWithMe
     @Published var selectedApproxDate: WatchedDateApprox = .recently
+
     @Published private(set) var addedEntries: [Entry] = []
     @Published private(set) var lastDuplicateEntry: Entry?
     @Published private(set) var errorMessage: String?
@@ -36,9 +37,11 @@ final class QuickAddViewModel: ObservableObject {
         QuickAddSuggestion(title: "The Worst Person in the World", type: .movie, releaseYear: 2021)
     ]
 
-    var filteredSuggestions: [QuickAddSuggestion] {
-        let cleanedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    var cleanedQuery: String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
+    var filteredSuggestions: [QuickAddSuggestion] {
         guard cleanedQuery.isEmpty == false else {
             return Array(localSuggestions.prefix(6))
         }
@@ -49,7 +52,7 @@ final class QuickAddViewModel: ObservableObject {
     }
 
     var canAddManualTitle: Bool {
-        query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        cleanedQuery.isEmpty == false
     }
 
     var addedCountText: String {
@@ -61,6 +64,10 @@ final class QuickAddViewModel: ObservableObject {
         default:
             return "\(addedEntries.count) added"
         }
+    }
+
+    var hasStatusMessage: Bool {
+        lastAddedEntry != nil || lastDuplicateEntry != nil || errorMessage != nil
     }
 
     func addSuggestion(
@@ -79,6 +86,7 @@ final class QuickAddViewModel: ObservableObject {
         saveDraft(
             draft,
             ownerId: ownerId,
+            shouldClearQuery: false,
             modelContext: modelContext
         )
     }
@@ -97,6 +105,7 @@ final class QuickAddViewModel: ObservableObject {
         saveDraft(
             draft,
             ownerId: ownerId,
+            shouldClearQuery: false,
             modelContext: modelContext
         )
     }
@@ -105,14 +114,12 @@ final class QuickAddViewModel: ObservableObject {
         ownerId: String,
         modelContext: ModelContext
     ) {
-        let cleanedTitle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard cleanedTitle.isEmpty == false else {
+        guard cleanedQuery.isEmpty == false else {
             return
         }
 
         let draft = QuickAddDraft(
-            title: cleanedTitle,
+            title: cleanedQuery,
             type: .movie,
             releaseYear: nil,
             quickSentiment: selectedSentiment,
@@ -122,10 +129,9 @@ final class QuickAddViewModel: ObservableObject {
         saveDraft(
             draft,
             ownerId: ownerId,
+            shouldClearQuery: true,
             modelContext: modelContext
         )
-
-        query = ""
     }
 
     func hasAdded(_ suggestion: QuickAddSuggestion) -> Bool {
@@ -150,14 +156,19 @@ final class QuickAddViewModel: ObservableObject {
         }
     }
 
+    func clearStatusMessages() {
+        lastAddedEntry = nil
+        lastDuplicateEntry = nil
+        errorMessage = nil
+    }
+
     private func saveDraft(
         _ draft: QuickAddDraft,
         ownerId: String,
+        shouldClearQuery: Bool,
         modelContext: ModelContext
     ) {
-        errorMessage = nil
-        lastDuplicateEntry = nil
-        lastAddedEntry = nil
+        clearStatusMessages()
 
         do {
             let beforeCount = try repository.fetchLocalEntries(
@@ -186,10 +197,19 @@ final class QuickAddViewModel: ObservableObject {
                 lastAddedEntry = entry
             }
 
+            if shouldClearQuery {
+                query = ""
+            }
+
+            #if DEBUG
             print("✅ Quick Add result:", entry.title, entry.sourceType.rawValue)
+            #endif
         } catch {
             errorMessage = error.localizedDescription
+
+            #if DEBUG
             print("❌ Quick Add failed:", error.localizedDescription)
+            #endif
         }
     }
 }

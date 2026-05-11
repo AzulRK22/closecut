@@ -19,8 +19,16 @@ struct QuickAddResultRow: View {
     let state: QuickAddRowState
     let action: () -> Void
 
+    private var isDisabled: Bool {
+        state == .added || state == .duplicate
+    }
+
     var body: some View {
         Button {
+            guard isDisabled == false else {
+                return
+            }
+
             action()
         } label: {
             HStack(spacing: 12) {
@@ -47,8 +55,10 @@ struct QuickAddResultRow: View {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(borderColor, lineWidth: 0.5)
             }
+            .opacity(isDisabled ? 0.78 : 1)
         }
         .buttonStyle(.plain)
+        .disabled(isDisabled)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title), \(metadata), \(accessibilityState)")
     }

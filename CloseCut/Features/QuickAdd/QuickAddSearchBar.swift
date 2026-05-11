@@ -11,6 +11,10 @@ struct QuickAddSearchBar: View {
     @Binding var query: String
     let onSubmit: () -> Void
 
+    private var cleanedQuery: String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
@@ -21,6 +25,10 @@ struct QuickAddSearchBar: View {
                 .autocorrectionDisabled()
                 .submitLabel(.done)
                 .onSubmit {
+                    guard cleanedQuery.isEmpty == false else {
+                        return
+                    }
+
                     onSubmit()
                 }
                 .foregroundStyle(CloseCutColors.textPrimary)
@@ -32,6 +40,7 @@ struct QuickAddSearchBar: View {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(CloseCutColors.textTertiary)
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel("Clear search")
             }
         }
@@ -39,5 +48,6 @@ struct QuickAddSearchBar: View {
         .padding(.horizontal, 14)
         .background(CloseCutColors.input)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityElement(children: .contain)
     }
 }

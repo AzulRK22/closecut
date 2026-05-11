@@ -164,44 +164,40 @@ struct QuickAddPastWatchesView: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Search with TMDB")
     }
 
     @ViewBuilder
     private var statusMessages: some View {
         if let lastAdded = viewModel.lastAddedEntry {
-            Text("Added: \(lastAdded.title)")
-                .font(.caption)
-                .foregroundStyle(CloseCutColors.synced)
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(CloseCutColors.input)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            QuickAddStatusBanner(
+                message: "Added: \(lastAdded.title)",
+                systemImage: "checkmark.circle.fill",
+                foregroundColor: CloseCutColors.synced
+            )
         }
 
         if let duplicate = viewModel.lastDuplicateEntry {
-            Text("Already in your history: \(duplicate.title)")
-                .font(.caption)
-                .foregroundStyle(CloseCutColors.textSecondary)
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(CloseCutColors.input)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            QuickAddStatusBanner(
+                message: "Already in your history: \(duplicate.title)",
+                systemImage: "checkmark.circle",
+                foregroundColor: CloseCutColors.textSecondary
+            )
         }
 
         if let errorMessage = viewModel.errorMessage {
-            Text(errorMessage)
-                .font(.caption)
-                .foregroundStyle(CloseCutColors.failed)
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(CloseCutColors.failedBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            QuickAddStatusBanner(
+                message: errorMessage,
+                systemImage: "exclamationmark.triangle.fill",
+                foregroundColor: CloseCutColors.failed,
+                backgroundColor: CloseCutColors.failedBackground
+            )
         }
     }
 
     private var suggestionsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(viewModel.query.isEmpty ? "Suggested fallback" : "Local fallback results")
+            Text(viewModel.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Suggested fallback" : "Local fallback results")
                 .font(.caption)
                 .foregroundStyle(CloseCutColors.textSecondary)
 
@@ -249,7 +245,7 @@ struct QuickAddPastWatchesView: View {
         } label: {
             HStack {
                 Image(systemName: "plus")
-                Text("Add “\(viewModel.query)” manually")
+                Text("Add “\(viewModel.cleanedQuery)” manually")
                     .lineLimit(1)
             }
             .font(.subheadline.weight(.semibold))
@@ -260,7 +256,7 @@ struct QuickAddPastWatchesView: View {
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Add \(viewModel.query) manually")
+        .accessibilityLabel("Add \(viewModel.cleanedQuery) manually")
     }
 
     private func rowState(for suggestion: QuickAddSuggestion) -> QuickAddRowState {
@@ -279,5 +275,34 @@ struct QuickAddPastWatchesView: View {
         }
 
         return .normal
+    }
+}
+
+private struct QuickAddStatusBanner: View {
+    let message: String
+    let systemImage: String
+    let foregroundColor: Color
+    var backgroundColor: Color = CloseCutColors.input
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(foregroundColor)
+                .padding(.top, 1)
+
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(foregroundColor)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(backgroundColor)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(message)
     }
 }
