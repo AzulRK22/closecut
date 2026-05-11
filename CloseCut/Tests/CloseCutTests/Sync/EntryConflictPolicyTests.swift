@@ -1,10 +1,9 @@
 //
 //  EntryConflictPolicyTests.swift
-//  CloseCut
+//  CloseCutTests
 //
 //  Created by Azul Ramirez Kuri on 29/04/26.
 //
-
 
 import XCTest
 @testable import CloseCut
@@ -169,7 +168,17 @@ final class EntryConflictPolicyTests: XCTestCase {
             cinemaScreen: nil,
             cinemaComfort: nil,
             visibility: .privateOnly,
+            sharedCircleIds: [],
             sourceType: .fullEntry,
+            externalSourceRaw: nil,
+            tmdbId: nil,
+            tmdbMediaTypeRaw: nil,
+            posterPath: nil,
+            backdropPath: nil,
+            overview: nil,
+            tmdbRating: nil,
+            tmdbPopularity: nil,
+            tmdbGenreIds: [],
             watchedAt: updatedAt,
             createdAt: updatedAt,
             updatedAt: updatedAt,

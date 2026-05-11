@@ -18,7 +18,7 @@ final class PendingActionQueueTests: XCTestCase {
 
         try queue.enqueue(
             userId: "user-1",
-            actionType: PendingActionType.createEntry,
+            actionType: .createEntry,
             payloadData: nil,
             dedupeKey: "entry:create:1",
             modelContext: context
@@ -40,7 +40,7 @@ final class PendingActionQueueTests: XCTestCase {
 
         try queue.enqueue(
             userId: "user-1",
-            actionType: PendingActionType.updateEntry,
+            actionType: .updateEntry,
             payloadData: nil,
             dedupeKey: "entry:update:1",
             modelContext: context
@@ -48,7 +48,7 @@ final class PendingActionQueueTests: XCTestCase {
 
         try queue.enqueue(
             userId: "user-1",
-            actionType: PendingActionType.updateEntry,
+            actionType: .updateEntry,
             payloadData: nil,
             dedupeKey: "entry:update:1",
             modelContext: context
@@ -68,7 +68,7 @@ final class PendingActionQueueTests: XCTestCase {
 
         try queue.enqueue(
             userId: "user-1",
-            actionType: PendingActionType.createEntry,
+            actionType: .createEntry,
             payloadData: nil,
             dedupeKey: "entry:create:1",
             modelContext: context
@@ -89,6 +89,7 @@ final class PendingActionQueueTests: XCTestCase {
 
         XCTAssertEqual(updatedPending.count, 0)
     }
+
     func testUpdateAfterPendingCreateCompactsIntoCreateAction() throws {
         let context = try makeInMemoryContext()
         let queue = PendingActionQueue()
@@ -96,7 +97,7 @@ final class PendingActionQueueTests: XCTestCase {
         try queue.enqueueEntryAction(
             userId: "user-1",
             entryId: "entry-1",
-            actionType: PendingActionType.createEntry,
+            actionType: .createEntry,
             payloadData: nil,
             modelContext: context
         )
@@ -104,7 +105,7 @@ final class PendingActionQueueTests: XCTestCase {
         try queue.enqueueEntryAction(
             userId: "user-1",
             entryId: "entry-1",
-            actionType: PendingActionType.updateEntry,
+            actionType: .updateEntry,
             payloadData: nil,
             modelContext: context
         )
@@ -125,7 +126,7 @@ final class PendingActionQueueTests: XCTestCase {
         try queue.enqueueEntryAction(
             userId: "user-1",
             entryId: "entry-1",
-            actionType: PendingActionType.updateEntry,
+            actionType: .updateEntry,
             payloadData: nil,
             modelContext: context
         )
@@ -133,7 +134,7 @@ final class PendingActionQueueTests: XCTestCase {
         try queue.enqueueEntryAction(
             userId: "user-1",
             entryId: "entry-1",
-            actionType: PendingActionType.deleteEntry,
+            actionType: .deleteEntry,
             payloadData: nil,
             modelContext: context
         )
@@ -153,7 +154,7 @@ final class PendingActionQueueTests: XCTestCase {
 
         try queue.enqueue(
             userId: "user-1",
-            actionType: PendingActionType.createEntry,
+            actionType: .createEntry,
             payloadData: nil,
             dedupeKey: "entry:create:1",
             modelContext: context
@@ -161,7 +162,7 @@ final class PendingActionQueueTests: XCTestCase {
 
         try queue.enqueue(
             userId: "user-1",
-            actionType: PendingActionType.updateEntry,
+            actionType: .updateEntry,
             payloadData: nil,
             dedupeKey: "entry:update:1",
             modelContext: context
@@ -188,13 +189,20 @@ final class PendingActionQueueTests: XCTestCase {
         XCTAssertEqual(deletedCount, 1)
         XCTAssertEqual(remainingPending.count, 1)
     }
+
     private func makeInMemoryContext() throws -> ModelContext {
         let configuration = ModelConfiguration(
             isStoredInMemoryOnly: true
         )
 
         let container = try ModelContainer(
-            for: PendingAction.self,
+            for: LocalEntry.self,
+            LocalCircle.self,
+            LocalCircleMembership.self,
+            LocalUserProfile.self,
+            LocalUserState.self,
+            PendingAction.self,
+            LocalBattleResult.self,
             configurations: configuration
         )
 
