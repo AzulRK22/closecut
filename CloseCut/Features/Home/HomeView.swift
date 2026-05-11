@@ -20,9 +20,9 @@ struct HomeView: View {
     let user: AuthUser
     let profile: UserProfile
 
-    @State private var selectedSegment: HomeSegment = .timeline
     @State private var isShowingEntryEditor = false
     @State private var isShowingQuickAdd = false
+    @State private var isShowingQuickPick = false
 
     private var entries: [Entry] {
         localEntries
@@ -49,22 +49,21 @@ struct HomeView: View {
 
                 VStack(spacing: 0) {
                     homeHeader
-                        .padding(.horizontal, 20)
-                        .padding(.top, 8)
-                        .padding(.bottom, 10)
 
-                    Picker("Home section", selection: $selectedSegment) {
-                        ForEach(HomeSegment.allCases) { segment in
-                            Text(segment.title)
-                                .tag(segment)
+                    PersonalLibraryView(
+                        entries: entries,
+                        user: user,
+                        profile: profile,
+                        onQuickAdd: {
+                            isShowingQuickAdd = true
+                        },
+                        onCreateEntry: {
+                            isShowingEntryEditor = true
+                        },
+                        onOpenQuickPick: {
+                            isShowingQuickPick = true
                         }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 4)
-                    .padding(.bottom, 6)
-
-                    selectedContent
+                    )
                 }
             }
             .navigationTitle("CloseCut")
@@ -107,6 +106,21 @@ struct HomeView: View {
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
+            .sheet(isPresented: $isShowingQuickPick) {
+                QuickPickView(
+                    entries: entries,
+                    onQuickAdd: {
+                        isShowingQuickPick = false
+                        isShowingQuickAdd = true
+                    },
+                    onCreateEntry: {
+                        isShowingQuickPick = false
+                        isShowingEntryEditor = true
+                    }
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
         }
     }
 
@@ -117,7 +131,7 @@ struct HomeView: View {
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
 
-                Text(headerSubtitle)
+                Text("Your private taste library, picks, and memories.")
                     .font(.subheadline)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .lineLimit(2)
@@ -126,56 +140,16 @@ struct HomeView: View {
 
             Spacer()
 
-            Image(systemName: selectedSegment.systemImage)
+            Image(systemName: "rectangle.stack.fill")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(CloseCutColors.accentLight)
                 .frame(width: 36, height: 36)
                 .background(CloseCutColors.input)
                 .clipShape(SwiftUI.Circle())
         }
-    }
-
-    @ViewBuilder
-    private var selectedContent: some View {
-        switch selectedSegment {
-        case .timeline:
-            TimelineView(
-                entries: entries,
-                user: user,
-                profile: profile,
-                onQuickAdd: {
-                    isShowingQuickAdd = true
-                },
-                onCreateEntry: {
-                    isShowingEntryEditor = true
-                },
-                onOpenQuickPick: {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        selectedSegment = .quickPick
-                    }
-                }
-            )
-
-        case .quickPick:
-            QuickPickView(
-                entries: entries,
-                onQuickAdd: {
-                    isShowingQuickAdd = true
-                },
-                onCreateEntry: {
-                    isShowingEntryEditor = true
-                }
-            )
-        }
-    }
-
-    private var headerSubtitle: String {
-        switch selectedSegment {
-        case .timeline:
-            return "Your private taste history."
-        case .quickPick:
-            return "Suggestions shaped by your own history."
-        }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
     }
 }
 
