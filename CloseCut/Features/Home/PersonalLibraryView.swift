@@ -1,0 +1,283 @@
+//
+//  PersonalLibraryView.swift
+//  CloseCut
+//
+//  Created by Azul Ramirez Kuri on 11/05/26.
+//
+
+import SwiftUI
+
+struct PersonalLibraryView: View {
+    let entries: [Entry]
+    let user: AuthUser
+    let profile: UserProfile
+    let onQuickAdd: () -> Void
+    let onCreateEntry: () -> Void
+    let onOpenQuickPick: (QuickPickState) -> Void
+
+    @StateObject private var quickPickViewModel = HomeQuickPickViewModel()
+
+    private let quickPickTargetCount = 3
+
+    private var activeEntries: [Entry] {
+        entries
+            .filter { $0.deletedAt == nil }
+            .filter { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+            .sorted { first, second in
+                first.watchedAt > second.watchedAt
+            }
+    }
+
+    private var recentlyWatched: [Entry] {
+        Array(activeEntries.prefix(12))
+    }
+
+    private var quickAddsToComplete: [Entry] {
+        activeEntries
+            .filter { entry in
+                entry.sourceType == .quickAdd &&
+                (
+                    entry.mood.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                    entry.takeaway.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                    entry.tags.isEmpty
+                )
+            }
+            .prefix(12)
+            .map { $0 }
+    }
+
+    private var stayedWithYou: [Entry] {
+        activeEntries
+            .filter { entry in
+                entry.quickSentiment == .loved ||
+                entry.quickSentiment == .stayedWithMe ||
+                entry.intensity >= 4
+            }
+            .prefix(12)
+            .map { $0 }
+    }
+
+    private var rewatchCandidates: [Entry] {
+        activeEntries
+            .filter { entry in
+                let daysSinceWatch = Calendar.current.dateComponents(
+                    [.day],
+                    from: entry.watchedAt,
+                    to: Date()
+                ).day ?? 0
+
+                let isOldEnough = daysSinceWatch >= 120
+                let hasStrongSentiment = entry.quickSentiment == .loved || entry.quickSentiment == .stayedWithMe
+                let hasHighIntensity = entry.intensity >= 4
+                let hasHighRating = (entry.tmdbRating ?? 0) >= 7.5
+
+                return isOldEnough && (hasStrongSentiment || hasHighIntensity || hasHighRating)
+            }
+            .prefix(12)
+            .map { $0 }
+    }
+
+    private var sharedMemories: [Entry] {
+        activeEntries
+            .filter {
+                $0.visibility == .circle && $0.sharedCircleIds.isEmpty == false
+            }
+            .prefix(12)
+            .map { $0 }
+    }
+
+    private var shouldShowHistoryProgress: Bool {
+        activeEntries.count > 0 && activeEntries.count < quickPickTargetCount
+    }
+
+    private var homeRefreshKey: String {
+        activeEntries
+            .map { "\($0.id)-\($0.updatedAt.timeIntervalSince1970)" }
+            .joined(separator: "|")
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 24) {
+                if activeEntries.isEmpty {
+                    emptyLibraryState
+                } else {
+                    libraryContent
+                }
+
+                Spacer(minLength: 24)
+            }
+            .padding(.vertical, 16)
+        }
+        .background(CloseCutColors.backgroundPrimary)
+        .task(id: homeRefreshKey) {
+            quickPickViewModel.generateStablePick(
+                userId: user.id,
+                history: activeEntries
+            )
+        }
+    }
+
+    private var libraryContent: some View {
+        Group {
+            VStack(spacing: 16) {
+                HomeHeroQuickPickCard(
+                    state: quickPickViewModel.state,
+                    onQuickAdd: onQuickAdd,
+                    onOpenQuickPick: {
+                        onOpenQuickPick(quickPickViewModel.state)
+                    },
+                    onRefresh: {
+                        quickPickViewModel.refresh(
+                            history: activeEntries
+                        )
+                    }
+                )
+
+                if shouldShowHistoryProgress {
+                    HistoryProgressModule(
+                        currentCount: activeEntries.count,
+                        targetCount: quickPickTargetCount,
+                        onQuickAdd: onQuickAdd,
+                        onOpenQuickPick: {
+                            onOpenQuickPick(quickPickViewModel.state)
+                        }
+                    )
+                }
+            }
+            .padding(.horizontal, 20)
+
+            PosterRailView(
+                title: "Recently watched",
+                subtitle: "Your latest memories and logged watches.",
+                entries: recentlyWatched,
+                user: user,
+                profile: profile
+            )
+
+            if quickAddsToComplete.isEmpty == false {
+                PosterRailView(
+                    title: "Continue building",
+                    subtitle: "Quick Adds ready to become richer memories.",
+                    entries: quickAddsToComplete,
+                    user: user,
+                    profile: profile
+                )
+            }
+
+            if stayedWithYou.isEmpty == false {
+                PosterRailView(
+                    title: "Because it stayed with you",
+                    subtitle: "The strongest emotional signals in your library.",
+                    entries: stayedWithYou,
+                    user: user,
+                    profile: profile
+                )
+            }
+
+            if rewatchCandidates.isEmpty == false {
+                PosterRailView(
+                    title: "Worth rewatching",
+                    subtitle: "Older meaningful watches that may deserve another look.",
+                    entries: rewatchCandidates,
+                    user: user,
+                    profile: profile
+                )
+            }
+
+            if sharedMemories.isEmpty == false {
+                PosterRailView(
+                    title: "Shared with Circles",
+                    subtitle: "Memories you intentionally shared with trusted people.",
+                    entries: sharedMemories,
+                    user: user,
+                    profile: profile
+                )
+            }
+
+            librarySearchHint
+                .padding(.horizontal, 20)
+        }
+    }
+
+    private var emptyLibraryState: some View {
+        VStack(spacing: 18) {
+            EmptyStateView(
+                title: "Start your private taste library",
+                message: "Quick Add a few movies or series you already watched. CloseCut will turn them into a visual archive, better picks, and memories you can share selectively.",
+                systemImage: "film.stack",
+                actionTitle: "Add past watches",
+                action: onQuickAdd
+            )
+
+            Button {
+                onCreateEntry()
+            } label: {
+                Text("Log a new watch instead")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 20)
+    }
+
+    private var librarySearchHint: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CloseCutColors.accentLight)
+                .frame(width: 28, height: 28)
+                .background(CloseCutColors.input)
+                .clipShape(SwiftUI.Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Looking for something specific?")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+
+                Text("Use the search icon above to browse your full library by title, year, mood, tags, shared entries, or Quick Adds.")
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+        }
+        .padding(14)
+        .background(CloseCutColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(CloseCutColors.separator, lineWidth: 0.5)
+        }
+    }
+}
+
+#Preview {
+    PersonalLibraryView(
+        entries: [],
+        user: AuthUser(
+            id: "preview-user",
+            email: "preview@closecut.dev",
+            displayName: "Preview",
+            photoURL: nil
+        ),
+        profile: UserProfile(
+            id: "preview-user",
+            displayName: "Preview",
+            email: "preview@closecut.dev",
+            photoURL: nil,
+            circleId: nil,
+            circleIds: [],
+            defaultVisibility: .privateOnly,
+            createdAt: Date(),
+            updatedAt: Date(),
+            syncStatus: .synced
+        ),
+        onQuickAdd: {},
+        onCreateEntry: {},
+        onOpenQuickPick: { _ in }
+    )
+}

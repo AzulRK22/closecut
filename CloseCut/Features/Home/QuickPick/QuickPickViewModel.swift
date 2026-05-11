@@ -18,19 +18,18 @@ final class QuickPickViewModel: ObservableObject {
     private let engine = QuickPickEngine()
     private var generationTask: Task<Void, Never>?
 
-    deinit {
+    func setInitialState(
+        _ initialState: QuickPickState
+    ) {
         generationTask?.cancel()
+        state = initialState
     }
 
     func generate(history: [Entry]) {
         generationTask?.cancel()
 
-        let cleanedHistory = history
-            .filter { $0.deletedAt == nil }
-            .filter { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
-
-        generationTask = Task { [engine] in
-            let newState = await engine.generateSuggestion(history: cleanedHistory)
+        generationTask = Task {
+            let newState = await engine.generateSuggestion(history: history)
 
             guard Task.isCancelled == false else {
                 return
@@ -47,10 +46,5 @@ final class QuickPickViewModel: ObservableObject {
     func resetSession() {
         generationTask?.cancel()
         engine.resetSession()
-    }
-
-    func cancelGeneration() {
-        generationTask?.cancel()
-        generationTask = nil
     }
 }

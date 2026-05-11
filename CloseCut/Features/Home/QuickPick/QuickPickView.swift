@@ -9,23 +9,17 @@ import SwiftUI
 
 struct QuickPickView: View {
     let entries: [Entry]
+    var initialState: QuickPickState? = nil
     let onQuickAdd: () -> Void
     let onCreateEntry: () -> Void
 
     @StateObject private var viewModel = QuickPickViewModel()
-
-    private var activeEntries: [Entry] {
-        entries
-            .filter { $0.deletedAt == nil }
-            .sorted { first, second in
-                first.watchedAt > second.watchedAt
-            }
-    }
+    @State private var didConfigureInitialState = false
 
     private var quickPickRefreshKey: String {
-        activeEntries
+        entries
             .map {
-                "\($0.id)-\($0.updatedAt.timeIntervalSince1970)-\($0.tmdbId ?? -1)-\($0.quickSentiment?.rawValue ?? "")-\($0.intensity)"
+                "\($0.id)-\($0.updatedAt.timeIntervalSince1970)-\($0.tmdbId ?? -1)-\($0.quickSentiment?.rawValue ?? "")"
             }
             .joined(separator: "|")
     }
@@ -57,13 +51,29 @@ struct QuickPickView: View {
         }
         .background(CloseCutColors.backgroundPrimary)
         .onAppear {
-            viewModel.generate(history: activeEntries)
+            configureInitialStateIfNeeded()
         }
         .onChange(of: quickPickRefreshKey) { _, _ in
-            viewModel.generate(history: activeEntries)
+            guard didConfigureInitialState == false else {
+                didConfigureInitialState = false
+                return
+            }
+
+            viewModel.generate(history: entries)
         }
-        .onDisappear {
-            viewModel.cancelGeneration()
+    }
+
+    private func configureInitialStateIfNeeded() {
+        guard didConfigureInitialState == false else {
+            return
+        }
+
+        didConfigureInitialState = true
+
+        if let initialState {
+            viewModel.setInitialState(initialState)
+        } else {
+            viewModel.generate(history: entries)
         }
     }
 
@@ -71,29 +81,26 @@ struct QuickPickView: View {
         currentCount: Int,
         targetCount: Int
     ) -> some View {
-        ScrollView {
-            VStack(spacing: 18) {
-                EmptyStateView(
-                    title: "QuickPick needs a little history",
-                    message: "Add \(targetCount) watches so CloseCut can understand your taste. You have \(currentCount) so far.",
-                    systemImage: "sparkles",
-                    actionTitle: "Add past watches",
-                    action: onQuickAdd
-                )
+        VStack(spacing: 18) {
+            EmptyStateView(
+                title: "QuickPick needs a little history",
+                message: "Add \(targetCount) watches so CloseCut can understand your taste. You have \(currentCount) so far.",
+                systemImage: "sparkles",
+                actionTitle: "Add past watches",
+                action: onQuickAdd
+            )
 
-                Button {
-                    onCreateEntry()
-                } label: {
-                    Text("Log a new watch")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.textSecondary)
-                        .frame(minHeight: 44)
-                }
-                .buttonStyle(.plain)
+            Button {
+                onCreateEntry()
+            } label: {
+                Text("Log a new watch")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .frame(minHeight: 44)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 24)
+            .buttonStyle(.plain)
         }
+        .padding(.horizontal, 20)
     }
 
     private func suggestionContent(
@@ -106,11 +113,11 @@ struct QuickPickView: View {
                     suggestion: suggestion,
                     isNoAlternatives: isNoAlternatives,
                     onRefresh: {
-                        viewModel.refresh(history: activeEntries)
+                        viewModel.refresh(history: entries)
                     }
                 )
 
-                Text("QuickPick is local and rule-based. No AI claims, no public data.")
+                Text("QuickPick is local, rule-based, and shaped by your private history.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textTertiary)
                     .multilineTextAlignment(.center)
@@ -137,7 +144,7 @@ struct QuickPickView: View {
                 .multilineTextAlignment(.center)
 
             Button {
-                viewModel.refresh(history: activeEntries)
+                viewModel.refresh(history: entries)
             } label: {
                 Text("Retry")
                     .font(.subheadline.weight(.semibold))

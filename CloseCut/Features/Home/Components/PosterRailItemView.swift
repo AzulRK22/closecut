@@ -10,40 +10,48 @@ import SwiftUI
 struct PosterRailItemView: View {
     let entry: Entry
 
-    private var metadataText: String {
-        var parts: [String] = []
-
-        if let releaseYear = entry.releaseYear {
-            parts.append("\(releaseYear)")
-        }
-
-        parts.append(entry.type.displayName)
-
-        if entry.sourceType == .quickAdd {
-            parts.append("Quick Add")
-        }
-
-        return parts.joined(separator: " • ")
+    private var mood: Mood {
+        Mood.from(entry.mood)
     }
 
-    private var moodText: String {
-        let cleanedMood = entry.mood.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if cleanedMood.isEmpty {
-            return entry.quickSentiment?.displayName ?? "Memory"
+    private var metadataText: String {
+        if let releaseYear = entry.releaseYear {
+            return "\(releaseYear) • \(entry.type.displayName)"
         }
 
-        return cleanedMood
+        return entry.type.displayName
+    }
+
+    private var footerText: String {
+        if entry.sourceType == .quickAdd {
+            return "Quick Add"
+        }
+
+        if entry.visibility == .circle && entry.sharedCircleIds.isEmpty == false {
+            return "Shared"
+        }
+
+        return entry.watchContext.displayName
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            EntryPosterThumbnailView(
-                entry: entry,
-                width: 112,
-                height: 166,
-                cornerRadius: 18
-            )
+            ZStack(alignment: .topTrailing) {
+                EntryPosterThumbnailView(
+                    entry: entry,
+                    width: 116,
+                    height: 172,
+                    cornerRadius: 16
+                )
+
+                MoodPill(
+                    mood: mood,
+                    size: .small,
+                    isSelected: false,
+                    showLabel: false
+                )
+                .padding(7)
+            }
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(entry.title)
@@ -57,14 +65,15 @@ struct PosterRailItemView: View {
                     .foregroundStyle(CloseCutColors.textTertiary)
                     .lineLimit(1)
 
-                Text(moodText)
+                Text(footerText)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .lineLimit(1)
             }
-            .frame(width: 112, alignment: .leading)
+            .frame(width: 116, alignment: .leading)
         }
+        .frame(width: 116, alignment: .top)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(entry.title), \(metadataText), \(moodText)")
+        .accessibilityLabel("\(entry.title), \(metadataText), \(footerText)")
     }
 }

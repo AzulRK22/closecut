@@ -9,8 +9,6 @@ import SwiftUI
 import SwiftData
 
 struct HomeView: View {
-    @Environment(\.modelContext) private var modelContext
-
     @Query(sort: \LocalEntry.watchedAt, order: .reverse)
     private var localEntries: [LocalEntry]
 
@@ -23,6 +21,8 @@ struct HomeView: View {
     @State private var isShowingEntryEditor = false
     @State private var isShowingQuickAdd = false
     @State private var isShowingQuickPick = false
+    @State private var isShowingLibrarySearch = false
+    @State private var initialQuickPickState: QuickPickState?
 
     private var entries: [Entry] {
         localEntries
@@ -60,7 +60,8 @@ struct HomeView: View {
                         onCreateEntry: {
                             isShowingEntryEditor = true
                         },
-                        onOpenQuickPick: {
+                        onOpenQuickPick: { state in
+                            initialQuickPickState = state
                             isShowingQuickPick = true
                         }
                     )
@@ -70,6 +71,17 @@ struct HomeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .preferredColorScheme(.dark)
             .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isShowingLibrarySearch = true
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 16, weight: .semibold))
+                            .frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel("Search library")
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         isShowingQuickAdd = true
@@ -92,6 +104,15 @@ struct HomeView: View {
                     .accessibilityLabel("New entry")
                 }
             }
+            .sheet(isPresented: $isShowingLibrarySearch) {
+                LibrarySearchView(
+                    entries: entries,
+                    user: user,
+                    profile: profile
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
             .sheet(isPresented: $isShowingEntryEditor) {
                 EntryEditorView(
                     user: user,
@@ -109,6 +130,7 @@ struct HomeView: View {
             .sheet(isPresented: $isShowingQuickPick) {
                 QuickPickView(
                     entries: entries,
+                    initialState: initialQuickPickState,
                     onQuickAdd: {
                         isShowingQuickPick = false
                         isShowingQuickAdd = true

@@ -13,38 +13,56 @@ struct PosterRailView: View {
     let entries: [Entry]
     let user: AuthUser
     let profile: UserProfile
-    var maxVisibleCount: Int = 12
 
-    private var visibleEntries: [Entry] {
-        Array(entries.prefix(maxVisibleCount))
+    private var displayedEntries: [Entry] {
+        Array(
+            entries
+                .filter { $0.deletedAt == nil }
+                .filter { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+                .prefix(12)
+        )
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            TimelineSectionHeader(
-                title: title,
-                subtitle: subtitle
-            )
+        if displayedEntries.isEmpty == false {
+            VStack(alignment: .leading, spacing: 12) {
+                header
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: 14) {
-                    ForEach(visibleEntries) { entry in
-                        NavigationLink {
-                            EntryDetailView(
-                                entry: entry,
-                                user: user,
-                                profile: profile
-                            )
-                        } label: {
-                            PosterRailItemView(entry: entry)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: 12) {
+                        ForEach(displayedEntries) { entry in
+                            NavigationLink {
+                                EntryDetailView(
+                                    entry: entry,
+                                    user: user,
+                                    profile: profile
+                                )
+                            } label: {
+                                PosterRailItemView(entry: entry)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
+                    .padding(.horizontal, 20)
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 2)
             }
-            .padding(.horizontal, -20)
         }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textPrimary)
+
+            if let subtitle {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 20)
     }
 }

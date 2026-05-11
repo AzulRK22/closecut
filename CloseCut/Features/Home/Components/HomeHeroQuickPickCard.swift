@@ -8,82 +8,141 @@
 import SwiftUI
 
 struct HomeHeroQuickPickCard: View {
-    let entries: [Entry]
+    let state: QuickPickState
     let onQuickAdd: () -> Void
     let onOpenQuickPick: () -> Void
-
-    @State private var state: QuickPickState = .insufficientHistory(
-        currentCount: 0,
-        targetCount: 3
-    )
-
-    private let engine = QuickPickEngine()
-
-    private var refreshKey: String {
-        entries
-            .map {
-                "\($0.id)-\($0.updatedAt.timeIntervalSince1970)-\($0.tmdbId ?? -1)-\($0.quickSentiment?.rawValue ?? "")"
-            }
-            .joined(separator: "|")
-    }
+    let onRefresh: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        Group {
             switch state {
             case .insufficientHistory(let currentCount, let targetCount):
-                insufficientHistoryContent(
+                insufficientHistoryCard(
                     currentCount: currentCount,
                     targetCount: targetCount
                 )
 
             case .suggestion(let suggestion), .noAlternatives(let suggestion):
-                suggestionContent(suggestion)
+                suggestionCard(suggestion)
 
             case .error:
-                fallbackContent
+                fallbackCard
             }
         }
-        .padding(16)
+    }
+
+    private func suggestionCard(
+        _ suggestion: QuickPickSuggestion
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 14) {
+                poster(for: suggestion)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Label("Today’s Pick", systemImage: "sparkles")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.accentLight)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 6)
+                            .background(CloseCutColors.input)
+                            .clipShape(Capsule())
+
+                        Text(suggestion.confidenceLabel)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textSecondary)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 6)
+                            .background(CloseCutColors.input)
+                            .clipShape(Capsule())
+                    }
+
+                    Text(suggestion.candidate.title)
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(suggestion.candidate.metadata)
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .lineLimit(1)
+
+                    Text(suggestion.reason)
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .lineSpacing(3)
+                        .lineLimit(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            signalPills(suggestion.signals)
+
+            HStack(spacing: 10) {
+                Button {
+                    onOpenQuickPick()
+                } label: {
+                    Text("Open QuickPick")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(CloseCutColors.accent)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    onRefresh()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .frame(width: 48, height: 44)
+                        .background(CloseCutColors.input)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Show another pick")
+            }
+
+            Text("Stable for today unless your history changes or you ask for another.")
+                .font(.caption2)
+                .foregroundStyle(CloseCutColors.textTertiary)
+        }
+        .padding(18)
         .background(heroBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
-        .task(id: refreshKey) {
-            await generateSuggestion()
-        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Today’s Pick. \(suggestion.candidate.title). \(suggestion.reason)")
     }
 
-    private var heroBackground: some View {
-        ZStack {
-            CloseCutColors.card
-
-            LinearGradient(
-                colors: [
-                    CloseCutColors.accent.opacity(0.18),
-                    CloseCutColors.card.opacity(0.96)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
-    }
-
-    private func insufficientHistoryContent(
+    private func insufficientHistoryCard(
         currentCount: Int,
         targetCount: Int
     ) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
-                heroIcon("sparkles")
+                Image(systemName: "sparkles")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.accentLight)
+                    .frame(width: 42, height: 42)
+                    .background(CloseCutColors.input)
+                    .clipShape(SwiftUI.Circle())
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Build your taste signal")
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
 
-                    Text("Add \(max(targetCount - currentCount, 0)) more \(max(targetCount - currentCount, 0) == 1 ? "watch" : "watches") to unlock a better personal pick.")
+                    Text("Add \(targetCount) watches to unlock better personal picks. You have \(currentCount) so far.")
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -95,126 +154,65 @@ struct HomeHeroQuickPickCard: View {
             Button {
                 onQuickAdd()
             } label: {
-                Label("Add past watches", systemImage: "bolt.fill")
-                    .font(.caption.weight(.semibold))
+                Text("Add past watches")
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 40)
+                    .frame(height: 44)
                     .background(CloseCutColors.accent)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
             .buttonStyle(.plain)
         }
+        .padding(18)
+        .background(CloseCutColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(CloseCutColors.separator, lineWidth: 0.5)
+        }
     }
 
-    private func suggestionContent(
-        _ suggestion: QuickPickSuggestion
+    private var fallbackCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("QuickPick is unavailable", systemImage: "exclamationmark.triangle.fill")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textPrimary)
+
+            Text("Your library is still safe. Try opening QuickPick again or add more watch history.")
+                .font(.caption)
+                .foregroundStyle(CloseCutColors.textSecondary)
+
+            Button {
+                onRefresh()
+            } label: {
+                Text("Try again")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(CloseCutColors.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(18)
+        .background(CloseCutColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(CloseCutColors.separator, lineWidth: 0.5)
+        }
+    }
+
+    private func poster(
+        for suggestion: QuickPickSuggestion
     ) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            QuickPickHeroPoster(candidate: suggestion.candidate)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("TODAY’S PICK")
-                    .font(.caption2.weight(.semibold))
-                    .tracking(0.8)
-                    .foregroundStyle(CloseCutColors.accentLight)
-
-                Text(suggestion.candidate.title)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textPrimary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text(suggestion.candidate.metadata)
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textTertiary)
-                    .lineLimit(1)
-
-                Text(suggestion.reason)
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Button {
-                    onOpenQuickPick()
-                } label: {
-                    Text("Open QuickPick")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.accentLight)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 36)
-                        .background(CloseCutColors.input)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 2)
-            }
-
-            Spacer(minLength: 0)
-        }
-    }
-
-    private var fallbackContent: some View {
-        HStack(alignment: .top, spacing: 12) {
-            heroIcon("sparkles")
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text("QuickPick is warming up")
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textPrimary)
-
-                Text("Open QuickPick to generate a suggestion from your personal history.")
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Button {
-                    onOpenQuickPick()
-                } label: {
-                    Text("Open QuickPick")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.accentLight)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 36)
-                        .background(CloseCutColors.input)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 4)
-            }
-
-            Spacer()
-        }
-    }
-
-    private func heroIcon(_ icon: String) -> some View {
-        Image(systemName: icon)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(CloseCutColors.accentLight)
-            .frame(width: 38, height: 38)
-            .background(CloseCutColors.input)
-            .clipShape(SwiftUI.Circle())
-    }
-
-    private func generateSuggestion() async {
-        state = await engine.generateSuggestion(history: entries)
-    }
-}
-
-private struct QuickPickHeroPoster: View {
-    let candidate: SuggestionCandidate
-
-    private var fallbackIcon: String {
-        candidate.type == .movie ? "film.fill" : "tv.fill"
-    }
-
-    var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(CloseCutColors.input)
 
-            if let posterURL = candidate.posterURL {
+            if let posterURL = suggestion.candidate.posterURL {
                 AsyncImage(url: posterURL) { phase in
                     switch phase {
                     case .empty:
@@ -227,36 +225,72 @@ private struct QuickPickHeroPoster: View {
                             .scaledToFill()
 
                     case .failure:
-                        fallback
+                        fallbackPoster(type: suggestion.candidate.type)
 
                     @unknown default:
-                        fallback
+                        fallbackPoster(type: suggestion.candidate.type)
                     }
                 }
             } else {
-                fallback
+                fallbackPoster(type: suggestion.candidate.type)
             }
         }
-        .frame(width: 82, height: 122)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .frame(width: 92, height: 136)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
-        .accessibilityHidden(true)
     }
 
-    private var fallback: some View {
+    private func fallbackPoster(
+        type: EntryType
+    ) -> some View {
         VStack(spacing: 7) {
-            Image(systemName: fallbackIcon)
+            Image(systemName: type == .movie ? "film.fill" : "tv.fill")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(CloseCutColors.textTertiary)
 
-            Text(candidate.type.displayName)
+            Text(type.displayName)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(CloseCutColors.textTertiary)
-                .lineLimit(1)
         }
         .padding(6)
+    }
+
+    @ViewBuilder
+    private func signalPills(
+        _ signals: [QuickPickSignal]
+    ) -> some View {
+        if signals.isEmpty == false {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Array(signals.prefix(3).enumerated()), id: \.offset) { _, signal in
+                        Text(signal.displayLabel)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textSecondary)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 6)
+                            .background(CloseCutColors.input)
+                            .clipShape(Capsule())
+                    }
+                }
+            }
+        }
+    }
+
+    private var heroBackground: some View {
+        ZStack {
+            CloseCutColors.card
+
+            LinearGradient(
+                colors: [
+                    CloseCutColors.accent.opacity(0.14),
+                    CloseCutColors.card.opacity(0.96)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
     }
 }
