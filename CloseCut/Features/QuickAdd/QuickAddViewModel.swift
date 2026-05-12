@@ -15,12 +15,18 @@ final class QuickAddViewModel: ObservableObject {
     @Published var selectedSentiment: QuickSentiment? = .stayedWithMe
     @Published var selectedApproxDate: WatchedDateApprox = .recently
 
+    @Published private(set) var tmdbResults: [TMDBMediaSearchResult] = []
+    @Published private(set) var isSearchingTMDB = false
+    @Published private(set) var searchErrorMessage: String?
+
     @Published private(set) var addedEntries: [Entry] = []
     @Published private(set) var lastDuplicateEntry: Entry?
     @Published private(set) var errorMessage: String?
     @Published private(set) var lastAddedEntry: Entry?
 
     private let repository = EntryRepository()
+    private let tmdbRepository = TMDBSearchRepository()
+    private var searchTask: Task<Void, Never>?
 
     private let localSuggestions: [QuickAddSuggestion] = [
         QuickAddSuggestion(title: "Past Lives", type: .movie, releaseYear: 2023),
@@ -41,6 +47,10 @@ final class QuickAddViewModel: ObservableObject {
         query.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    var shouldShowLocalFallback: Bool {
+        cleanedQuery.isEmpty || tmdbResults.isEmpty || searchErrorMessage != nil
+    }
+
     var filteredSuggestions: [QuickAddSuggestion] {
         guard cleanedQuery.isEmpty == false else {
             return Array(localSuggestions.prefix(6))
@@ -58,16 +68,63 @@ final class QuickAddViewModel: ObservableObject {
     var addedCountText: String {
         switch addedEntries.count {
         case 0:
-            return "No titles added yet"
+            return "Start by adding one memory"
         case 1:
-            return "1 added"
+            return "1 memory added this session"
         default:
-            return "\(addedEntries.count) added"
+            return "\(addedEntries.count) memories added this session"
         }
     }
 
     var hasStatusMessage: Bool {
         lastAddedEntry != nil || lastDuplicateEntry != nil || errorMessage != nil
+    }
+
+    func scheduleSearch() {
+        searchTask?.cancel()
+        searchErrorMessage = nil
+
+        guard cleanedQuery.count >= 2 else {
+            tmdbResults = []
+            isSearchingTMDB = false
+            return
+        }
+
+        let queryToSearch = cleanedQuery
+
+        searchTask = Task {
+            try? await Task.sleep(nanoseconds: 450_000_000)
+
+            guard Task.isCancelled == false else {
+                return
+            }
+
+            await searchTMDB(query: queryToSearch)
+        }
+    }
+
+    func runSearchImmediately() {
+        searchTask?.cancel()
+
+        guard cleanedQuery.count >= 2 else {
+            tmdbResults = []
+            isSearchingTMDB = false
+            return
+        }
+
+        let queryToSearch = cleanedQuery
+
+        searchTask = Task {
+            await searchTMDB(query: queryToSearch)
+        }
+    }
+
+    func clearSearch() {
+        searchTask?.cancel()
+        query = ""
+        tmdbResults = []
+        isSearchingTMDB = false
+        searchErrorMessage = nil
     }
 
     func addSuggestion(
@@ -162,6 +219,34 @@ final class QuickAddViewModel: ObservableObject {
         errorMessage = nil
     }
 
+    private func searchTMDB(query: String) async {
+        isSearchingTMDB = true
+        searchErrorMessage = nil
+
+        do {
+            let results = try await tmdbRepository.searchMedia(query: query)
+
+            guard Task.isCancelled == false else {
+                return
+            }
+
+            tmdbResults = Array(results.prefix(8))
+            isSearchingTMDB = false
+        } catch {
+            guard Task.isCancelled == false else {
+                return
+            }
+
+            tmdbResults = []
+            searchErrorMessage = error.localizedDescription
+            isSearchingTMDB = false
+
+            #if DEBUG
+            print("⚠️ Quick Add TMDB search failed:", error.localizedDescription)
+            #endif
+        }
+    }
+
     private func saveDraft(
         _ draft: QuickAddDraft,
         ownerId: String,
@@ -198,7 +283,7 @@ final class QuickAddViewModel: ObservableObject {
             }
 
             if shouldClearQuery {
-                query = ""
+                clearSearch()
             }
 
             #if DEBUG

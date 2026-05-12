@@ -15,7 +15,7 @@ struct QuickAddPastWatchesView: View {
     @StateObject private var viewModel = QuickAddViewModel()
     @FocusState private var isSearchFocused: Bool
 
-    @State private var showMediaSearch = false
+    @State private var selectedPreviewResult: TMDBMediaSearchResult?
 
     let user: AuthUser
 
@@ -29,31 +29,16 @@ struct QuickAddPastWatchesView: View {
                     header
 
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 18) {
-                            tmdbSearchCard
-
-                            QuickAddSearchBar(
-                                query: $viewModel.query,
-                                onSubmit: {
-                                    viewModel.addManualTitle(
-                                        ownerId: user.id,
-                                        modelContext: modelContext
-                                    )
-                                }
-                            )
-                            .focused($isSearchFocused)
-
-                            QuickReactionChips(
-                                selectedSentiment: $viewModel.selectedSentiment
-                            )
-
-                            RoughDateSelector(
-                                selectedDate: $viewModel.selectedApproxDate
-                            )
+                        LazyVStack(alignment: .leading, spacing: 18) {
+                            searchCard
 
                             statusMessages
 
-                            suggestionsSection
+                            tmdbResultsSection
+
+                            if viewModel.shouldShowLocalFallback {
+                                suggestionsSection
+                            }
 
                             if viewModel.canAddManualTitle {
                                 manualAddButton
@@ -66,7 +51,7 @@ struct QuickAddPastWatchesView: View {
                     }
                 }
             }
-            .navigationTitle("Add past watches")
+            .navigationTitle("Quick Add")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -76,22 +61,17 @@ struct QuickAddPastWatchesView: View {
                     .foregroundStyle(CloseCutColors.accent)
                 }
             }
-            .sheet(isPresented: $showMediaSearch) {
-                MediaSearchView(
-                    title: "Search TMDB",
-                    subtitle: "Find a movie or series and add it to your personal history fast.",
-                    placeholder: "Search movies or series",
-                    onCancel: {
-                        showMediaSearch = false
-                    },
-                    onSelect: { result in
+            .sheet(item: $selectedPreviewResult) { result in
+                QuickAddPreviewSheet(
+                    result: result,
+                    selectedSentiment: $viewModel.selectedSentiment,
+                    selectedApproxDate: $viewModel.selectedApproxDate,
+                    onAdd: {
                         viewModel.addTMDBResult(
                             result,
                             ownerId: user.id,
                             modelContext: modelContext
                         )
-
-                        showMediaSearch = false
                     }
                 )
                 .presentationDetents([.large])
@@ -105,19 +85,32 @@ struct QuickAddPastWatchesView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Search, tap, done.")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(CloseCutColors.textPrimary)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Build your history fast.")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
 
-            Text("Add a few titles you remember. You can add details later.")
-                .font(.subheadline)
-                .foregroundStyle(CloseCutColors.textSecondary)
+                    Text("Search, preview, and add past watches with real metadata.")
+                        .font(.subheadline)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                Image(systemName: "bolt.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.accentLight)
+                    .frame(width: 38, height: 38)
+                    .background(CloseCutColors.input)
+                    .clipShape(SwiftUI.Circle())
+            }
 
             Text(viewModel.addedCountText)
-                .font(.caption)
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(CloseCutColors.textTertiary)
-                .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 20)
@@ -125,53 +118,43 @@ struct QuickAddPastWatchesView: View {
         .padding(.bottom, 10)
     }
 
-    private var tmdbSearchCard: some View {
-        Button {
-            showMediaSearch = true
-        } label: {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "sparkles")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.accentLight)
-                    .frame(width: 38, height: 38)
-                    .background(CloseCutColors.input)
-                    .clipShape(SwiftUI.Circle())
-
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Search with TMDB")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.textPrimary)
-
-                    Text("Use posters, release years, and real movie/series metadata.")
-                        .font(.caption)
-                        .foregroundStyle(CloseCutColors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+    private var searchCard: some View {
+        QuickAddSectionCard(
+            title: "Find a title",
+            subtitle: "TMDB results add posters, release years, genres, and better QuickPick signals."
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                QuickAddSearchBar(
+                    query: $viewModel.query,
+                    isSearching: viewModel.isSearchingTMDB,
+                    onSubmit: {
+                        viewModel.runSearchImmediately()
+                    },
+                    onClear: {
+                        viewModel.clearSearch()
+                    }
+                )
+                .focused($isSearchFocused)
+                .onChange(of: viewModel.query) { _, _ in
+                    viewModel.scheduleSearch()
                 }
 
-                Spacer()
+                QuickReactionChips(
+                    selectedSentiment: $viewModel.selectedSentiment
+                )
 
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textTertiary)
-                    .padding(.top, 6)
-            }
-            .padding(14)
-            .background(CloseCutColors.card)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(CloseCutColors.separator, lineWidth: 0.5)
+                RoughDateSelector(
+                    selectedDate: $viewModel.selectedApproxDate
+                )
             }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Search with TMDB")
     }
 
     @ViewBuilder
     private var statusMessages: some View {
         if let lastAdded = viewModel.lastAddedEntry {
             QuickAddStatusBanner(
-                message: "Added: \(lastAdded.title)",
+                message: "Added to your history: \(lastAdded.title)",
                 systemImage: "checkmark.circle.fill",
                 foregroundColor: CloseCutColors.synced
             )
@@ -195,16 +178,68 @@ struct QuickAddPastWatchesView: View {
         }
     }
 
-    private var suggestionsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(viewModel.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Suggested fallback" : "Local fallback results")
-                .font(.caption)
-                .foregroundStyle(CloseCutColors.textSecondary)
+    @ViewBuilder
+    private var tmdbResultsSection: some View {
+        if viewModel.isSearchingTMDB {
+            QuickAddSectionCard(
+                title: "Searching TMDB",
+                subtitle: "Finding matching movies and series."
+            ) {
+                HStack(spacing: 10) {
+                    ProgressView()
 
+                    Text("Searching…")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+
+                    Spacer()
+                }
+                .frame(minHeight: 44)
+            }
+        } else if viewModel.tmdbResults.isEmpty == false {
+            QuickAddSectionCard(
+                title: "Best matches",
+                subtitle: "Preview the right title before adding it to your history."
+            ) {
+                VStack(spacing: 10) {
+                    ForEach(viewModel.tmdbResults) { result in
+                        QuickAddTMDBResultRow(
+                            result: result,
+                            state: rowState(for: result),
+                            action: {
+                                selectedPreviewResult = result
+                            }
+                        )
+                    }
+                }
+            }
+        } else if let searchErrorMessage = viewModel.searchErrorMessage,
+                  viewModel.cleanedQuery.isEmpty == false {
+            QuickAddStatusBanner(
+                message: "TMDB search unavailable. You can still add this manually.",
+                systemImage: "wifi.exclamationmark",
+                foregroundColor: CloseCutColors.textSecondary
+            )
+
+            #if DEBUG
+            Text(searchErrorMessage)
+                .font(.caption2)
+                .foregroundStyle(CloseCutColors.textTertiary)
+            #endif
+        }
+    }
+
+    private var suggestionsSection: some View {
+        QuickAddSectionCard(
+            title: viewModel.cleanedQuery.isEmpty ? "Starter suggestions" : "Local fallback",
+            subtitle: viewModel.cleanedQuery.isEmpty
+                ? "A few titles to help seed your archive."
+                : "No exact TMDB match yet. You can still add a remembered title."
+        ) {
             if viewModel.filteredSuggestions.isEmpty {
                 EmptyStateView(
                     title: "Add it manually",
-                    message: "Search did not find it, but your history can still include it.",
+                    message: "Your history can include it even without metadata.",
                     systemImage: "plus.circle",
                     actionTitle: "Add manual title",
                     action: {
@@ -245,7 +280,7 @@ struct QuickAddPastWatchesView: View {
         } label: {
             HStack {
                 Image(systemName: "plus")
-                Text("Add “\(viewModel.cleanedQuery)” manually")
+                Text("Add “\(viewModel.cleanedQuery)” without metadata")
                     .lineLimit(1)
             }
             .font(.subheadline.weight(.semibold))
@@ -256,7 +291,7 @@ struct QuickAddPastWatchesView: View {
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Add \(viewModel.cleanedQuery) manually")
+        .accessibilityLabel("Add \(viewModel.cleanedQuery) without metadata")
     }
 
     private func rowState(for suggestion: QuickAddSuggestion) -> QuickAddRowState {
@@ -269,6 +304,24 @@ struct QuickAddPastWatchesView: View {
                 title: suggestion.title,
                 type: suggestion.type,
                 releaseYear: suggestion.releaseYear,
+                existingEntry: duplicate
+           ) {
+            return .duplicate
+        }
+
+        return .normal
+    }
+
+    private func rowState(for result: TMDBMediaSearchResult) -> QuickAddRowState {
+        if viewModel.hasAdded(result) {
+            return .added
+        }
+
+        if let duplicate = viewModel.lastDuplicateEntry,
+           DuplicateDetector.isDuplicate(
+                title: result.title,
+                type: result.entryType,
+                releaseYear: result.releaseYear,
                 existingEntry: duplicate
            ) {
             return .duplicate

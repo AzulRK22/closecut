@@ -12,7 +12,7 @@ struct QuickReactionChips: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Quick reaction optional")
+            Text("Quick memory signal")
                 .font(.caption)
                 .foregroundStyle(CloseCutColors.textSecondary)
 

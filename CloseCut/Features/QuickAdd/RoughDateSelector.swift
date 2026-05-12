@@ -21,7 +21,7 @@ struct RoughDateSelector: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Rough date optional")
+            Text("Watched around")
                 .font(.caption)
                 .foregroundStyle(CloseCutColors.textSecondary)
 
