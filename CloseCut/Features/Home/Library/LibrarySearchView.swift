@@ -51,9 +51,7 @@ struct LibrarySearchView: View {
 
     private var needsDetailsEntries: [Entry] {
         activeEntries
-            .filter {
-                LibrarySearchPipeline.needsDetails($0)
-            }
+            .filter { LibrarySearchPipeline.needsDetails($0) }
             .prefix(6)
             .map { $0 }
     }
@@ -69,7 +67,18 @@ struct LibrarySearchView: View {
         activeEntries
             .filter {
                 $0.visibility == .circle &&
-                    $0.sharedCircleIds.isEmpty == false
+                $0.sharedCircleIds.isEmpty == false
+            }
+            .prefix(6)
+            .map { $0 }
+    }
+
+    private var strongMemories: [Entry] {
+        activeEntries
+            .filter {
+                $0.quickSentiment == .loved ||
+                $0.quickSentiment == .stayedWithMe ||
+                $0.intensity >= 4
             }
             .prefix(6)
             .map { $0 }
@@ -78,7 +87,7 @@ struct LibrarySearchView: View {
     private var sharedCount: Int {
         activeEntries.filter {
             $0.visibility == .circle &&
-                $0.sharedCircleIds.isEmpty == false
+            $0.sharedCircleIds.isEmpty == false
         }.count
     }
 
@@ -98,6 +107,10 @@ struct LibrarySearchView: View {
         processedEntries.count == 1 ? "1 memory" : "\(processedEntries.count) memories"
     }
 
+    private var cleanedQuery: String {
+        searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -110,7 +123,7 @@ struct LibrarySearchView: View {
                     searchField
 
                     if activeEntries.isEmpty == false {
-                        filterControls
+                        controls
                     }
 
                     content
@@ -128,47 +141,34 @@ struct LibrarySearchView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .onAppear {
-            isSearchFocused = true
-        }
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text("Find anything in your taste history.")
-                    .font(.subheadline)
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Your Library")
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
 
-                Text("Search by title, year, mood, tag, or browse your saved memories by type.")
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    Text("Every movie, series, mood, and memory you’ve saved.")
+                        .font(.subheadline)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                Image(systemName: "books.vertical.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.accentLight)
+                    .frame(width: 38, height: 38)
+                    .background(CloseCutColors.input)
+                    .clipShape(SwiftUI.Circle())
             }
 
-            HStack(spacing: 8) {
-                summaryPill(
-                    icon: "rectangle.stack.fill",
-                    text: "\(activeEntries.count) total"
-                )
-
-                summaryPill(
-                    icon: "bolt.fill",
-                    text: "\(quickAddCount) quick"
-                )
-
-                summaryPill(
-                    icon: "wand.and.stars",
-                    text: "\(needsDetailsCount) to complete"
-                )
-
-                if sharedCount > 0 {
-                    summaryPill(
-                        icon: "person.2.fill",
-                        text: "\(sharedCount) shared"
-                    )
-                }
+            if activeEntries.isEmpty == false {
+                libraryStats
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -177,13 +177,35 @@ struct LibrarySearchView: View {
         .padding(.bottom, 12)
     }
 
+    private var libraryStats: some View {
+        HStack(spacing: 10) {
+            statCard(
+                value: "\(activeEntries.count)",
+                label: activeEntries.count == 1 ? "Memory" : "Memories",
+                icon: "rectangle.stack.fill"
+            )
+
+            statCard(
+                value: "\(needsDetailsCount)",
+                label: "To complete",
+                icon: "wand.and.stars"
+            )
+
+            statCard(
+                value: "\(sharedCount)",
+                label: "Shared",
+                icon: "person.2.fill"
+            )
+        }
+    }
+
     private var searchField: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(CloseCutColors.textTertiary)
+                .foregroundStyle(isSearchFocused ? CloseCutColors.accentLight : CloseCutColors.textTertiary)
 
-            TextField("Search title, year, mood, tag…", text: $searchQuery)
+            TextField("Search your memories", text: $searchQuery)
                 .focused($isSearchFocused)
                 .font(.body)
                 .foregroundStyle(CloseCutColors.textPrimary)
@@ -191,9 +213,11 @@ struct LibrarySearchView: View {
                 .autocorrectionDisabled()
                 .submitLabel(.search)
 
-            if searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            if cleanedQuery.isEmpty == false {
                 Button {
-                    searchQuery = ""
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        searchQuery = ""
+                    }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.subheadline.weight(.semibold))
@@ -205,59 +229,54 @@ struct LibrarySearchView: View {
         }
         .padding(14)
         .background(CloseCutColors.input)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(CloseCutColors.separator, lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                .stroke(isSearchFocused ? CloseCutColors.accent.opacity(0.7) : CloseCutColors.separator, lineWidth: isSearchFocused ? 1 : 0.5)
         }
         .padding(.horizontal, 20)
-        .padding(.bottom, 14)
+        .padding(.bottom, 12)
     }
 
-    private var filterControls: some View {
+    private var controls: some View {
         VStack(spacing: 10) {
             LibraryFilterChipsView(
-                title: "Browse",
                 options: LibraryBrowseFilter.allCases,
                 selectedFilter: $selectedFilter
             )
 
             HStack {
-                Text(isSearchOrFilterActive ? resultCountText : "Browse your library")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textSecondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(isSearchOrFilterActive ? resultCountText : "Curated shelves")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textSecondary)
+
+                    Text(isSearchOrFilterActive ? activeContextText : "Browse your archive by memory type.")
+                        .font(.caption2)
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .lineLimit(1)
+                }
 
                 Spacer()
 
-                Menu {
-                    ForEach(LibrarySortOption.allCases) { option in
-                        Button {
-                            selectedSort = option
-                        } label: {
-                            Label(
-                                option.title,
-                                systemImage: selectedSort == option ? "checkmark" : option.systemImage
-                            )
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: selectedSort.systemImage)
-                            .font(.caption2.weight(.semibold))
-
-                        Text(selectedSort.title)
+                if isSearchOrFilterActive {
+                    Button {
+                        clearSearchAndFilters()
+                    } label: {
+                        Text("Clear")
                             .font(.caption.weight(.semibold))
-
-                        Image(systemName: "chevron.down")
-                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.accentLight)
+                            .padding(.horizontal, 10)
+                            .frame(height: 32)
+                            .background(CloseCutColors.input)
+                            .clipShape(Capsule())
                     }
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .padding(.horizontal, 10)
-                    .frame(height: 32)
-                    .background(CloseCutColors.input)
-                    .clipShape(Capsule())
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
+
+                LibrarySortMenuButton(
+                    selectedSort: $selectedSort
+                )
             }
             .padding(.horizontal, 20)
         }
@@ -278,26 +297,54 @@ struct LibrarySearchView: View {
     private var browseContent: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
-                LibrarySectionPreviewView(
-                    title: "Recently watched",
-                    subtitle: "Your latest memories and logged watches.",
-                    entries: recentlyWatched,
-                    user: user,
-                    profile: profile,
-                    actionTitle: nil,
-                    action: nil
-                )
+                if recentlyWatched.isEmpty == false {
+                    LibrarySectionPreviewView(
+                        title: "Recently saved",
+                        subtitle: "The latest memories added to your private archive.",
+                        entries: recentlyWatched,
+                        user: user,
+                        profile: profile
+                    )
+                }
 
                 if needsDetailsEntries.isEmpty == false {
                     LibrarySectionPreviewView(
-                        title: "Ready to complete",
-                        subtitle: "Quick Adds that can become richer memories.",
+                        title: "Finish these memories",
+                        subtitle: "Quick Adds that are ready for mood, tags, and a better takeaway.",
                         entries: needsDetailsEntries,
                         user: user,
                         profile: profile,
                         actionTitle: "View all",
                         action: {
-                            selectedFilter = .needsDetails
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                selectedFilter = .needsDetails
+                            }
+                        }
+                    )
+                }
+
+                if strongMemories.isEmpty == false {
+                    LibrarySectionPreviewView(
+                        title: "Strongest signals",
+                        subtitle: "The watches that stayed with you the most.",
+                        entries: strongMemories,
+                        user: user,
+                        profile: profile
+                    )
+                }
+
+                if sharedEntries.isEmpty == false {
+                    LibrarySectionPreviewView(
+                        title: "Shared with Circles",
+                        subtitle: "The memories you chose to share with trusted people.",
+                        entries: sharedEntries,
+                        user: user,
+                        profile: profile,
+                        actionTitle: "View all",
+                        action: {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                selectedFilter = .shared
+                            }
                         }
                     )
                 }
@@ -311,21 +358,9 @@ struct LibrarySearchView: View {
                         profile: profile,
                         actionTitle: "View all",
                         action: {
-                            selectedFilter = .quickAdd
-                        }
-                    )
-                }
-
-                if sharedEntries.isEmpty == false {
-                    LibrarySectionPreviewView(
-                        title: "Shared with Circles",
-                        subtitle: "Memories you intentionally shared with trusted people.",
-                        entries: sharedEntries,
-                        user: user,
-                        profile: profile,
-                        actionTitle: "View all",
-                        action: {
-                            selectedFilter = .shared
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                selectedFilter = .quickAdd
+                            }
                         }
                     )
                 }
@@ -366,49 +401,34 @@ struct LibrarySearchView: View {
 
     private var resultsHeader: some View {
         HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(resultCountText)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(resultsTitle)
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
 
-                Text(resultsSubtitle)
+                Text(activeContextText)
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer()
-
-            if isSearchOrFilterActive {
-                Button {
-                    clearSearchAndFilters()
-                } label: {
-                    Text("Reset")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.accentLight)
-                        .padding(.horizontal, 10)
-                        .frame(height: 30)
-                        .background(CloseCutColors.input)
-                        .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-            }
         }
         .padding(.horizontal, 2)
     }
 
     private var emptyLibraryState: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 18) {
             Image(systemName: "film.stack")
                 .font(.largeTitle)
                 .foregroundStyle(CloseCutColors.accentLight)
 
             VStack(spacing: 6) {
-                Text("No memories yet")
+                Text("Your library is waiting")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
 
-                Text("Add a few past watches first, then your library will become searchable and organized.")
+                Text("Add a few past watches first, then this becomes your searchable private archive.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -420,16 +440,16 @@ struct LibrarySearchView: View {
 
     private var emptyResultsCard: some View {
         VStack(spacing: 14) {
-            Image(systemName: "magnifyingglass")
+            Image(systemName: selectedFilter.systemImage)
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(CloseCutColors.textTertiary)
 
             VStack(spacing: 5) {
-                Text("No matching memories")
+                Text(selectedFilter.emptyTitle)
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
 
-                Text("Try another title, year, mood, tag, or reset your filters.")
+                Text(cleanedQuery.isEmpty ? selectedFilter.emptyMessage : "Try a different title, mood, year, tag, or clear your filters.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -438,7 +458,7 @@ struct LibrarySearchView: View {
             Button {
                 clearSearchAndFilters()
             } label: {
-                Text("Reset search")
+                Text("Back to library")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(CloseCutColors.accentLight)
                     .padding(.horizontal, 14)
@@ -451,9 +471,9 @@ struct LibrarySearchView: View {
         .padding(20)
         .frame(maxWidth: .infinity)
         .background(CloseCutColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
     }
@@ -463,16 +483,16 @@ struct LibrarySearchView: View {
             Image(systemName: "sparkles")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(CloseCutColors.accentLight)
-                .frame(width: 28, height: 28)
+                .frame(width: 30, height: 30)
                 .background(CloseCutColors.input)
                 .clipShape(SwiftUI.Circle())
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Your library gets smarter as you add context.")
+                Text("Your archive gets better with context.")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
 
-                Text("Completing Quick Adds with mood, takeaway, tags, and metadata improves your archive and future picks.")
+                Text("Completing Quick Adds with mood, tags, and a takeaway makes your library feel more personal — and improves future picks.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -480,18 +500,24 @@ struct LibrarySearchView: View {
 
             Spacer()
         }
-        .padding(14)
+        .padding(15)
         .background(CloseCutColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
     }
 
-    private var resultsSubtitle: String {
-        let cleanedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+    private var resultsTitle: String {
+        if cleanedQuery.isEmpty == false {
+            return resultCountText
+        }
 
+        return selectedFilter.title
+    }
+
+    private var activeContextText: String {
         var parts: [String] = []
 
         if selectedFilter != .all {
@@ -508,28 +534,42 @@ struct LibrarySearchView: View {
     }
 
     private func clearSearchAndFilters() {
-        searchQuery = ""
-        selectedFilter = .all
-        selectedSort = .recent
+        withAnimation(.easeInOut(duration: 0.18)) {
+            searchQuery = ""
+            selectedFilter = .all
+            selectedSort = .recent
+        }
     }
 
-    private func summaryPill(
-        icon: String,
-        text: String
+    private func statCard(
+        value: String,
+        label: String,
+        icon: String
     ) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: icon)
-                .font(.caption2.weight(.semibold))
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textTertiary)
 
-            Text(text)
-                .font(.caption2.weight(.semibold))
-                .lineLimit(1)
+                Text(label)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .lineLimit(1)
+            }
+
+            Text(value)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textPrimary)
         }
-        .foregroundStyle(CloseCutColors.textSecondary)
-        .padding(.horizontal, 9)
-        .padding(.vertical, 6)
-        .background(CloseCutColors.input)
-        .clipShape(Capsule())
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(11)
+        .background(CloseCutColors.input.opacity(0.85))
+        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .stroke(CloseCutColors.separator, lineWidth: 0.5)
+        }
     }
 }
 

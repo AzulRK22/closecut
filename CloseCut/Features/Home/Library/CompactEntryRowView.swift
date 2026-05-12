@@ -23,24 +23,28 @@ struct CompactEntryRowView: View {
 
         parts.append(entry.type.displayName)
 
-        if let rating = entry.tmdbRating, rating > 0 {
-            parts.append(String(format: "%.1f TMDB", rating))
+        if entry.sourceType == .quickAdd {
+            parts.append("Quick Add")
         }
 
         return parts.joined(separator: " • ")
     }
 
-    private var secondaryText: String {
+    private var memorySignalText: String {
         let cleanedMood = entry.mood.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if cleanedMood.isEmpty {
-            return entry.quickSentiment?.displayName ?? entry.watchContext.displayName
+        if cleanedMood.isEmpty == false {
+            return cleanedMood
         }
 
-        return cleanedMood
+        if let quickSentiment = entry.quickSentiment {
+            return quickSentiment.displayName
+        }
+
+        return entry.watchContext.displayName
     }
 
-    private var footerDateText: String {
+    private var dateText: String {
         if let watchedDateApprox = entry.watchedDateApprox {
             return watchedDateApprox.displayLabel
         }
@@ -48,40 +52,52 @@ struct CompactEntryRowView: View {
         return entry.watchedAt.formatted(date: .abbreviated, time: .omitted)
     }
 
-    private var visibilityText: String {
-        if entry.visibility == .circle && entry.sharedCircleIds.isEmpty == false {
-            return entry.sharedCircleIds.count == 1 ? "Shared" : "\(entry.sharedCircleIds.count) Circles"
-        }
-
-        return "Private"
-    }
-
-    private var visibilityIcon: String {
-        entry.visibility == .circle && entry.sharedCircleIds.isEmpty == false
-            ? "person.2.fill"
-            : "lock.fill"
-    }
-
     private var isShared: Bool {
         entry.visibility == .circle && entry.sharedCircleIds.isEmpty == false
     }
 
+    private var needsDetails: Bool {
+        LibrarySearchPipeline.needsDetails(entry)
+    }
+
+    private var contextLine: String {
+        var parts: [String] = [
+            memorySignalText,
+            dateText
+        ]
+
+        if isShared {
+            parts.append("Shared")
+        } else {
+            parts.append("Private")
+        }
+
+        return parts.joined(separator: " • ")
+    }
+
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 13) {
             EntryPosterThumbnailView(
                 entry: entry,
-                width: 48,
-                height: 72,
-                cornerRadius: 11
+                width: 54,
+                height: 80,
+                cornerRadius: 12
             )
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(entry.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.textPrimary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(alignment: .top, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(entry.title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textPrimary)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Text(metadataText)
+                            .font(.caption)
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                            .lineLimit(1)
+                    }
 
                     Spacer(minLength: 8)
 
@@ -93,56 +109,56 @@ struct CompactEntryRowView: View {
                     )
                 }
 
-                Text(metadataText)
+                Text(contextLine)
                     .font(.caption)
-                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .foregroundStyle(CloseCutColors.textSecondary)
                     .lineLimit(1)
 
-                HStack(spacing: 8) {
-                    Text(secondaryText)
-                        .font(.caption)
-                        .foregroundStyle(CloseCutColors.textSecondary)
-                        .lineLimit(1)
-
-                    Text("•")
-                        .font(.caption)
-                        .foregroundStyle(CloseCutColors.textTertiary)
-
-                    Text(footerDateText)
+                if let takeaway = cleanOptional(entry.takeaway) {
+                    Text(takeaway)
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textTertiary)
                         .lineLimit(1)
+                }
 
-                    Spacer(minLength: 6)
-
-                    visibilityChip
+                if needsDetails {
+                    completionHint
                 }
             }
         }
         .padding(12)
         .background(CloseCutColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(entry.title), \(metadataText), \(secondaryText), \(visibilityText)")
+        .accessibilityLabel("\(entry.title), \(metadataText), \(contextLine)")
     }
 
-    private var visibilityChip: some View {
-        HStack(spacing: 4) {
-            Image(systemName: visibilityIcon)
+    private var completionHint: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "wand.and.stars")
                 .font(.caption2.weight(.semibold))
 
-            Text(visibilityText)
+            Text("Ready to complete")
                 .font(.caption2.weight(.semibold))
-                .lineLimit(1)
         }
-        .foregroundStyle(isShared ? CloseCutColors.accentLight : CloseCutColors.textTertiary)
+        .foregroundStyle(CloseCutColors.accentLight)
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .background(CloseCutColors.input)
         .clipShape(Capsule())
+    }
+
+    private func cleanOptional(_ value: String?) -> String? {
+        guard let value else {
+            return nil
+        }
+
+        let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return cleaned.isEmpty ? nil : cleaned
     }
 }

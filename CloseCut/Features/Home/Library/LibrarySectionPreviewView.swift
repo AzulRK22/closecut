@@ -25,9 +25,13 @@ struct LibrarySectionPreviewView: View {
         )
     }
 
+    private var countText: String {
+        entries.count == 1 ? "1 memory" : "\(entries.count) memories"
+    }
+
     var body: some View {
         if visibleEntries.isEmpty == false {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 13) {
                 header
 
                 VStack(spacing: 10) {
@@ -46,10 +50,10 @@ struct LibrarySectionPreviewView: View {
                 }
             }
             .padding(16)
-            .background(CloseCutColors.card)
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .background(sectionBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
                     .stroke(CloseCutColors.separator, lineWidth: 0.5)
             }
         }
@@ -58,14 +62,24 @@ struct LibrarySectionPreviewView: View {
     private var header: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textPrimary)
+                HStack(spacing: 7) {
+                    Text(title)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
+
+                    Text(countText)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(CloseCutColors.input.opacity(0.75))
+                        .clipShape(Capsule())
+                }
 
                 if let subtitle {
                     Text(subtitle)
                         .font(.caption)
-                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .foregroundStyle(CloseCutColors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -87,6 +101,21 @@ struct LibrarySectionPreviewView: View {
                 }
                 .buttonStyle(.plain)
             }
+        }
+    }
+
+    private var sectionBackground: some View {
+        ZStack {
+            CloseCutColors.card
+
+            LinearGradient(
+                colors: [
+                    CloseCutColors.accent.opacity(0.05),
+                    CloseCutColors.card.opacity(0.98)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         }
     }
 }
