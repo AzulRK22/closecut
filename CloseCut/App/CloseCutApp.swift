@@ -5,21 +5,16 @@
 
 import SwiftUI
 import SwiftData
-import FirebaseCore
 
 @main
 struct CloseCutApp: App {
-    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     @StateObject private var authService: AuthService
     @StateObject private var sessionViewModel: SessionViewModel
     @StateObject private var sessionSyncViewModel: SessionSyncViewModel
 
     init() {
-        if FirebaseApp.app() == nil {
-            FirebaseApp.configure()
-        }
-
         _authService = StateObject(
             wrappedValue: AuthService()
         )

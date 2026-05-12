@@ -14,20 +14,28 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        if FirebaseApp.app() == nil {
+            FirebaseApp.configure()
+        }
+
+        configureFirestore()
+
+        return true
+    }
+
+    private func configureFirestore() {
         guard FirebaseApp.app() != nil else {
-            return true
+            return
         }
 
         let db = Firestore.firestore()
         let settings = FirestoreSettings()
 
         settings.cacheSettings = PersistentCacheSettings(
-            sizeBytes: 100 * 1024 * 1024 as NSNumber
+            sizeBytes: AppEnvironment.firestoreCacheSizeBytes as NSNumber
         )
 
         db.settings = settings
         db.persistentCacheIndexManager?.enableIndexAutoCreation()
-
-        return true
     }
 }
