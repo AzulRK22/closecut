@@ -21,9 +21,7 @@ struct EntryEditorView: View {
     var hasCircleMembers: Bool = false
 
     @State private var showDiscardConfirmation = false
-    @State private var isShowingMediaSearch = false
     @State private var didConfigureViewModel = false
-    @State private var isMetadataSectionExpanded = false
     @State private var selectedCircleIds: Set<String> = []
 
     @Query(sort: \LocalCircle.updatedAt, order: .reverse)
@@ -33,7 +31,6 @@ struct EntryEditorView: View {
     private var localMemberships: [LocalCircleMembership]
 
     private enum Field {
-        case title
         case takeaway
         case keyMoment
     }
@@ -100,11 +97,7 @@ struct EntryEditorView: View {
 
                         editorHeader
 
-                        mediaMetadataSection
-
-                        TypeSelector(selectedType: $viewModel.type)
-
-                        titleField
+                        titleAutocompleteSection
 
                         moodSection
 
@@ -124,7 +117,10 @@ struct EntryEditorView: View {
                                 screen: $viewModel.cinemaScreen,
                                 comfort: $viewModel.cinemaComfort
                             )
-                            .animation(.easeInOut(duration: 0.2), value: viewModel.watchContext)
+                            .animation(
+                                .easeInOut(duration: 0.2),
+                                value: viewModel.watchContext
+                            )
                         }
 
                         sharingSection
@@ -182,27 +178,6 @@ struct EntryEditorView: View {
             Button("Keep editing", role: .cancel) {}
         } message: {
             Text("Your changes won’t be saved.")
-        }
-        .sheet(isPresented: $isShowingMediaSearch) {
-            MediaSearchView(
-                title: "Search TMDB",
-                subtitle: "Choose the movie or series that matches this entry.",
-                placeholder: "Search title",
-                onCancel: {
-                    isShowingMediaSearch = false
-                },
-                onSelect: { result in
-                    viewModel.selectTMDBResult(result)
-
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isMetadataSectionExpanded = true
-                    }
-
-                    isShowingMediaSearch = false
-                }
-            )
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
         }
         .onAppear {
             configureViewModelIfNeeded()
@@ -267,7 +242,7 @@ struct EntryEditorView: View {
 
     private var headerTitle: String {
         if viewModel.isUpgradingQuickAdd {
-            return "Turn this Quick Add into a richer memory."
+            return "Complete this memory."
         }
 
         if viewModel.isEditing {
@@ -279,223 +254,54 @@ struct EntryEditorView: View {
 
     private var headerSubtitle: String {
         if viewModel.isUpgradingQuickAdd {
-            return "Add mood, takeaway, context, metadata, and Circle sharing when it makes sense."
+            return "You already added this title. Now capture what made it yours."
         }
 
         if viewModel.isEditing {
-            return "Keep your Timeline accurate without losing the original watch memory."
+            return "Keep your library accurate without losing the original memory."
         }
 
-        return "Capture what you watched, how it felt, and whether it belongs only to you or also to a Circle."
+        return "Start with the title, connect metadata, then capture how it felt."
     }
 
-    // MARK: - Metadata
+    // MARK: - Title Autocomplete
 
-    private var mediaMetadataSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isMetadataSectionExpanded.toggle()
+    private var titleAutocompleteSection: some View {
+        EntryTitleAutocompleteCard(
+            title: $viewModel.title,
+            type: $viewModel.type,
+            selectedResult: viewModel.selectedTMDBResult,
+            existingPosterPath: viewModel.metadataPosterPath,
+            existingSubtitle: viewModel.metadataSubtitle,
+            existingMediaType: viewModel.metadataMediaType,
+            suggestions: viewModel.tmdbSuggestions,
+            isSearching: viewModel.isSearchingTMDB,
+            searchErrorMessage: viewModel.tmdbSearchError,
+            errors: viewModel.errors,
+            onTitleChanged: {
+                viewModel.titleDidChange()
+            },
+            onSubmitSearch: {
+                viewModel.runTitleSearchImmediately()
+            },
+            onSelectResult: { result in
+                viewModel.selectTMDBResult(result)
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    focusedField = .takeaway
                 }
-            } label: {
-                HStack(alignment: .center, spacing: 12) {
-                    Image(systemName: "sparkles.tv")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.accentLight)
-                        .frame(width: 34, height: 34)
-                        .background(CloseCutColors.input)
-                        .clipShape(SwiftUI.Circle())
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Media metadata")
-                            .font(.headline.weight(.semibold))
-                            .foregroundStyle(CloseCutColors.textPrimary)
-
-                        Text(metadataSummaryText)
-                            .font(.caption)
-                            .foregroundStyle(CloseCutColors.textSecondary)
-                            .lineLimit(2)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: isMetadataSectionExpanded ? "chevron.up" : "chevron.down")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.textTertiary)
-                }
+            },
+            onClearSelection: {
+                viewModel.clearSelectedTMDBResult()
             }
-            .buttonStyle(.plain)
-
-            if isMetadataSectionExpanded {
-                VStack(alignment: .leading, spacing: 12) {
-                    if viewModel.hasMetadataSelectionOrExistingMetadata {
-                        selectedMetadataPreview
-                    } else {
-                        Text("Connect TMDB data to add poster, overview, rating, genres, and smarter QuickPick signals.")
-                            .font(.caption)
-                            .foregroundStyle(CloseCutColors.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Button {
-                        isShowingMediaSearch = true
-                    } label: {
-                        Label(
-                            viewModel.hasMetadataSelectionOrExistingMetadata ? "Change metadata" : "Search TMDB",
-                            systemImage: "magnifyingglass"
-                        )
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(viewModel.hasMetadataSelectionOrExistingMetadata ? CloseCutColors.accentLight : .white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 44)
-                        .background(viewModel.hasMetadataSelectionOrExistingMetadata ? CloseCutColors.input : CloseCutColors.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-
-                    if viewModel.selectedTMDBResult != nil {
-                        Button {
-                            viewModel.clearSelectedTMDBResult()
-                        } label: {
-                            Text("Clear new TMDB selection")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(CloseCutColors.textTertiary)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 36)
-                                .background(CloseCutColors.input.opacity(0.72))
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .padding(16)
-        .background(CloseCutColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(CloseCutColors.separator, lineWidth: 0.5)
-        }
-    }
-
-    private var selectedMetadataPreview: some View {
-        HStack(alignment: .top, spacing: 12) {
-            MediaPosterView(
-                posterPath: viewModel.metadataPosterPath,
-                mediaType: viewModel.metadataMediaType,
-                width: 54,
-                height: 80,
-                cornerRadius: 11
-            )
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text(viewModel.selectedTMDBResult == nil ? "Connected metadata" : "Selected from TMDB")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.accentLight)
-                    .tracking(0.8)
-                    .textCase(.uppercase)
-
-                Text(viewModel.metadataDisplayTitle ?? viewModel.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textPrimary)
-                    .lineLimit(2)
-
-                if let subtitle = viewModel.metadataSubtitle {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(CloseCutColors.textSecondary)
-                        .lineLimit(1)
-                }
-
-                Text("This powers posters, detail context, and smarter recommendations.")
-                    .font(.caption2)
-                    .foregroundStyle(CloseCutColors.textTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer()
-        }
-        .padding(12)
-        .background(CloseCutColors.input.opacity(0.78))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-
-    private var metadataSummaryText: String {
-        if let subtitle = viewModel.metadataSubtitle,
-           viewModel.hasMetadataSelectionOrExistingMetadata {
-            return subtitle
-        }
-
-        if viewModel.hasMetadataSelectionOrExistingMetadata {
-            return "TMDB metadata connected."
-        }
-
-        return "Add poster, overview, rating, and genres."
+        )
     }
 
     // MARK: - Main Fields
 
-    private var titleField: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Title")
-                .font(.caption)
-                .foregroundStyle(CloseCutColors.textSecondary)
-
-            TextField("What did you watch?", text: $viewModel.title)
-                .focused($focusedField, equals: .title)
-                .font(.title3)
-                .foregroundStyle(CloseCutColors.textPrimary)
-                .textInputAutocapitalization(.words)
-                .submitLabel(.next)
-                .onSubmit {
-                    focusedField = .takeaway
-                }
-                .padding(.vertical, 10)
-                .overlay(alignment: .bottom) {
-                    Rectangle()
-                        .fill(titleFieldBorderColor)
-                        .frame(height: 0.5)
-                }
-                .onChange(of: viewModel.title) { _, newValue in
-                    if newValue.count > EntryValidation.maxTitleLength {
-                        viewModel.title = String(newValue.prefix(EntryValidation.maxTitleLength))
-                    }
-                }
-
-            HStack {
-                if let releaseYear = viewModel.currentReleaseYear {
-                    Text("Linked year: \(releaseYear)")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.textTertiary)
-                }
-
-                Spacer()
-
-                Text("\(viewModel.title.count)/\(EntryValidation.maxTitleLength)")
-                    .font(.caption2)
-                    .foregroundStyle(CloseCutColors.textTertiary)
-            }
-
-            if viewModel.errors.contains("Title is required.") {
-                Text("Title is required")
-                    .font(.caption2)
-                    .foregroundStyle(CloseCutColors.failed)
-            }
-        }
-    }
-
-    private var titleFieldBorderColor: Color {
-        let isTitleMissing = viewModel.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-            viewModel.errors.contains("Title is required.")
-
-        return isTitleMissing ? CloseCutColors.failed : CloseCutColors.separator
-    }
-
     private var moodSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("How did it make you feel?")
+            Text("Emotional tone")
                 .font(.caption)
                 .foregroundStyle(CloseCutColors.textSecondary)
 
@@ -511,7 +317,7 @@ struct EntryEditorView: View {
 
     private var takeawaySection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Your takeaway")
+            Text("What stayed with you?")
                 .font(.caption)
                 .foregroundStyle(CloseCutColors.textSecondary)
 
@@ -530,7 +336,7 @@ struct EntryEditorView: View {
                 }
                 .overlay(alignment: .topLeading) {
                     if viewModel.takeaway.isEmpty {
-                        Text("What stayed with you?")
+                        Text("A thought, feeling, or memory…")
                             .font(.body)
                             .foregroundStyle(CloseCutColors.textTertiary)
                             .padding(.horizontal, 15)
@@ -563,7 +369,7 @@ struct EntryEditorView: View {
 
     private var keyMomentSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Key moment optional")
+            Text("Key moment")
                 .font(.caption)
                 .foregroundStyle(CloseCutColors.textSecondary)
 
@@ -603,7 +409,7 @@ struct EntryEditorView: View {
 
     private var intensitySection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Intensity")
+            Text("Memory intensity")
                 .font(.caption)
                 .foregroundStyle(CloseCutColors.textSecondary)
 
@@ -613,7 +419,7 @@ struct EntryEditorView: View {
 
     private var tagsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Tags optional")
+            Text("Personal tags")
                 .font(.caption)
                 .foregroundStyle(CloseCutColors.textSecondary)
 
@@ -623,7 +429,7 @@ struct EntryEditorView: View {
 
     private var contextSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Where did you watch it?")
+            Text("Watch context")
                 .font(.caption)
                 .foregroundStyle(CloseCutColors.textSecondary)
 
@@ -702,15 +508,15 @@ struct EntryEditorView: View {
         if let entryToEdit {
             viewModel.configureForEdit(entry: entryToEdit)
             selectedCircleIds = Set(entryToEdit.sharedCircleIds)
-            isMetadataSectionExpanded = entryToEdit.hasTMDBMetadata == false
+
+            if viewModel.isUpgradingQuickAdd {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    focusedField = .takeaway
+                }
+            }
         } else {
             viewModel.configureForNewEntry()
             selectedCircleIds = []
-            isMetadataSectionExpanded = true
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                focusedField = .title
-            }
         }
     }
 

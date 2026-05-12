@@ -28,11 +28,17 @@ final class EntryEditorViewModel: ObservableObject {
     @Published var isSharedWithCircle: Bool = false
 
     @Published private(set) var selectedTMDBResult: TMDBMediaSearchResult?
+    @Published private(set) var tmdbSuggestions: [TMDBMediaSearchResult] = []
+    @Published private(set) var isSearchingTMDB: Bool = false
+    @Published private(set) var tmdbSearchError: String?
 
     @Published var isSaving: Bool = false
     @Published var errors: [String] = []
 
     private let repository = EntryRepository()
+    private let tmdbRepository = TMDBSearchRepository()
+    private var titleSearchTask: Task<Void, Never>?
+
     private(set) var editingEntry: Entry?
 
     // MARK: - Editor Mode
@@ -205,6 +211,9 @@ final class EntryEditorViewModel: ObservableObject {
         cinemaComfort = nil
         isSharedWithCircle = false
         selectedTMDBResult = nil
+        tmdbSuggestions = []
+        isSearchingTMDB = false
+        tmdbSearchError = nil
         errors = []
     }
 
@@ -224,15 +233,120 @@ final class EntryEditorViewModel: ObservableObject {
         cinemaComfort = entry.cinemaComfort
         isSharedWithCircle = entry.isSharedWithCircle
         selectedTMDBResult = nil
+        tmdbSuggestions = []
+        isSearchingTMDB = false
+        tmdbSearchError = nil
         errors = []
+    }
+
+    // MARK: - Title Autocomplete
+
+    func titleDidChange() {
+        errors.removeAll {
+            $0 == "Title is required." ||
+            $0 == "Title must be \(EntryValidation.maxTitleLength) characters or less."
+        }
+
+        guard selectedTMDBResult == nil else {
+            tmdbSuggestions = []
+            isSearchingTMDB = false
+            tmdbSearchError = nil
+            return
+        }
+
+        scheduleTitleSearch()
+    }
+
+    func scheduleTitleSearch() {
+        titleSearchTask?.cancel()
+        tmdbSearchError = nil
+
+        guard cleanTitle.count >= 2 else {
+            tmdbSuggestions = []
+            isSearchingTMDB = false
+            return
+        }
+
+        let query = cleanTitle
+
+        titleSearchTask = Task {
+            try? await Task.sleep(nanoseconds: 420_000_000)
+
+            guard Task.isCancelled == false else {
+                return
+            }
+
+            await searchTMDBTitle(query: query)
+        }
+    }
+
+    func runTitleSearchImmediately() {
+        titleSearchTask?.cancel()
+
+        guard cleanTitle.count >= 2 else {
+            tmdbSuggestions = []
+            isSearchingTMDB = false
+            return
+        }
+
+        let query = cleanTitle
+
+        titleSearchTask = Task {
+            await searchTMDBTitle(query: query)
+        }
+    }
+
+    func clearTitleSearchResults() {
+        titleSearchTask?.cancel()
+        tmdbSuggestions = []
+        isSearchingTMDB = false
+        tmdbSearchError = nil
+    }
+
+    private func searchTMDBTitle(query: String) async {
+        guard selectedTMDBResult == nil else {
+            return
+        }
+
+        isSearchingTMDB = true
+        tmdbSearchError = nil
+
+        do {
+            let results = try await tmdbRepository.searchMedia(query: query)
+
+            guard Task.isCancelled == false else {
+                return
+            }
+
+            tmdbSuggestions = Array(results.prefix(4))
+            isSearchingTMDB = false
+        } catch {
+            guard Task.isCancelled == false else {
+                return
+            }
+
+            tmdbSuggestions = []
+            tmdbSearchError = error.localizedDescription
+            isSearchingTMDB = false
+
+            #if DEBUG
+            print("⚠️ Entry title TMDB search failed:", error.localizedDescription)
+            #endif
+        }
     }
 
     // MARK: - Metadata Actions
 
     func selectTMDBResult(_ result: TMDBMediaSearchResult) {
+        titleSearchTask?.cancel()
+
         selectedTMDBResult = result
         title = result.title
         type = result.entryType
+
+        tmdbSuggestions = []
+        isSearchingTMDB = false
+        tmdbSearchError = nil
 
         errors.removeAll {
             $0 == "Title is required." ||
@@ -242,6 +356,12 @@ final class EntryEditorViewModel: ObservableObject {
 
     func clearSelectedTMDBResult() {
         selectedTMDBResult = nil
+        tmdbSuggestions = []
+        tmdbSearchError = nil
+
+        if cleanTitle.count >= 2 {
+            scheduleTitleSearch()
+        }
     }
 
     // MARK: - Save
