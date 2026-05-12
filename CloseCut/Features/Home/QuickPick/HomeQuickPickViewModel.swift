@@ -33,16 +33,47 @@ final class HomeQuickPickViewModel: ObservableObject {
         }
 
         lastStableKey = newKey
-
         generate(history: history)
     }
 
-    func refresh(
+    func showAnotherAndReturnState(
         history: [Entry]
-    ) {
-        engine.resetSession()
+    ) async -> QuickPickState {
+        generationTask?.cancel()
         lastStableKey = nil
-        generate(history: history)
+
+        let currentCandidateId = candidateId(from: state)
+
+        var newState = await engine.generateSuggestion(
+            history: history
+        )
+
+        if let currentCandidateId,
+           candidateId(from: newState) == currentCandidateId {
+            for _ in 0..<3 {
+                let retryState = await engine.generateSuggestion(
+                    history: history
+                )
+
+                if candidateId(from: retryState) != currentCandidateId {
+                    newState = retryState
+                    break
+                }
+
+                newState = retryState
+            }
+        }
+
+        state = newState
+        return newState
+    }
+
+    func adoptState(
+        _ newState: QuickPickState
+    ) {
+        generationTask?.cancel()
+        state = newState
+        lastStableKey = nil
     }
 
     func resetSession() {
@@ -70,6 +101,18 @@ final class HomeQuickPickViewModel: ObservableObject {
             }
 
             state = newState
+        }
+    }
+
+    private func candidateId(
+        from state: QuickPickState
+    ) -> String? {
+        switch state {
+        case .suggestion(let suggestion), .noAlternatives(let suggestion):
+            return suggestion.candidate.id
+
+        case .insufficientHistory, .error:
+            return nil
         }
     }
 

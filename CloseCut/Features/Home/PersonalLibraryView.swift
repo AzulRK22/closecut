@@ -11,9 +11,11 @@ struct PersonalLibraryView: View {
     let entries: [Entry]
     let user: AuthUser
     let profile: UserProfile
+    var externalQuickPickState: QuickPickState? = nil
     let onQuickAdd: () -> Void
     let onCreateEntry: () -> Void
     let onOpenQuickPick: (QuickPickState) -> Void
+    let onQuickPickStateChange: (QuickPickState) -> Void
 
     @StateObject private var quickPickViewModel = HomeQuickPickViewModel()
 
@@ -111,10 +113,30 @@ struct PersonalLibraryView: View {
         }
         .background(CloseCutColors.backgroundPrimary)
         .task(id: homeRefreshKey) {
-            quickPickViewModel.generateStablePick(
-                userId: user.id,
-                history: activeEntries
-            )
+            if let externalQuickPickState {
+                quickPickViewModel.adoptState(
+                    externalQuickPickState
+                )
+            } else {
+                quickPickViewModel.generateStablePick(
+                    userId: user.id,
+                    history: activeEntries
+                )
+            }
+        }
+        .onAppear {
+            if let externalQuickPickState {
+                quickPickViewModel.adoptState(
+                    externalQuickPickState
+                )
+            }
+        }
+        .onChange(of: externalQuickPickState) { _, newValue in
+            if let newValue {
+                quickPickViewModel.adoptState(
+                    newValue
+                )
+            }
         }
     }
 
@@ -125,12 +147,20 @@ struct PersonalLibraryView: View {
                     state: quickPickViewModel.state,
                     onQuickAdd: onQuickAdd,
                     onOpenQuickPick: {
-                        onOpenQuickPick(quickPickViewModel.state)
+                        onOpenQuickPick(
+                            quickPickViewModel.state
+                        )
                     },
                     onRefresh: {
-                        quickPickViewModel.refresh(
-                            history: activeEntries
-                        )
+                        Task {
+                            let newState = await quickPickViewModel.showAnotherAndReturnState(
+                                history: activeEntries
+                            )
+
+                            onQuickPickStateChange(
+                                newState
+                            )
+                        }
                     }
                 )
 
@@ -140,7 +170,9 @@ struct PersonalLibraryView: View {
                         targetCount: quickPickTargetCount,
                         onQuickAdd: onQuickAdd,
                         onOpenQuickPick: {
-                            onOpenQuickPick(quickPickViewModel.state)
+                            onOpenQuickPick(
+                                quickPickViewModel.state
+                            )
                         }
                     )
                 }
@@ -276,8 +308,10 @@ struct PersonalLibraryView: View {
             updatedAt: Date(),
             syncStatus: .synced
         ),
+        externalQuickPickState: nil,
         onQuickAdd: {},
         onCreateEntry: {},
-        onOpenQuickPick: { _ in }
+        onOpenQuickPick: { _ in },
+        onQuickPickStateChange: { _ in }
     )
 }

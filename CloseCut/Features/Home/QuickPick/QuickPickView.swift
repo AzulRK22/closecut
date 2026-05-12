@@ -12,6 +12,7 @@ struct QuickPickView: View {
     var initialState: QuickPickState? = nil
     let onQuickAdd: () -> Void
     let onCreateEntry: () -> Void
+    var onStateChange: ((QuickPickState) -> Void)? = nil
 
     @StateObject private var viewModel = QuickPickViewModel()
     @State private var didConfigureInitialState = false
@@ -54,12 +55,13 @@ struct QuickPickView: View {
             configureInitialStateIfNeeded()
         }
         .onChange(of: quickPickRefreshKey) { _, _ in
-            guard didConfigureInitialState == false else {
-                didConfigureInitialState = false
+            guard didConfigureInitialState else {
                 return
             }
 
-            viewModel.generate(history: entries)
+            viewModel.generate(
+                history: entries
+            )
         }
     }
 
@@ -71,9 +73,13 @@ struct QuickPickView: View {
         didConfigureInitialState = true
 
         if let initialState {
-            viewModel.setInitialState(initialState)
+            viewModel.setInitialState(
+                initialState
+            )
         } else {
-            viewModel.generate(history: entries)
+            viewModel.generate(
+                history: entries
+            )
         }
     }
 
@@ -113,7 +119,13 @@ struct QuickPickView: View {
                     suggestion: suggestion,
                     isNoAlternatives: isNoAlternatives,
                     onRefresh: {
-                        viewModel.refresh(history: entries)
+                        Task {
+                            let newState = await viewModel.refreshAndReturnState(
+                                history: entries
+                            )
+
+                            onStateChange?(newState)
+                        }
                     }
                 )
 
@@ -128,7 +140,9 @@ struct QuickPickView: View {
         }
     }
 
-    private func errorView(_ message: String) -> some View {
+    private func errorView(
+        _ message: String
+    ) -> some View {
         VStack(spacing: 16) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.largeTitle)
@@ -144,7 +158,9 @@ struct QuickPickView: View {
                 .multilineTextAlignment(.center)
 
             Button {
-                viewModel.refresh(history: entries)
+                viewModel.generate(
+                    history: entries
+                )
             } label: {
                 Text("Retry")
                     .font(.subheadline.weight(.semibold))

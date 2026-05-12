@@ -23,6 +23,7 @@ struct HomeView: View {
     @State private var isShowingQuickPick = false
     @State private var isShowingLibrarySearch = false
     @State private var initialQuickPickState: QuickPickState?
+    @State private var externalQuickPickState: QuickPickState?
 
     private var entries: [Entry] {
         localEntries
@@ -54,6 +55,7 @@ struct HomeView: View {
                         entries: entries,
                         user: user,
                         profile: profile,
+                        externalQuickPickState: externalQuickPickState,
                         onQuickAdd: {
                             isShowingQuickAdd = true
                         },
@@ -62,7 +64,12 @@ struct HomeView: View {
                         },
                         onOpenQuickPick: { state in
                             initialQuickPickState = state
+                            externalQuickPickState = state
                             isShowingQuickPick = true
+                        },
+                        onQuickPickStateChange: { newState in
+                            initialQuickPickState = newState
+                            externalQuickPickState = newState
                         }
                     )
                 }
@@ -138,6 +145,10 @@ struct HomeView: View {
                     onCreateEntry: {
                         isShowingQuickPick = false
                         isShowingEntryEditor = true
+                    },
+                    onStateChange: { newState in
+                        initialQuickPickState = newState
+                        externalQuickPickState = newState
                     }
                 )
                 .presentationDetents([.large])

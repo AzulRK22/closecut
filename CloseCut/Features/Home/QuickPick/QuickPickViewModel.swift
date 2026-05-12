@@ -25,11 +25,15 @@ final class QuickPickViewModel: ObservableObject {
         state = initialState
     }
 
-    func generate(history: [Entry]) {
+    func generate(
+        history: [Entry]
+    ) {
         generationTask?.cancel()
 
         generationTask = Task {
-            let newState = await engine.generateSuggestion(history: history)
+            let newState = await engine.generateSuggestion(
+                history: history
+            )
 
             guard Task.isCancelled == false else {
                 return
@@ -39,12 +43,55 @@ final class QuickPickViewModel: ObservableObject {
         }
     }
 
-    func refresh(history: [Entry]) {
-        generate(history: history)
+    func refreshAndReturnState(
+        history: [Entry]
+    ) async -> QuickPickState {
+        generationTask?.cancel()
+
+        let currentCandidateId = candidateId(from: state)
+        var newState = await engine.generateSuggestion(
+            history: history
+        )
+
+        if let currentCandidateId,
+           candidateId(from: newState) == currentCandidateId {
+            for _ in 0..<3 {
+                let retryState = await engine.generateSuggestion(
+                    history: history
+                )
+
+                if candidateId(from: retryState) != currentCandidateId {
+                    newState = retryState
+                    break
+                }
+
+                newState = retryState
+            }
+        }
+
+        state = newState
+
+        return newState
     }
 
     func resetSession() {
         generationTask?.cancel()
         engine.resetSession()
+        state = .insufficientHistory(
+            currentCount: 0,
+            targetCount: 3
+        )
+    }
+
+    private func candidateId(
+        from state: QuickPickState
+    ) -> String? {
+        switch state {
+        case .suggestion(let suggestion), .noAlternatives(let suggestion):
+            return suggestion.candidate.id
+
+        case .insufficientHistory, .error:
+            return nil
+        }
     }
 }
