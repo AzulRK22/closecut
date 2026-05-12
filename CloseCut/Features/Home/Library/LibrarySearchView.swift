@@ -24,75 +24,78 @@ struct LibrarySearchView: View {
         entries
             .filter { $0.deletedAt == nil }
             .filter { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+            .sorted { first, second in
+                first.watchedAt > second.watchedAt
+            }
     }
 
-    private var searchedEntries: [Entry] {
-        EntrySearchFilter.filter(
+    private var processedEntries: [Entry] {
+        LibrarySearchPipeline.process(
             entries: activeEntries,
-            query: searchQuery
+            query: searchQuery,
+            filter: selectedFilter,
+            sort: selectedSort
         )
     }
 
-    private var filteredEntries: [Entry] {
-        searchedEntries.filter { entry in
-            switch selectedFilter {
-            case .all:
-                return true
-
-            case .movies:
-                return entry.type == .movie
-
-            case .series:
-                return entry.type == .series
-
-            case .shared:
-                return entry.visibility == .circle && entry.sharedCircleIds.isEmpty == false
-
-            case .quickAdd:
-                return entry.sourceType == .quickAdd
-
-            case .needsDetails:
-                return needsDetails(entry)
-            }
-        }
+    private var isSearchOrFilterActive: Bool {
+        LibrarySearchPipeline.isSearchOrFilterActive(
+            query: searchQuery,
+            filter: selectedFilter
+        )
     }
 
-    private var sortedEntries: [Entry] {
-        switch selectedSort {
-        case .recent:
-            return filteredEntries.sorted { first, second in
-                first.watchedAt > second.watchedAt
+    private var recentlyWatched: [Entry] {
+        Array(activeEntries.prefix(6))
+    }
+
+    private var needsDetailsEntries: [Entry] {
+        activeEntries
+            .filter {
+                LibrarySearchPipeline.needsDetails($0)
             }
+            .prefix(6)
+            .map { $0 }
+    }
 
-        case .alphabetical:
-            return filteredEntries.sorted { first, second in
-                first.title.localizedCaseInsensitiveCompare(second.title) == .orderedAscending
+    private var quickAddEntries: [Entry] {
+        activeEntries
+            .filter { $0.sourceType == .quickAdd }
+            .prefix(6)
+            .map { $0 }
+    }
+
+    private var sharedEntries: [Entry] {
+        activeEntries
+            .filter {
+                $0.visibility == .circle &&
+                    $0.sharedCircleIds.isEmpty == false
             }
+            .prefix(6)
+            .map { $0 }
+    }
 
-        case .year:
-            return filteredEntries.sorted { first, second in
-                let firstYear = first.releaseYear ?? Int.min
-                let secondYear = second.releaseYear ?? Int.min
+    private var sharedCount: Int {
+        activeEntries.filter {
+            $0.visibility == .circle &&
+                $0.sharedCircleIds.isEmpty == false
+        }.count
+    }
 
-                if firstYear != secondYear {
-                    return firstYear > secondYear
-                }
+    private var quickAddCount: Int {
+        activeEntries.filter {
+            $0.sourceType == .quickAdd
+        }.count
+    }
 
-                return first.watchedAt > second.watchedAt
-            }
-        }
+    private var needsDetailsCount: Int {
+        activeEntries.filter {
+            LibrarySearchPipeline.needsDetails($0)
+        }.count
     }
 
     private var resultCountText: String {
-        if sortedEntries.count == 1 {
-            return "1 memory"
-        }
-
-        return "\(sortedEntries.count) memories"
-    }
-
-    private var hasAnyEntries: Bool {
-        activeEntries.isEmpty == false
+        processedEntries.count == 1 ? "1 memory" : "\(processedEntries.count) memories"
     }
 
     var body: some View {
@@ -106,8 +109,8 @@ struct LibrarySearchView: View {
 
                     searchField
 
-                    if hasAnyEntries {
-                        controls
+                    if activeEntries.isEmpty == false {
+                        filterControls
                     }
 
                     content
@@ -131,11 +134,18 @@ struct LibrarySearchView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Find and organize your private watch history.")
-                .font(.subheadline)
-                .foregroundStyle(CloseCutColors.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Find anything in your taste history.")
+                    .font(.subheadline)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text("Search by title, year, mood, tag, or browse your saved memories by type.")
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             HStack(spacing: 8) {
                 summaryPill(
@@ -144,14 +154,21 @@ struct LibrarySearchView: View {
                 )
 
                 summaryPill(
-                    icon: "person.2.fill",
-                    text: "\(sharedCount) shared"
+                    icon: "bolt.fill",
+                    text: "\(quickAddCount) quick"
                 )
 
                 summaryPill(
-                    icon: "bolt.fill",
-                    text: "\(quickAddCount) quick adds"
+                    icon: "wand.and.stars",
+                    text: "\(needsDetailsCount) to complete"
                 )
+
+                if sharedCount > 0 {
+                    summaryPill(
+                        icon: "person.2.fill",
+                        text: "\(sharedCount) shared"
+                    )
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -197,68 +214,187 @@ struct LibrarySearchView: View {
         .padding(.bottom, 14)
     }
 
-    private var controls: some View {
-        VStack(spacing: 14) {
+    private var filterControls: some View {
+        VStack(spacing: 10) {
             LibraryFilterChipsView(
-                title: "Filter",
+                title: "Browse",
                 options: LibraryBrowseFilter.allCases,
                 selectedFilter: $selectedFilter
             )
 
-            LibrarySortChipsView(
-                title: "Sort",
-                options: LibrarySortOption.allCases,
-                selectedSort: $selectedSort
-            )
+            HStack {
+                Text(isSearchOrFilterActive ? resultCountText : "Browse your library")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textSecondary)
+
+                Spacer()
+
+                Menu {
+                    ForEach(LibrarySortOption.allCases) { option in
+                        Button {
+                            selectedSort = option
+                        } label: {
+                            Label(
+                                option.title,
+                                systemImage: selectedSort == option ? "checkmark" : option.systemImage
+                            )
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: selectedSort.systemImage)
+                            .font(.caption2.weight(.semibold))
+
+                        Text(selectedSort.title)
+                            .font(.caption.weight(.semibold))
+
+                        Image(systemName: "chevron.down")
+                            .font(.caption2.weight(.semibold))
+                    }
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .padding(.horizontal, 10)
+                    .frame(height: 32)
+                    .background(CloseCutColors.input)
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 20)
         }
-        .padding(.bottom, 12)
+        .padding(.bottom, 10)
     }
 
     @ViewBuilder
     private var content: some View {
         if activeEntries.isEmpty {
             emptyLibraryState
-        } else if sortedEntries.isEmpty {
-            emptyResultsState
+        } else if isSearchOrFilterActive {
+            resultsContent
         } else {
-            resultsList
+            browseContent
         }
     }
 
-    private var resultsList: some View {
+    private var browseContent: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 16) {
+                LibrarySectionPreviewView(
+                    title: "Recently watched",
+                    subtitle: "Your latest memories and logged watches.",
+                    entries: recentlyWatched,
+                    user: user,
+                    profile: profile,
+                    actionTitle: nil,
+                    action: nil
+                )
+
+                if needsDetailsEntries.isEmpty == false {
+                    LibrarySectionPreviewView(
+                        title: "Ready to complete",
+                        subtitle: "Quick Adds that can become richer memories.",
+                        entries: needsDetailsEntries,
+                        user: user,
+                        profile: profile,
+                        actionTitle: "View all",
+                        action: {
+                            selectedFilter = .needsDetails
+                        }
+                    )
+                }
+
+                if quickAddEntries.isEmpty == false {
+                    LibrarySectionPreviewView(
+                        title: "Quick Adds",
+                        subtitle: "Fast-added titles from your past watch history.",
+                        entries: quickAddEntries,
+                        user: user,
+                        profile: profile,
+                        actionTitle: "View all",
+                        action: {
+                            selectedFilter = .quickAdd
+                        }
+                    )
+                }
+
+                if sharedEntries.isEmpty == false {
+                    LibrarySectionPreviewView(
+                        title: "Shared with Circles",
+                        subtitle: "Memories you intentionally shared with trusted people.",
+                        entries: sharedEntries,
+                        user: user,
+                        profile: profile,
+                        actionTitle: "View all",
+                        action: {
+                            selectedFilter = .shared
+                        }
+                    )
+                }
+
+                libraryTip
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+        }
+    }
+
+    private var resultsContent: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(resultCountText)
-                            .font(.headline)
-                            .foregroundStyle(CloseCutColors.textPrimary)
+                resultsHeader
 
-                        Text(resultsSubtitle)
-                            .font(.caption)
-                            .foregroundStyle(CloseCutColors.textTertiary)
+                if processedEntries.isEmpty {
+                    emptyResultsCard
+                } else {
+                    ForEach(processedEntries) { entry in
+                        NavigationLink {
+                            EntryDetailView(
+                                entry: entry,
+                                user: user,
+                                profile: profile
+                            )
+                        } label: {
+                            CompactEntryRowView(entry: entry)
+                        }
+                        .buttonStyle(.plain)
                     }
-
-                    Spacer()
-                }
-                .padding(.horizontal, 2)
-
-                ForEach(sortedEntries) { entry in
-                    NavigationLink {
-                        EntryDetailView(
-                            entry: entry,
-                            user: user,
-                            profile: profile
-                        )
-                    } label: {
-                        CompactEntryRowView(entry: entry)
-                    }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
         }
+    }
+
+    private var resultsHeader: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(resultCountText)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+
+                Text(resultsSubtitle)
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+
+            if isSearchOrFilterActive {
+                Button {
+                    clearSearchAndFilters()
+                } label: {
+                    Text("Reset")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.accentLight)
+                        .padding(.horizontal, 10)
+                        .frame(height: 30)
+                        .background(CloseCutColors.input)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 2)
     }
 
     private var emptyLibraryState: some View {
@@ -272,7 +408,7 @@ struct LibrarySearchView: View {
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
 
-                Text("Add a few past watches first, then your library will become searchable.")
+                Text("Add a few past watches first, then your library will become searchable and organized.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -282,25 +418,25 @@ struct LibrarySearchView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var emptyResultsState: some View {
-        VStack(spacing: 16) {
+    private var emptyResultsCard: some View {
+        VStack(spacing: 14) {
             Image(systemName: "magnifyingglass")
-                .font(.largeTitle)
+                .font(.title2.weight(.semibold))
                 .foregroundStyle(CloseCutColors.textTertiary)
 
-            VStack(spacing: 6) {
+            VStack(spacing: 5) {
                 Text("No matching memories")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
 
-                Text("Try another title, year, mood, tag, or filter.")
+                Text("Try another title, year, mood, tag, or reset your filters.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .multilineTextAlignment(.center)
             }
 
             Button {
-                clearFilters()
+                clearSearchAndFilters()
             } label: {
                 Text("Reset search")
                     .font(.caption.weight(.semibold))
@@ -312,44 +448,66 @@ struct LibrarySearchView: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(20)
+        .frame(maxWidth: .infinity)
+        .background(CloseCutColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(CloseCutColors.separator, lineWidth: 0.5)
+        }
     }
 
-    private var sharedCount: Int {
-        activeEntries.filter {
-            $0.visibility == .circle && $0.sharedCircleIds.isEmpty == false
-        }.count
-    }
+    private var libraryTip: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "sparkles")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CloseCutColors.accentLight)
+                .frame(width: 28, height: 28)
+                .background(CloseCutColors.input)
+                .clipShape(SwiftUI.Circle())
 
-    private var quickAddCount: Int {
-        activeEntries.filter {
-            $0.sourceType == .quickAdd
-        }.count
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Your library gets smarter as you add context.")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+
+                Text("Completing Quick Adds with mood, takeaway, tags, and metadata improves your archive and future picks.")
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+        }
+        .padding(14)
+        .background(CloseCutColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(CloseCutColors.separator, lineWidth: 0.5)
+        }
     }
 
     private var resultsSubtitle: String {
-        let filterText = selectedFilter.title
-        let sortText = selectedSort.title
+        let cleanedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return "\(filterText) • Sorted by \(sortText)"
+        var parts: [String] = []
+
+        if selectedFilter != .all {
+            parts.append(selectedFilter.title)
         }
 
-        return "\(filterText) • “\(searchQuery)” • Sorted by \(sortText)"
-    }
-
-    private func needsDetails(_ entry: Entry) -> Bool {
-        guard entry.sourceType == .quickAdd else {
-            return false
+        if cleanedQuery.isEmpty == false {
+            parts.append("“\(cleanedQuery)”")
         }
 
-        return entry.mood.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-            entry.takeaway.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-            entry.tags.isEmpty
+        parts.append("Sorted by \(selectedSort.title)")
+
+        return parts.joined(separator: " • ")
     }
 
-    private func clearFilters() {
+    private func clearSearchAndFilters() {
         searchQuery = ""
         selectedFilter = .all
         selectedSort = .recent

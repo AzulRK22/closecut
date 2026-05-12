@@ -47,6 +47,7 @@
 				Info.plist,
 				Tests/CloseCutTests/Domain/DuplicateDetectorTests.swift,
 				Tests/CloseCutTests/Domain/EntrySearchFilterTests.swift,
+				Tests/CloseCutTests/Home/LibrarySearchPipelineTests.swift,
 				Tests/CloseCutTests/Recommendation/QuickPickEngineTests.swift,
 				Tests/CloseCutTests/Sync/EntryConflictPolicyTests.swift,
 				Tests/CloseCutTests/Sync/PendingActionQueueTests.swift,
@@ -60,6 +61,7 @@
 			membershipExceptions = (
 				Tests/CloseCutTests/Domain/DuplicateDetectorTests.swift,
 				Tests/CloseCutTests/Domain/EntrySearchFilterTests.swift,
+				Tests/CloseCutTests/Home/LibrarySearchPipelineTests.swift,
 				Tests/CloseCutTests/Recommendation/QuickPickEngineTests.swift,
 				Tests/CloseCutTests/Sync/EntryConflictPolicyTests.swift,
 				Tests/CloseCutTests/Sync/PendingActionQueueTests.swift,
