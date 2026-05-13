@@ -17,83 +17,69 @@ struct CircleActionSheet: View {
                 CloseCutColors.backgroundPrimary
                     .ignoresSafeArea()
 
-                VStack(alignment: .leading, spacing: 14) {
-                    Text("Add a Circle")
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.textPrimary)
+                VStack(alignment: .leading, spacing: 18) {
+                    header
 
-                    Text("Create your own private space or join one with an invite code.")
-                        .font(.subheadline)
-                        .foregroundStyle(CloseCutColors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Button {
-                        onCreate()
-                    } label: {
-                        actionRow(
+                    VStack(spacing: 12) {
+                        CircleQuickActionCard(
                             icon: "plus.circle.fill",
-                            title: "Create Circle",
-                            message: "Start a private space and invite trusted people."
+                            title: "Create a Circle",
+                            message: "Start a private space for people you actually watch and talk with.",
+                            isPrimary: true,
+                            action: onCreate
                         )
-                    }
-                    .buttonStyle(.plain)
 
-                    Button {
-                        onJoin()
-                    } label: {
-                        actionRow(
+                        CircleQuickActionCard(
                             icon: "ticket.fill",
                             title: "Join with invite code",
-                            message: "Enter a code from someone you trust."
+                            message: "Enter a code from someone you trust and preview the Circle before joining.",
+                            isPrimary: false,
+                            action: onJoin
                         )
                     }
-                    .buttonStyle(.plain)
 
-                    Spacer()
+                    privacyNote
+
+                    Spacer(minLength: 0)
                 }
                 .padding(20)
             }
-            .navigationTitle("Circle")
+            .navigationTitle("Add Circle")
             .navigationBarTitleDisplayMode(.inline)
         }
+        .preferredColorScheme(.dark)
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
     }
 
-    private func actionRow(
-        icon: String,
-        title: String,
-        message: String
-    ) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: icon)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(CloseCutColors.accentLight)
-                .frame(width: 32, height: 32)
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Add a trusted space.")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textPrimary)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.headline)
-                    .foregroundStyle(CloseCutColors.textPrimary)
+            Text("Circles are intentionally private. Each space can have its own people, shared memories, reactions, and comments.")
+                .font(.subheadline)
+                .foregroundStyle(CloseCutColors.textSecondary)
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
 
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer()
-
-            Image(systemName: "chevron.right")
+    private var privacyNote: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "lock.fill")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(CloseCutColors.textTertiary)
+                .padding(.top, 1)
+
+            Text("Your Personal library stays private. A Circle only sees entries you explicitly share.")
+                .font(.caption)
+                .foregroundStyle(CloseCutColors.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(16)
-        .background(CloseCutColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(CloseCutColors.separator, lineWidth: 0.5)
-        }
+        .padding(12)
+        .background(CloseCutColors.input)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }

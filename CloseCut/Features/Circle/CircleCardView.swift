@@ -10,6 +10,7 @@ import SwiftUI
 struct CircleCardView: View {
     let circle: CloseCircle
     let membership: CircleMembership
+    var sharedMemoryCount: Int = 0
 
     private var memberCount: Int {
         max(circle.memberIds.count, 1)
@@ -28,70 +29,141 @@ struct CircleCardView: View {
         return description
     }
 
+    private var sharedMemoryText: String {
+        sharedMemoryCount == 1 ? "1 shared memory" : "\(sharedMemoryCount) shared memories"
+    }
+
+    private var roleIcon: String {
+        membership.isOwner ? "crown.fill" : "person.fill"
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(circle.name)
-                        .font(.headline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(CloseCutColors.textPrimary)
-                        .lineLimit(1)
+        VStack(alignment: .leading, spacing: 14) {
+            topRow
 
-                    Text(descriptionText)
-                        .font(.subheadline)
-                        .foregroundStyle(CloseCutColors.textSecondary)
-                        .lineLimit(2)
-                }
-
-                Spacer()
-
-                Text(membership.role.displayName)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(membership.isOwner ? CloseCutColors.accentLight : CloseCutColors.textTertiary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(CloseCutColors.input)
-                    .clipShape(Capsule())
-            }
+            Text(descriptionText)
+                .font(.subheadline)
+                .foregroundStyle(CloseCutColors.textSecondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 8) {
-                Label(memberCountText, systemImage: "person.2.fill")
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textTertiary)
+                infoPill(
+                    icon: "person.2.fill",
+                    text: memberCountText
+                )
 
-                Text("•")
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textTertiary)
-
-                Text("Owner: \(circle.ownerDisplayName)")
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textTertiary)
-                    .lineLimit(1)
-
-                Spacer()
+                infoPill(
+                    icon: "film.stack.fill",
+                    text: sharedMemoryText
+                )
             }
 
-            HStack {
-                Text("Updated \(circle.updatedAt.formatted(date: .abbreviated, time: .omitted))")
-                    .font(.caption2)
-                    .foregroundStyle(CloseCutColors.textTertiary)
+            Divider()
+                .overlay(CloseCutColors.separator)
 
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textTertiary)
-            }
+            bottomRow
         }
         .padding(16)
         .background(CloseCutColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(circle.name), \(memberCountText), owner \(circle.ownerDisplayName)")
+        .accessibilityLabel("\(circle.name), \(memberCountText), \(sharedMemoryText), \(membership.role.displayName)")
+    }
+
+    private var topRow: some View {
+        HStack(alignment: .top, spacing: 12) {
+            avatar
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(circle.name)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+                    .lineLimit(1)
+
+                HStack(spacing: 6) {
+                    Image(systemName: roleIcon)
+                        .font(.caption2.weight(.semibold))
+
+                    Text(membership.role.displayName)
+                        .font(.caption2.weight(.semibold))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(membership.isOwner ? CloseCutColors.accentLight : CloseCutColors.textTertiary)
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textTertiary)
+                .padding(.top, 6)
+        }
+    }
+
+    private var avatar: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(CloseCutColors.accent.opacity(0.16))
+                .frame(width: 48, height: 48)
+
+            Text(initials)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(CloseCutColors.accentLight)
+        }
+    }
+
+    private var initials: String {
+        let words = circle.name
+            .split(separator: " ")
+            .map(String.init)
+
+        if words.count >= 2 {
+            return "\(words[0].prefix(1))\(words[1].prefix(1))".uppercased()
+        }
+
+        return String(circle.name.prefix(2)).uppercased()
+    }
+
+    private var bottomRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "clock")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textTertiary)
+
+            Text("Updated \(circle.updatedAt.formatted(date: .abbreviated, time: .omitted))")
+                .font(.caption2)
+                .foregroundStyle(CloseCutColors.textTertiary)
+                .lineLimit(1)
+
+            Spacer()
+
+            Text("Open space")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(CloseCutColors.accentLight)
+        }
+    }
+
+    private func infoPill(
+        icon: String,
+        text: String
+    ) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.caption2.weight(.semibold))
+
+            Text(text)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(CloseCutColors.textSecondary)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(CloseCutColors.input)
+        .clipShape(Capsule())
     }
 }
