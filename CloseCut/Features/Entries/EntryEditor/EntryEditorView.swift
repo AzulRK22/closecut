@@ -13,7 +13,7 @@ struct EntryEditorView: View {
     @Environment(\.modelContext) private var modelContext
 
     @StateObject private var viewModel = EntryEditorViewModel()
-    @FocusState private var focusedField: Field?
+    @FocusState private var focusedField: EntryEditorFocusField?
 
     let user: AuthUser
     let profile: UserProfile
@@ -29,11 +29,6 @@ struct EntryEditorView: View {
 
     @Query(sort: \LocalCircleMembership.updatedAt, order: .reverse)
     private var localMemberships: [LocalCircleMembership]
-
-    private enum Field {
-        case takeaway
-        case keyMoment
-    }
 
     private var activeCircleMemberships: [CircleMembership] {
         localMemberships
@@ -85,56 +80,64 @@ struct EntryEditorView: View {
         return "Shared with \(selectedCircleIds.count) Circles"
     }
 
+    private var saveContextText: String {
+        if viewModel.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Add a title to continue."
+        }
+
+        if viewModel.selectedMood == nil {
+            return "Choose a feeling to save this memory."
+        }
+
+        if selectedCircleIds.isEmpty {
+            return "This will stay private in your Personal library."
+        }
+
+        return selectedCircleCountText
+    }
+
     var body: some View {
         NavigationStack {
-            ZStack {
+            ZStack(alignment: .bottom) {
                 CloseCutColors.backgroundPrimary
                     .ignoresSafeArea()
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 22) {
+                    VStack(alignment: .leading, spacing: 18) {
                         dragHandle
 
                         editorHeader
 
                         titleAutocompleteSection
 
-                        moodSection
+                        memorySection
 
-                        takeawaySection
+                        moreContextSection
 
-                        keyMomentSection
-
-                        intensitySection
-
-                        tagsSection
-
-                        contextSection
-
-                        if viewModel.shouldShowCinemaFields {
-                            CinemaExperienceFields(
-                                audio: $viewModel.cinemaAudio,
-                                screen: $viewModel.cinemaScreen,
-                                comfort: $viewModel.cinemaComfort
-                            )
-                            .animation(
-                                .easeInOut(duration: 0.2),
-                                value: viewModel.watchContext
-                            )
-                        }
-
-                        sharingSection
+                        privacySection
 
                         if viewModel.errors.isEmpty == false {
                             errorSection
                         }
 
-                        Spacer(minLength: 24)
+                        Spacer(minLength: 112)
                     }
                     .padding(.horizontal, 20)
                     .padding(.bottom, 24)
                 }
                 .scrollDismissesKeyboard(.interactively)
+
+                EntryEditorSaveBar(
+                    canSave: canSave,
+                    isSaving: viewModel.isSaving,
+                    buttonTitle: viewModel.saveButtonTitle,
+                    contextText: saveContextText,
+                    action: {
+                        Task {
+                            await save()
+                        }
+                    }
+                )
             }
             .navigationTitle(viewModel.navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
@@ -145,22 +148,6 @@ struct EntryEditorView: View {
                     }
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .disabled(viewModel.isSaving)
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button {
-                        Task {
-                            await save()
-                        }
-                    } label: {
-                        if viewModel.isSaving {
-                            ProgressView()
-                        } else {
-                            Text(viewModel.saveButtonTitle)
-                        }
-                    }
-                    .disabled(canSave == false)
-                    .foregroundStyle(canSave ? CloseCutColors.accent : CloseCutColors.inactive)
                 }
             }
         }
@@ -249,7 +236,7 @@ struct EntryEditorView: View {
             return "Update this memory."
         }
 
-        return "Add a new watch memory."
+        return "Add a new memory."
     }
 
     private var headerSubtitle: String {
@@ -258,13 +245,13 @@ struct EntryEditorView: View {
         }
 
         if viewModel.isEditing {
-            return "Keep your library accurate without losing the original memory."
+            return "Adjust the details without losing the original memory."
         }
 
-        return "Start with the title, connect metadata, then capture how it felt."
+        return "Start with the title, then capture how it felt."
     }
 
-    // MARK: - Title Autocomplete
+    // MARK: - Sections
 
     private var titleAutocompleteSection: some View {
         EntryTitleAutocompleteCard(
@@ -297,172 +284,33 @@ struct EntryEditorView: View {
         )
     }
 
-    // MARK: - Main Fields
-
-    private var moodSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Emotional tone")
-                .font(.caption)
-                .foregroundStyle(CloseCutColors.textSecondary)
-
-            MoodPickerView(selectedMood: $viewModel.selectedMood)
-
-            if viewModel.errors.contains("Choose a mood.") {
-                Text("Choose a mood")
-                    .font(.caption2)
-                    .foregroundStyle(CloseCutColors.failed)
-            }
-        }
+    private var memorySection: some View {
+        EntryMemoryCard(
+            selectedMood: $viewModel.selectedMood,
+            takeaway: $viewModel.takeaway,
+            errors: viewModel.errors,
+            focusedField: $focusedField
+        )
     }
 
-    private var takeawaySection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("What stayed with you?")
-                .font(.caption)
-                .foregroundStyle(CloseCutColors.textSecondary)
-
-            TextEditor(text: $viewModel.takeaway)
-                .focused($focusedField, equals: .takeaway)
-                .font(.body)
-                .foregroundStyle(CloseCutColors.textPrimary)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 88)
-                .padding(10)
-                .background(CloseCutColors.card)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(takeawayBorderColor, lineWidth: 0.5)
-                }
-                .overlay(alignment: .topLeading) {
-                    if viewModel.takeaway.isEmpty {
-                        Text("A thought, feeling, or memory…")
-                            .font(.body)
-                            .foregroundStyle(CloseCutColors.textTertiary)
-                            .padding(.horizontal, 15)
-                            .padding(.vertical, 18)
-                            .allowsHitTesting(false)
-                    }
-                }
-                .onChange(of: viewModel.takeaway) { _, newValue in
-                    if newValue.count > EntryValidation.maxTakeawayLength {
-                        viewModel.takeaway = String(newValue.prefix(EntryValidation.maxTakeawayLength))
-                    }
-                }
-
-            Text("\(viewModel.takeaway.count)/\(EntryValidation.maxTakeawayLength)")
-                .font(.caption2)
-                .foregroundStyle(
-                    viewModel.takeaway.count > EntryValidation.maxTakeawayLength
-                    ? CloseCutColors.failed
-                    : CloseCutColors.textTertiary
-                )
-                .frame(maxWidth: .infinity, alignment: .trailing)
-        }
+    private var moreContextSection: some View {
+        EntryMoreContextCard(
+            keyMoment: $viewModel.keyMoment,
+            intensity: $viewModel.intensity,
+            tags: $viewModel.tags,
+            watchContext: $viewModel.watchContext,
+            cinemaAudio: $viewModel.cinemaAudio,
+            cinemaScreen: $viewModel.cinemaScreen,
+            cinemaComfort: $viewModel.cinemaComfort,
+            focusedField: $focusedField
+        )
     }
 
-    private var takeawayBorderColor: Color {
-        viewModel.takeaway.count > EntryValidation.maxTakeawayLength
-            ? CloseCutColors.failed
-            : CloseCutColors.separator
-    }
-
-    private var keyMomentSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Key moment")
-                .font(.caption)
-                .foregroundStyle(CloseCutColors.textSecondary)
-
-            TextField("A line that stayed with you…", text: $viewModel.keyMoment, axis: .vertical)
-                .focused($focusedField, equals: .keyMoment)
-                .font(.body)
-                .foregroundStyle(CloseCutColors.textPrimary)
-                .lineLimit(1...3)
-                .padding(.vertical, 10)
-                .overlay(alignment: .bottom) {
-                    Rectangle()
-                        .fill(keyMomentBorderColor)
-                        .frame(height: 0.5)
-                }
-                .onChange(of: viewModel.keyMoment) { _, newValue in
-                    if newValue.count > EntryValidation.maxQuoteLength {
-                        viewModel.keyMoment = String(newValue.prefix(EntryValidation.maxQuoteLength))
-                    }
-                }
-
-            Text("\(viewModel.keyMoment.count)/\(EntryValidation.maxQuoteLength)")
-                .font(.caption2)
-                .foregroundStyle(
-                    viewModel.keyMoment.count > EntryValidation.maxQuoteLength
-                    ? CloseCutColors.failed
-                    : CloseCutColors.textTertiary
-                )
-                .frame(maxWidth: .infinity, alignment: .trailing)
-        }
-    }
-
-    private var keyMomentBorderColor: Color {
-        viewModel.keyMoment.count > EntryValidation.maxQuoteLength
-            ? CloseCutColors.failed
-            : CloseCutColors.separator
-    }
-
-    private var intensitySection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Memory intensity")
-                .font(.caption)
-                .foregroundStyle(CloseCutColors.textSecondary)
-
-            IntensitySelector(value: $viewModel.intensity)
-        }
-    }
-
-    private var tagsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Personal tags")
-                .font(.caption)
-                .foregroundStyle(CloseCutColors.textSecondary)
-
-            TagsInputView(tags: $viewModel.tags)
-        }
-    }
-
-    private var contextSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Watch context")
-                .font(.caption)
-                .foregroundStyle(CloseCutColors.textSecondary)
-
-            ContextSelector(selectedContext: $viewModel.watchContext)
-        }
-    }
-
-    // MARK: - Sharing
-
-    private var sharingSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            CircleSharePickerView(
-                circles: activeCircles,
-                selectedCircleIds: $selectedCircleIds
-            )
-
-            if selectedCircleIds.isEmpty == false {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "lock.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.accentLight)
-                        .padding(.top, 1)
-
-                    Text("This entry remains in your Personal Timeline. Selected Circles only get read-only access with reactions and short comments.")
-                        .font(.caption)
-                        .foregroundStyle(CloseCutColors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(12)
-                .background(CloseCutColors.input)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-        }
+    private var privacySection: some View {
+        EntryEditorPrivacyCard(
+            circles: activeCircles,
+            selectedCircleIds: $selectedCircleIds
+        )
     }
 
     // MARK: - Errors
