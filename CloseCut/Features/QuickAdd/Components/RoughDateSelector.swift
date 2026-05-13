@@ -21,10 +21,6 @@ struct RoughDateSelector: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Watched around")
-                .font(.caption)
-                .foregroundStyle(CloseCutColors.textSecondary)
-
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(options, id: \.displayLabel) { option in

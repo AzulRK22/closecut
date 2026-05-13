@@ -21,13 +21,12 @@ struct QuickAddPreviewSheet: View {
         }
 
         let cleaned = overview.trimmingCharacters(in: .whitespacesAndNewlines)
-
         return cleaned.isEmpty ? nil : cleaned
     }
 
     var body: some View {
         NavigationStack {
-            ZStack {
+            ZStack(alignment: .bottom) {
                 CloseCutColors.backgroundPrimary
                     .ignoresSafeArea()
 
@@ -36,8 +35,8 @@ struct QuickAddPreviewSheet: View {
                         hero
 
                         QuickAddSectionCard(
-                            title: "How do you remember it?",
-                            subtitle: "Optional, but this helps CloseCut understand your taste faster."
+                            title: "Memory signal",
+                            subtitle: "A quick feeling is enough for now."
                         ) {
                             QuickReactionChips(
                                 selectedSentiment: $selectedSentiment
@@ -45,29 +44,15 @@ struct QuickAddPreviewSheet: View {
                         }
 
                         QuickAddSectionCard(
-                            title: "When did you watch it?",
-                            subtitle: "A rough date is enough for your archive."
+                            title: "Watched around",
+                            subtitle: "No need to be exact."
                         ) {
                             RoughDateSelector(
                                 selectedDate: $selectedApproxDate
                             )
                         }
 
-                        Button {
-                            onAdd()
-                            dismiss()
-                        } label: {
-                            Label("Add to history", systemImage: "plus.circle.fill")
-                                .font(.headline.weight(.semibold))
-                                .foregroundStyle(.white)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 52)
-                                .background(CloseCutColors.accent)
-                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-
-                        Text("You can add mood, takeaway, tags, and Circle sharing later.")
+                        Text("You can add takeaway, tags, and Circle sharing later.")
                             .font(.caption)
                             .foregroundStyle(CloseCutColors.textTertiary)
                             .multilineTextAlignment(.center)
@@ -75,6 +60,14 @@ struct QuickAddPreviewSheet: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 16)
+                    .padding(.bottom, 112)
+                }
+
+                QuickAddPreviewAddBar(
+                    title: "Add"
+                ) {
+                    onAdd()
+                    dismiss()
                 }
             }
             .navigationTitle("Preview")

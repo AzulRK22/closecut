@@ -34,15 +34,21 @@ struct QuickAddPastWatchesView: View {
 
                             statusMessages
 
+                            if viewModel.shouldShowEmptyStarter {
+                                emptyStarterSection
+                            }
+
                             tmdbResultsSection
 
                             if viewModel.shouldShowLocalFallback {
                                 suggestionsSection
                             }
 
-                            if viewModel.canAddManualTitle {
+                            if viewModel.shouldShowManualAddButton {
                                 manualAddButton
                             }
+
+                            sessionAddedSection
 
                             Spacer(minLength: 24)
                         }
@@ -88,11 +94,11 @@ struct QuickAddPastWatchesView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Build your history fast.")
+                    Text("Add what you already watched.")
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
 
-                    Text("Search, preview, and add past watches with real metadata.")
+                    Text("Search a few movies or series you remember. CloseCut will turn them into your private taste library.")
                         .font(.subheadline)
                         .foregroundStyle(CloseCutColors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -120,32 +126,22 @@ struct QuickAddPastWatchesView: View {
 
     private var searchCard: some View {
         QuickAddSectionCard(
-            title: "Find a title",
-            subtitle: "TMDB results add posters, release years, genres, and better QuickPick signals."
+            title: "Find a movie or series",
+            subtitle: "Pick the right title with poster, year, and story context."
         ) {
-            VStack(alignment: .leading, spacing: 12) {
-                QuickAddSearchBar(
-                    query: $viewModel.query,
-                    isSearching: viewModel.isSearchingTMDB,
-                    onSubmit: {
-                        viewModel.runSearchImmediately()
-                    },
-                    onClear: {
-                        viewModel.clearSearch()
-                    }
-                )
-                .focused($isSearchFocused)
-                .onChange(of: viewModel.query) { _, _ in
-                    viewModel.scheduleSearch()
+            QuickAddSearchBar(
+                query: $viewModel.query,
+                isSearching: viewModel.isSearchingTMDB,
+                onSubmit: {
+                    viewModel.runSearchImmediately()
+                },
+                onClear: {
+                    viewModel.clearSearch()
                 }
-
-                QuickReactionChips(
-                    selectedSentiment: $viewModel.selectedSentiment
-                )
-
-                RoughDateSelector(
-                    selectedDate: $viewModel.selectedApproxDate
-                )
+            )
+            .focused($isSearchFocused)
+            .onChange(of: viewModel.query) { _, _ in
+                viewModel.scheduleSearch()
             }
         }
     }
@@ -178,17 +174,33 @@ struct QuickAddPastWatchesView: View {
         }
     }
 
+    private var emptyStarterSection: some View {
+        QuickAddEmptyStarterCard(
+            suggestions: viewModel.starterSuggestions,
+            action: { suggestion in
+                viewModel.addSuggestion(
+                    suggestion,
+                    ownerId: user.id,
+                    modelContext: modelContext
+                )
+            },
+            rowState: { suggestion in
+                rowState(for: suggestion)
+            }
+        )
+    }
+
     @ViewBuilder
     private var tmdbResultsSection: some View {
         if viewModel.isSearchingTMDB {
             QuickAddSectionCard(
-                title: "Searching TMDB",
-                subtitle: "Finding matching movies and series."
+                title: "Searching",
+                subtitle: "Finding the closest matches."
             ) {
                 HStack(spacing: 10) {
                     ProgressView()
 
-                    Text("Searching…")
+                    Text("Searching TMDB…")
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textSecondary)
 
@@ -199,7 +211,7 @@ struct QuickAddPastWatchesView: View {
         } else if viewModel.tmdbResults.isEmpty == false {
             QuickAddSectionCard(
                 title: "Best matches",
-                subtitle: "Preview the right title before adding it to your history."
+                subtitle: "Preview before adding."
             ) {
                 VStack(spacing: 10) {
                     ForEach(viewModel.tmdbResults) { result in
@@ -216,7 +228,7 @@ struct QuickAddPastWatchesView: View {
         } else if let searchErrorMessage = viewModel.searchErrorMessage,
                   viewModel.cleanedQuery.isEmpty == false {
             QuickAddStatusBanner(
-                message: "TMDB search unavailable. You can still add this manually.",
+                message: "Search is unavailable right now. You can still add this manually.",
                 systemImage: "wifi.exclamationmark",
                 foregroundColor: CloseCutColors.textSecondary
             )
@@ -231,15 +243,13 @@ struct QuickAddPastWatchesView: View {
 
     private var suggestionsSection: some View {
         QuickAddSectionCard(
-            title: viewModel.cleanedQuery.isEmpty ? "Starter suggestions" : "Local fallback",
-            subtitle: viewModel.cleanedQuery.isEmpty
-                ? "A few titles to help seed your archive."
-                : "No exact TMDB match yet. You can still add a remembered title."
+            title: "No exact match yet",
+            subtitle: "You can still add a remembered title without metadata."
         ) {
             if viewModel.filteredSuggestions.isEmpty {
                 EmptyStateView(
                     title: "Add it manually",
-                    message: "Your history can include it even without metadata.",
+                    message: "Your history can include it even without poster or metadata.",
                     systemImage: "plus.circle",
                     actionTitle: "Add manual title",
                     action: {
@@ -280,7 +290,7 @@ struct QuickAddPastWatchesView: View {
         } label: {
             HStack {
                 Image(systemName: "plus")
-                Text("Add “\(viewModel.cleanedQuery)” without metadata")
+                Text("Can’t find it? Add “\(viewModel.cleanedQuery)” manually")
                     .lineLimit(1)
             }
             .font(.subheadline.weight(.semibold))
@@ -291,7 +301,13 @@ struct QuickAddPastWatchesView: View {
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Add \(viewModel.cleanedQuery) without metadata")
+        .accessibilityLabel("Add \(viewModel.cleanedQuery) manually")
+    }
+
+    private var sessionAddedSection: some View {
+        QuickAddSessionAddedCard(
+            entries: viewModel.addedEntries
+        )
     }
 
     private func rowState(for suggestion: QuickAddSuggestion) -> QuickAddRowState {
@@ -328,34 +344,5 @@ struct QuickAddPastWatchesView: View {
         }
 
         return .normal
-    }
-}
-
-private struct QuickAddStatusBanner: View {
-    let message: String
-    let systemImage: String
-    let foregroundColor: Color
-    var backgroundColor: Color = CloseCutColors.input
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: systemImage)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(foregroundColor)
-                .padding(.top, 1)
-
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(foregroundColor)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer(minLength: 0)
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(backgroundColor)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(message)
     }
 }

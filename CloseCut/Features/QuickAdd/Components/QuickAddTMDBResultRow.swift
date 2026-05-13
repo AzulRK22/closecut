@@ -60,13 +60,15 @@ struct QuickAddTMDBResultRow: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    Text("Preview before adding")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.accentLight)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(CloseCutColors.input)
-                        .clipShape(Capsule())
+                    if state == .normal {
+                        Text("Preview")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.accentLight)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(CloseCutColors.input)
+                            .clipShape(Capsule())
+                    }
                 }
             }
             .padding(12)
@@ -131,7 +133,6 @@ struct QuickAddTMDBResultRow: View {
         }
 
         let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
-
         return cleaned.isEmpty ? nil : cleaned
     }
 }

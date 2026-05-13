@@ -47,13 +47,31 @@ final class QuickAddViewModel: ObservableObject {
         query.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    var starterSuggestions: [QuickAddSuggestion] {
+        Array(localSuggestions.prefix(6))
+    }
+
+    var shouldShowEmptyStarter: Bool {
+        cleanedQuery.isEmpty &&
+            tmdbResults.isEmpty &&
+            isSearchingTMDB == false
+    }
+
     var shouldShowLocalFallback: Bool {
-        cleanedQuery.isEmpty || tmdbResults.isEmpty || searchErrorMessage != nil
+        cleanedQuery.isEmpty == false &&
+            tmdbResults.isEmpty &&
+            isSearchingTMDB == false
+    }
+
+    var shouldShowManualAddButton: Bool {
+        canAddManualTitle &&
+            isSearchingTMDB == false &&
+            tmdbResults.isEmpty
     }
 
     var filteredSuggestions: [QuickAddSuggestion] {
         guard cleanedQuery.isEmpty == false else {
-            return Array(localSuggestions.prefix(6))
+            return starterSuggestions
         }
 
         return localSuggestions.filter {
