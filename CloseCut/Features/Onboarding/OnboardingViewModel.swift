@@ -11,11 +11,11 @@ import SwiftData
 
 @MainActor
 final class OnboardingViewModel: ObservableObject {
-    @Published var currentStep: Int = 0
-    @Published var isCompleting: Bool = false
+    @Published var currentStep = 0
+    @Published var isCompleting = false
     @Published var errorMessage: String?
 
-    let totalSteps = 3
+    let totalSteps = 4
 
     private let repository = UserStateRepository()
 
@@ -25,6 +25,10 @@ final class OnboardingViewModel: ObservableObject {
 
     var isLastStep: Bool {
         currentStep == totalSteps - 1
+    }
+
+    var progressText: String {
+        "\(currentStep + 1) of \(totalSteps)"
     }
 
     func continueTapped() {

@@ -27,13 +27,13 @@ struct AuthView: View {
     }
 
     private var titleText: String {
-        isCreatingAccount ? "Create your CloseCut" : "Welcome back"
+        isCreatingAccount ? "Create your private taste library" : "Welcome back"
     }
 
     private var subtitleText: String {
         isCreatingAccount
-        ? "Start a private taste history for the movies and series that shaped you."
-        : "Sign in to continue your private watch history, QuickPick, and Circles."
+        ? "Add what you watched, remember what stayed with you, and get better picks from your own history."
+        : "Continue your private library, QuickPick, and trusted Circles."
     }
 
     var body: some View {
