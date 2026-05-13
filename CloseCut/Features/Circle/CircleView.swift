@@ -27,8 +27,6 @@ struct CircleView: View {
     @State private var showCreateCircleSheet = false
     @State private var showJoinCircleSheet = false
 
-    @State private var circleName = ""
-    @State private var circleDescription = ""
     @State private var inviteCodeToJoin = ""
     @State private var circlePreview: CirclePreview?
 
@@ -202,10 +200,43 @@ struct CircleView: View {
                 )
             }
             .sheet(isPresented: $showCreateCircleSheet) {
-                createCircleSheet
+                CreateCircleSheet(
+                    isCreating: isCreatingCircle,
+                    onCreate: { name, description in
+                        Task {
+                            await createCircle(
+                                name: name,
+                                description: description
+                            )
+                        }
+                    }
+                )
             }
             .sheet(isPresented: $showJoinCircleSheet) {
-                joinCircleSheet
+                JoinCircleSheet(
+                    inviteCode: $inviteCodeToJoin,
+                    preview: circlePreview,
+                    isPreviewing: isPreviewingCircle,
+                    isJoining: isJoiningCircle,
+                    onPreview: {
+                        Task {
+                            await previewCircle()
+                        }
+                    },
+                    onJoin: {
+                        Task {
+                            await joinCircle()
+                        }
+                    },
+                    onCancel: {
+                        showJoinCircleSheet = false
+                    },
+                    onInviteCodeChanged: { normalizedCode in
+                        if circlePreview?.circle.inviteCodeNormalized != normalizedCode {
+                            circlePreview = nil
+                        }
+                    }
+                )
             }
             .alert("Circle action failed", isPresented: Binding(
                 get: { circleErrorMessage != nil },
@@ -287,262 +318,9 @@ struct CircleView: View {
         }
     }
 
-    // MARK: - Create Sheet
-
-    private var createCircleSheet: some View {
-        NavigationStack {
-            ZStack {
-                CloseCutColors.backgroundPrimary
-                    .ignoresSafeArea()
-
-                VStack(alignment: .leading, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Create a private space.")
-                            .font(.title2.weight(.semibold))
-                            .foregroundStyle(CloseCutColors.textPrimary)
-
-                        Text("Name the people or purpose. You can invite members after creating it.")
-                            .font(.subheadline)
-                            .foregroundStyle(CloseCutColors.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Circle name")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(CloseCutColors.textTertiary)
-                            .textCase(.uppercase)
-                            .tracking(0.8)
-
-                        TextField("Friends, Family, Movie Club…", text: $circleName)
-                            .font(.body)
-                            .foregroundStyle(CloseCutColors.textPrimary)
-                            .textInputAutocapitalization(.words)
-                            .padding(14)
-                            .background(CloseCutColors.input)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Description optional")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(CloseCutColors.textTertiary)
-                            .textCase(.uppercase)
-                            .tracking(0.8)
-
-                        TextField("What is this Circle for?", text: $circleDescription)
-                            .font(.body)
-                            .foregroundStyle(CloseCutColors.textPrimary)
-                            .textInputAutocapitalization(.sentences)
-                            .padding(14)
-                            .background(CloseCutColors.input)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "lock.fill")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(CloseCutColors.textTertiary)
-                            .padding(.top, 1)
-
-                        Text("Personal entries are not shared automatically. Members only see what you explicitly share.")
-                            .font(.caption)
-                            .foregroundStyle(CloseCutColors.textTertiary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(12)
-                    .background(CloseCutColors.input)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                    if isCreatingCircle {
-                        HStack(spacing: 10) {
-                            ProgressView()
-
-                            Text("Creating Circle…")
-                                .font(.caption)
-                                .foregroundStyle(CloseCutColors.textSecondary)
-                        }
-                    }
-
-                    Spacer()
-                }
-                .padding(20)
-            }
-            .navigationTitle("New Circle")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        showCreateCircleSheet = false
-                    }
-                    .disabled(isCreatingCircle)
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
-                        Task {
-                            await createCircle()
-                        }
-                    }
-                    .disabled(
-                        isCreatingCircle ||
-                        circleName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    )
-                }
-            }
-        }
-        .preferredColorScheme(.dark)
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
-    }
-
-    // MARK: - Join Sheet
-
-    private var joinCircleSheet: some View {
-        NavigationStack {
-            ZStack {
-                CloseCutColors.backgroundPrimary
-                    .ignoresSafeArea()
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Join a trusted Circle.")
-                                .font(.title2.weight(.semibold))
-                                .foregroundStyle(CloseCutColors.textPrimary)
-
-                            Text("Enter an invite code, preview the Circle, then decide if you want to join.")
-                                .font(.subheadline)
-                                .foregroundStyle(CloseCutColors.textSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Invite code")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(CloseCutColors.textTertiary)
-                                .textCase(.uppercase)
-                                .tracking(0.8)
-
-                            TextField("Invite code", text: $inviteCodeToJoin)
-                                .font(.title3.monospaced().weight(.semibold))
-                                .foregroundStyle(CloseCutColors.textPrimary)
-                                .textInputAutocapitalization(.characters)
-                                .autocorrectionDisabled()
-                                .padding(14)
-                                .background(CloseCutColors.input)
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .onChange(of: inviteCodeToJoin) { _, newValue in
-                                    let normalized = newValue.normalizedInviteCode
-
-                                    if normalized != newValue {
-                                        inviteCodeToJoin = normalized
-                                    }
-
-                                    if circlePreview?.circle.inviteCodeNormalized != normalized {
-                                        circlePreview = nil
-                                    }
-                                }
-
-                            Text("Paste the code exactly as shared with you.")
-                                .font(.caption)
-                                .foregroundStyle(CloseCutColors.textTertiary)
-                        }
-
-                        if isPreviewingCircle {
-                            HStack(spacing: 10) {
-                                ProgressView()
-
-                                Text("Finding Circle…")
-                                    .font(.caption)
-                                    .foregroundStyle(CloseCutColors.textSecondary)
-                            }
-                            .padding(12)
-                            .background(CloseCutColors.input)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        }
-
-                        if let circlePreview {
-                            CirclePreviewCard(preview: circlePreview)
-                        }
-
-                        if isJoiningCircle {
-                            HStack(spacing: 10) {
-                                ProgressView()
-
-                                Text("Joining Circle…")
-                                    .font(.caption)
-                                    .foregroundStyle(CloseCutColors.textSecondary)
-                            }
-                            .padding(12)
-                            .background(CloseCutColors.input)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        }
-
-                        HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: "eye.slash.fill")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(CloseCutColors.textTertiary)
-                                .padding(.top, 1)
-
-                            Text("Joining a Circle never exposes your full Personal library.")
-                                .font(.caption)
-                                .foregroundStyle(CloseCutColors.textTertiary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-
-                        Spacer(minLength: 24)
-                    }
-                    .padding(20)
-                }
-            }
-            .navigationTitle("Join Circle")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        showJoinCircleSheet = false
-                    }
-                    .disabled(isJoiningCircle || isPreviewingCircle)
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    if let circlePreview {
-                        Button(circlePreview.isAlreadyMember ? "Done" : "Join") {
-                            Task {
-                                if circlePreview.isAlreadyMember {
-                                    showJoinCircleSheet = false
-                                } else {
-                                    await joinCircle()
-                                }
-                            }
-                        }
-                        .disabled(isJoiningCircle || isPreviewingCircle)
-                    } else {
-                        Button("Preview") {
-                            Task {
-                                await previewCircle()
-                            }
-                        }
-                        .disabled(
-                            isJoiningCircle ||
-                            isPreviewingCircle ||
-                            inviteCodeToJoin.normalizedInviteCode.isEmpty
-                        )
-                    }
-                }
-            }
-        }
-        .preferredColorScheme(.dark)
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
-    }
-
     // MARK: - Sheet Openers
 
     private func openCreateCircle() {
-        circleName = ""
-        circleDescription = ""
         circleErrorMessage = nil
         circleInlineMessage = nil
         showCreateCircleSheet = true
@@ -591,12 +369,16 @@ struct CircleView: View {
         }
     }
 
-    private func createCircle() async {
+    private func createCircle(
+        name: String,
+        description: String
+    ) async {
         guard isCreatingCircle == false else {
             return
         }
 
-        let cleanedName = circleName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedDescription = description.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard cleanedName.isEmpty == false else {
             circleErrorMessage = "Circle name is required."
@@ -616,13 +398,11 @@ struct CircleView: View {
                 user: user,
                 profile: profile,
                 circleName: cleanedName,
-                circleDescription: circleDescription,
+                circleDescription: cleanedDescription,
                 modelContext: modelContext
             )
 
             showCreateCircleSheet = false
-            circleName = ""
-            circleDescription = ""
 
             await loadCircles(force: true)
         } catch {
