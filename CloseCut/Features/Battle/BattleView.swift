@@ -38,6 +38,27 @@ struct BattleView: View {
         selectedEntries.count >= 2
     }
 
+    private var entries: [Entry] {
+        localEntries
+            .filter { $0.ownerId == user.id }
+            .filter { $0.deletedAt == nil }
+            .map { $0.domain }
+    }
+
+    private var eligibleEntries: [Entry] {
+        entries
+            .filter { entry in
+                entry.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            }
+            .sorted { first, second in
+                first.watchedAt > second.watchedAt
+            }
+    }
+
+    private var canStartLocalBattle: Bool {
+        eligibleEntries.count >= 2
+    }
+
     private var recentBattleResults: [BattleResult] {
         Array(
             localBattleResults
@@ -51,21 +72,18 @@ struct BattleView: View {
         )
     }
 
-    private var entries: [Entry] {
-        localEntries
-            .filter { $0.ownerId == user.id }
-            .filter { $0.deletedAt == nil }
-            .map { $0.domain }
+    private var latestBattleResult: BattleResult? {
+        recentBattleResults.first
     }
 
-    private var eligibleEntries: [Entry] {
-        entries.filter { entry in
-            entry.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-        }
+    private var readinessTitle: String {
+        canStartLocalBattle ? "Ready to play" : "Add one more title"
     }
 
-    private var canStartLocalBattle: Bool {
-        eligibleEntries.count >= 2
+    private var readinessMessage: String {
+        canStartLocalBattle
+            ? "Your archive has enough memories to run a pick or compare two titles."
+            : "Battle unlocks when your Personal Timeline has at least two movies or series."
     }
 
     var body: some View {
@@ -74,10 +92,8 @@ struct BattleView: View {
                 .ignoresSafeArea()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                LazyVStack(alignment: .leading, spacing: 18) {
                     heroSection
-
-                    readinessCard
 
                     if let battleErrorMessage {
                         SyncResultBanner(
@@ -85,6 +101,8 @@ struct BattleView: View {
                             style: .warning
                         )
                     }
+
+                    primaryBattleCard
 
                     if let pickedEntry {
                         BattlePickResultCard(
@@ -103,11 +121,9 @@ struct BattleView: View {
                         recentResultsSection
                     }
 
-                    battleModesSection
+                    socialPreviewSection
 
-                    futureSocialSection
-
-                    whyItMattersSection
+                    productNoteSection
 
                     Spacer(minLength: 24)
                 }
@@ -130,6 +146,10 @@ struct BattleView: View {
                     pickedEntry = nil
                     battleErrorMessage = nil
                     showOptionSelector = false
+
+                    if entries.count >= 2 {
+                        pickRandomWinner()
+                    }
                 }
             )
             .presentationDetents([.large])
@@ -167,34 +187,35 @@ struct BattleView: View {
         }
     }
 
+    // MARK: - Hero
+
     private var heroSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Turn taste into a game.")
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("Tonight, let your archive decide.")
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("Compare picks with yourself, a friend, or your Circle.")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.accentLight)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text("Start with your own archive. Friend and Circle Battles will build on trusted sharing later.")
-                        .font(.caption)
+                    Text("Turn your watch history into a game: pick what to watch, compare favorites, or settle a decision without endless scrolling.")
+                        .font(.subheadline)
                         .foregroundStyle(CloseCutColors.textSecondary)
+                        .lineSpacing(3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Spacer()
+                Spacer(minLength: 12)
 
-                Image(systemName: "bolt.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.accentLight)
-                    .frame(width: 42, height: 42)
-                    .background(CloseCutColors.input)
-                    .clipShape(SwiftUI.Circle())
+                ZStack {
+                    SwiftUI.Circle()
+                        .fill(CloseCutColors.accent.opacity(0.18))
+                        .frame(width: 48, height: 48)
+
+                    Image(systemName: "bolt.fill")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.accentLight)
+                }
             }
 
             HStack(spacing: 10) {
@@ -205,67 +226,211 @@ struct BattleView: View {
                 )
 
                 battleStatPill(
+                    value: "\(recentBattleResults.count)",
+                    label: "results",
+                    icon: "trophy.fill"
+                )
+
+                battleStatPill(
                     value: canStartLocalBattle ? "Ready" : "Soon",
                     label: "status",
                     icon: canStartLocalBattle ? "checkmark.circle.fill" : "clock.fill"
                 )
             }
+
+            if let latestBattleResult {
+                latestResultStrip(latestBattleResult)
+            } else {
+                readinessStrip
+            }
+        }
+        .padding(18)
+        .background(
+            LinearGradient(
+                colors: [
+                    CloseCutColors.card,
+                    CloseCutColors.card.opacity(0.92),
+                    CloseCutColors.accent.opacity(0.10)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
     }
 
-    private var readinessCard: some View {
+    private var readinessStrip: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: canStartLocalBattle ? "gamecontroller.fill" : "sparkles")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(canStartLocalBattle ? CloseCutColors.accentLight : CloseCutColors.textTertiary)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(readinessTitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+
+                Text(readinessMessage)
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(CloseCutColors.input)
+        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+    }
+
+    private func latestResultStrip(_ result: BattleResult) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: result.mode.systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CloseCutColors.accentLight)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Last result")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+
+                Text("\(result.winnerTitle) • \(resultSubtitle(for: result))")
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(CloseCutColors.input)
+        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+    }
+
+    // MARK: - Primary Battle Card
+
+    private var primaryBattleCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: canStartLocalBattle ? "checkmark.circle.fill" : "sparkles")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(canStartLocalBattle ? CloseCutColors.synced : CloseCutColors.accentLight)
-                    .frame(width: 40, height: 40)
-                    .background(CloseCutColors.input)
-                    .clipShape(SwiftUI.Circle())
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Choose a mode")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
 
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(canStartLocalBattle ? "Your archive is ready" : "Battle needs two options")
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.textPrimary)
-
-                    Text(canStartLocalBattle ? "You have enough memories to start comparing titles or picking what to watch." : "Add one more movie or series to unlock random picks and Movie vs Movie.")
-                        .font(.caption)
-                        .foregroundStyle(CloseCutColors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer()
+                Text("Start simple. Battle works best when it feels like a quick decision, not another form.")
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Button {
                 showOptionSelector = true
             } label: {
-                HStack {
-                    Image(systemName: "shuffle")
+                premiumModeRow(
+                    icon: "shuffle",
+                    title: "Pick for tonight",
+                    badge: canStartLocalBattle ? "Available now" : "Need 2 titles",
+                    message: "Choose 2+ options from your archive and let CloseCut pick one.",
+                    isPrimary: true,
+                    isEnabled: canStartLocalBattle
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(canStartLocalBattle == false)
 
-                    Text(canStartLocalBattle ? "Start with random pick" : "Need 2 entries")
-                }
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(canStartLocalBattle ? .white : CloseCutColors.textTertiary)
-                .frame(maxWidth: .infinity)
-                .frame(height: 46)
-                .background(canStartLocalBattle ? CloseCutColors.accent : CloseCutColors.input)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            Divider()
+                .overlay(CloseCutColors.separator)
+
+            Button {
+                showHeadToHeadBattle = true
+            } label: {
+                premiumModeRow(
+                    icon: "bolt.fill",
+                    title: "Movie vs Movie",
+                    badge: canStartLocalBattle ? "Available now" : "Need 2 titles",
+                    message: "Put two titles head-to-head and choose what wins for you.",
+                    isPrimary: false,
+                    isEnabled: canStartLocalBattle
+                )
             }
             .buttonStyle(.plain)
             .disabled(canStartLocalBattle == false)
         }
         .padding(16)
         .background(CloseCutColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
     }
 
+    private func premiumModeRow(
+        icon: String,
+        title: String,
+        badge: String,
+        message: String,
+        isPrimary: Bool,
+        isEnabled: Bool
+    ) -> some View {
+        HStack(alignment: .top, spacing: 13) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    .fill(isPrimary && isEnabled ? CloseCutColors.accent.opacity(0.22) : CloseCutColors.input)
+                    .frame(width: 46, height: 46)
+
+                Image(systemName: icon)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(isEnabled ? CloseCutColors.accentLight : CloseCutColors.textTertiary)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(isEnabled ? CloseCutColors.textPrimary : CloseCutColors.textTertiary)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 8)
+
+                    Text(badge)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(isEnabled ? CloseCutColors.accentLight : CloseCutColors.textTertiary)
+                        .lineLimit(1)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(CloseCutColors.input)
+                        .clipShape(Capsule())
+                }
+
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isEnabled ? CloseCutColors.textTertiary : CloseCutColors.inactive)
+                .padding(.top, 17)
+        }
+        .contentShape(Rectangle())
+        .opacity(isEnabled ? 1 : 0.65)
+    }
+
+    // MARK: - Selected Options
+
     private var selectedOptionsSection: some View {
-        battleSection(title: "Selected options") {
+        battleSection(
+            title: "Current shortlist",
+            subtitle: "\(selectedEntries.count) options selected"
+        ) {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(selectedEntries) { entry in
                     HStack(alignment: .top, spacing: 10) {
@@ -288,7 +453,7 @@ struct BattleView: View {
                                 .lineLimit(1)
                         }
 
-                        Spacer()
+                        Spacer(minLength: 0)
                     }
 
                     if entry.id != selectedEntries.last?.id {
@@ -301,7 +466,7 @@ struct BattleView: View {
                     Button {
                         showOptionSelector = true
                     } label: {
-                        Text("Edit options")
+                        Text("Change options")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(CloseCutColors.textSecondary)
                             .frame(maxWidth: .infinity)
@@ -314,7 +479,7 @@ struct BattleView: View {
                     Button {
                         pickRandomWinner()
                     } label: {
-                        Label("Pick one", systemImage: "shuffle")
+                        Label("Pick again", systemImage: "shuffle")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(canPickRandomWinner ? .white : CloseCutColors.textTertiary)
                             .frame(maxWidth: .infinity)
@@ -330,14 +495,20 @@ struct BattleView: View {
         }
     }
 
+    // MARK: - Recent Results
+
     private var recentResultsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("RECENT RESULTS")
-                    .font(.caption2.weight(.semibold))
-                    .tracking(0.8)
-                    .foregroundStyle(CloseCutColors.textTertiary)
-                    .padding(.horizontal, 2)
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Recent results")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
+
+                    Text("Your last local Battle decisions.")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                }
 
                 Spacer()
 
@@ -351,6 +522,7 @@ struct BattleView: View {
                 .buttonStyle(.plain)
                 .disabled(isClearingResults)
             }
+            .padding(.horizontal, 2)
 
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(recentBattleResults) { result in
@@ -358,7 +530,7 @@ struct BattleView: View {
                         Image(systemName: result.mode.systemImage)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(CloseCutColors.accentLight)
-                            .frame(width: 32, height: 32)
+                            .frame(width: 34, height: 34)
                             .background(CloseCutColors.input)
                             .clipShape(SwiftUI.Circle())
 
@@ -378,7 +550,7 @@ struct BattleView: View {
                                 .foregroundStyle(CloseCutColors.textTertiary)
                         }
 
-                        Spacer()
+                        Spacer(minLength: 0)
                     }
 
                     if result.id != recentBattleResults.last?.id {
@@ -390,80 +562,95 @@ struct BattleView: View {
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(CloseCutColors.card)
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .stroke(CloseCutColors.separator, lineWidth: 0.5)
             }
         }
     }
 
-    private var battleModesSection: some View {
-        battleSection(title: "Personal battles") {
+    // MARK: - Social Preview
+
+    private var socialPreviewSection: some View {
+        battleSection(
+            title: "Social battles",
+            subtitle: "Coming later"
+        ) {
             VStack(alignment: .leading, spacing: 14) {
-                Button {
-                    showOptionSelector = true
-                } label: {
-                    battleModeRow(
-                        icon: "shuffle",
-                        title: "Pick what to watch",
-                        status: canStartLocalBattle ? "Available now" : "Need 2 entries",
-                        message: "Choose 2+ options and let CloseCut randomly pick one."
-                    )
-                }
-                .buttonStyle(.plain)
-                .disabled(canStartLocalBattle == false)
-
-                Divider()
-                    .overlay(CloseCutColors.separator)
-
-                Button {
-                    showHeadToHeadBattle = true
-                } label: {
-                    battleModeRow(
-                        icon: "bolt.fill",
-                        title: "Movie vs Movie",
-                        status: canStartLocalBattle ? "Available now" : "Need 2 entries",
-                        message: "Put two titles head-to-head and choose what wins for you."
-                    )
-                }
-                .buttonStyle(.plain)
-                .disabled(canStartLocalBattle == false)
-            }
-        }
-    }
-
-    private var futureSocialSection: some View {
-        battleSection(title: "Social battles") {
-            VStack(alignment: .leading, spacing: 14) {
-                battleModeRow(
+                compactFutureRow(
                     icon: "person.2.fill",
                     title: "Friend Battle",
-                    status: "Coming later",
-                    message: "Compare two picks with one trusted person. Best for a two-person Circle."
+                    message: "Compare picks with one trusted person."
                 )
 
                 Divider()
                     .overlay(CloseCutColors.separator)
 
-                battleModeRow(
+                compactFutureRow(
                     icon: "person.3.fill",
                     title: "Circle Battle",
-                    status: "Coming later",
-                    message: "Vote privately with your Circle and pick a group winner."
+                    message: "Let a private Circle vote and choose a group winner."
                 )
             }
         }
     }
 
-    private var whyItMattersSection: some View {
-        battleSection(title: "Why Battle exists") {
-            Text("Battle turns your archive into a decision game. Use it to pick what to watch, compare favorites, and eventually decide with trusted people without turning CloseCut into a public social app.")
+    private func compactFutureRow(
+        icon: String,
+        title: String,
+        message: String
+    ) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textTertiary)
+                .frame(width: 32, height: 32)
+                .background(CloseCutColors.input)
+                .clipShape(SwiftUI.Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .opacity(0.86)
+    }
+
+    // MARK: - Product Note
+
+    private var productNoteSection: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "lock.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textTertiary)
+                .padding(.top, 2)
+
+            Text("Battle uses your private local archive. Results help you remember decisions, but they do not publish anything publicly.")
                 .font(.caption)
-                .foregroundStyle(CloseCutColors.textSecondary)
+                .foregroundStyle(CloseCutColors.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(CloseCutColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
     }
+
+    // MARK: - Shared UI
 
     private func battleStatPill(
         value: String,
@@ -486,10 +673,11 @@ struct BattleView: View {
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(CloseCutColors.textPrimary)
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(CloseCutColors.card)
+        .background(CloseCutColors.input.opacity(0.82))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -497,52 +685,24 @@ struct BattleView: View {
         }
     }
 
-    private func battleModeRow(
-        icon: String,
-        title: String,
-        status: String,
-        message: String
-    ) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(CloseCutColors.accentLight)
-                .frame(width: 32, height: 32)
-                .background(CloseCutColors.input)
-                .clipShape(SwiftUI.Circle())
-
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.textPrimary)
-
-                    Spacer()
-
-                    Text(status)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.textTertiary)
-                        .lineLimit(1)
-                }
-
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
     private func battleSection<Content: View>(
         title: String,
+        subtitle: String? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title.uppercased())
-                .font(.caption2.weight(.semibold))
-                .tracking(0.8)
-                .foregroundStyle(CloseCutColors.textTertiary)
-                .padding(.horizontal, 2)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                }
+            }
+            .padding(.horizontal, 2)
 
             VStack(alignment: .leading, spacing: 12) {
                 content()
@@ -550,13 +710,15 @@ struct BattleView: View {
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(CloseCutColors.card)
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .stroke(CloseCutColors.separator, lineWidth: 0.5)
             }
         }
     }
+
+    // MARK: - Text Helpers
 
     private func optionSubtitle(for entry: Entry) -> String {
         var parts: [String] = []
@@ -604,6 +766,8 @@ struct BattleView: View {
             return "Won a Circle Battle"
         }
     }
+
+    // MARK: - Actions
 
     private func pickRandomWinner() {
         guard selectedEntries.count >= 2 else {
