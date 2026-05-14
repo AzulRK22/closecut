@@ -19,13 +19,26 @@ private enum CircleDetailSegment: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .timeline:
-            return "Timeline"
+            return "Memories"
         case .quickPick:
-            return "QuickPick"
+            return "Watch Next"
         case .members:
-            return "Members"
+            return "People"
         case .activity:
             return "Activity"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .timeline:
+            return "film.stack.fill"
+        case .quickPick:
+            return "sparkles"
+        case .members:
+            return "person.2.fill"
+        case .activity:
+            return "bolt.fill"
         }
     }
 }
@@ -33,60 +46,62 @@ private enum CircleDetailSegment: String, CaseIterable, Identifiable {
 struct CircleDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    
+
     let circle: CloseCircle
     let membership: CircleMembership
     let currentUserId: String
     let currentUserDisplayName: String
-    
+
     @State private var selectedSegment: CircleDetailSegment = .timeline
     @State private var copiedInviteCode = false
-    
+
     @State private var isRefreshing = false
     @State private var isPullingSharedEntries = false
-    
+
     @State private var refreshedCircle: CloseCircle?
     @State private var members: [CircleMember] = []
     @State private var activities: [CircleActivity] = []
-    
+
     @State private var refreshErrorMessage: String?
     @State private var sharedEntriesErrorMessage: String?
     @State private var membersErrorMessage: String?
     @State private var activityErrorMessage: String?
-    
+
     @State private var showLeaveConfirmation = false
     @State private var isLeavingCircle = false
-    
+
     @State private var showEditCircleSheet = false
     @State private var showDeleteConfirmation = false
     @State private var isSavingCircle = false
     @State private var isDeletingCircle = false
-    
+
     @State private var circleActionErrorMessage: String?
-    
+
+    @StateObject private var circleQuickPickViewModel = HomeQuickPickViewModel()
+
     @Query(sort: \LocalEntry.watchedAt, order: .reverse)
     private var localEntries: [LocalEntry]
-    
+
     private let circleRemoteDataSource = CircleRemoteDataSource()
     private let circleService = CircleService()
     private let circleRepository = CircleRepository()
     private let entryRemoteDataSource = EntryRemoteDataSource()
     private let entryRepository = EntryRepository()
-    
+
     private var displayedCircle: CloseCircle {
         refreshedCircle ?? circle
     }
-    
+
     private var displayedCircleId: String {
         displayedCircle.id.trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    
+
     private var canUseCircle: Bool {
         displayedCircleId.isEmpty == false &&
         membership.isActive &&
         displayedCircle.deletedAt == nil
     }
-    
+
     private var sharedEntries: [Entry] {
         localEntries
             .map { $0.domain }
@@ -99,89 +114,134 @@ struct CircleDetailView: View {
                 first.watchedAt > second.watchedAt
             }
     }
-    
+
     private var displayedMemberCount: Int {
         if members.isEmpty == false {
             return members.count
         }
-        
+
         return max(displayedCircle.memberIds.count, 1)
     }
-    
+
     private var displayedMemberCountText: String {
         displayedMemberCount == 1 ? "1 member" : "\(displayedMemberCount) members"
     }
-    
+
     private var circleDescriptionText: String {
         if let description = displayedCircle.description,
            description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
             return description
         }
-        
+
         return "A private space for shared watch memories."
     }
-    
+
     private var sortedMembers: [CircleMember] {
         members.sorted { first, second in
             if first.role != second.role {
                 return first.role == .owner
             }
-            
+
             if first.userId == currentUserId {
                 return true
             }
-            
+
             if second.userId == currentUserId {
                 return false
             }
-            
+
             return first.displayName.localizedCaseInsensitiveCompare(second.displayName) == .orderedAscending
         }
     }
-    
+
     private var canShowOwnerActions: Bool {
         membership.isOwner && canUseCircle
     }
-    
+
     private var canShowMemberActions: Bool {
         membership.isOwner == false && canUseCircle
     }
+
+    private var circleQuickPickStableUserId: String {
+        "circle-\(displayedCircleId)"
+    }
+
+    private var circleQuickPickRefreshKey: String {
+        sharedEntries
+            .map { entry in
+                [
+                    entry.id,
+                    "\(entry.updatedAt.timeIntervalSince1970)",
+                    "\(entry.tmdbId ?? -1)",
+                    entry.quickSentiment?.rawValue ?? "",
+                    entry.visibility.rawValue,
+                    entry.sharedCircleIds.joined(separator: ",")
+                ]
+                .joined(separator: "-")
+            }
+            .joined(separator: "|")
+    }
+
+    private var recentSharedEntries: [Entry] {
+        Array(sharedEntries.prefix(3))
+    }
+
+    private var heroInitials: String {
+        let words = displayedCircle.name
+            .split(separator: " ")
+            .map(String.init)
+
+        if words.count >= 2 {
+            return "\(words[0].prefix(1))\(words[1].prefix(1))".uppercased()
+        }
+
+        return String(displayedCircle.name.prefix(2)).uppercased()
+    }
+
     var body: some View {
         ZStack {
             CloseCutColors.backgroundPrimary
                 .ignoresSafeArea()
-            
+
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    header
-                    
+                LazyVStack(alignment: .leading, spacing: 18) {
+                    hero
+
                     statusBanners
-                    
-                    Picker("Circle detail section", selection: $selectedSegment) {
-                        ForEach(CircleDetailSegment.allCases) { segment in
-                            Text(segment.title)
-                                .tag(segment)
-                        }
+
+                    quickStatsStrip
+
+                    if canUseCircle {
+                        premiumSegmentControl
                     }
-                    .pickerStyle(.segmented)
-                    .disabled(canUseCircle == false)
-                    
+
                     selectedContent
-                    
+
                     Spacer(minLength: 24)
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
             }
+            .refreshable {
+                await refreshCircleDetail()
+                generateStableCircleQuickPick()
+            }
         }
-        .navigationTitle("Circle")
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .tint(CloseCutColors.accent)
         .preferredColorScheme(.dark)
         .task {
             await refreshCircleDetail()
+            generateStableCircleQuickPick()
         }
-        .refreshable {
-            await refreshCircleDetail()
+        .onAppear {
+            generateStableCircleQuickPick()
+        }
+        .onChange(of: circleQuickPickRefreshKey) { _, _ in
+            generateStableCircleQuickPick()
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -199,7 +259,7 @@ struct CircleDetailView: View {
                 }
             }
             .disabled(isLeavingCircle)
-            
+
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("You’ll stop seeing this Circle in your list. Entries shared with this Circle will no longer appear in your Circle space.")
@@ -232,7 +292,7 @@ struct CircleDetailView: View {
                 }
             }
             .disabled(isDeletingCircle)
-            
+
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will archive the Circle and remove it from members’ active Circle lists. Personal entries remain private and are not deleted.")
@@ -246,9 +306,9 @@ struct CircleDetailView: View {
             Text(circleActionErrorMessage ?? "Unknown error.")
         }
     }
-    
+
     // MARK: - Toolbar
-    
+
     @ViewBuilder
     private var actionsMenu: some View {
         if canShowOwnerActions || canShowMemberActions {
@@ -259,7 +319,7 @@ struct CircleDetailView: View {
                     } label: {
                         Label("Edit Circle", systemImage: "pencil")
                     }
-                    
+
                     Button(role: .destructive) {
                         showDeleteConfirmation = true
                     } label: {
@@ -269,7 +329,7 @@ struct CircleDetailView: View {
                         )
                     }
                 }
-                
+
                 if canShowMemberActions {
                     Button(role: .destructive) {
                         showLeaveConfirmation = true
@@ -282,35 +342,42 @@ struct CircleDetailView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(CloseCutColors.accent)
             }
             .accessibilityLabel("Circle actions")
             .disabled(isLeavingCircle || isSavingCircle || isDeletingCircle)
         }
     }
-    
-    // MARK: - Header
-    
-    private var header: some View {
+
+    // MARK: - Premium Hero
+
+    private var hero: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "person.2.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.accentLight)
-                    .frame(width: 42, height: 42)
-                    .background(CloseCutColors.input)
-                    .clipShape(SwiftUI.Circle())
-                
-                VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    CloseCutColors.accent.opacity(0.28),
+                                    CloseCutColors.input
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 62, height: 62)
+
+                    Text(heroInitials)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(CloseCutColors.accentLight)
+                }
+
+                VStack(alignment: .leading, spacing: 7) {
                     HStack(spacing: 6) {
-                        Text(membership.role.displayName)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(membership.isOwner ? CloseCutColors.accentLight : CloseCutColors.textTertiary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(CloseCutColors.input)
-                            .clipShape(Capsule())
-                        
+                        rolePill
+
                         Text(displayedMemberCountText)
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(CloseCutColors.textTertiary)
@@ -318,7 +385,7 @@ struct CircleDetailView: View {
                             .padding(.vertical, 5)
                             .background(CloseCutColors.input)
                             .clipShape(Capsule())
-                        
+
                         if canUseCircle == false {
                             Text("Inactive")
                                 .font(.caption2.weight(.semibold))
@@ -329,69 +396,110 @@ struct CircleDetailView: View {
                                 .clipShape(Capsule())
                         }
                     }
-                    
+
                     Text(displayedCircle.name)
-                        .font(.title2.weight(.semibold))
+                        .font(.largeTitle.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
+                        .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
-                    
+
                     Text(circleDescriptionText)
                         .font(.subheadline)
                         .foregroundStyle(CloseCutColors.textSecondary)
+                        .lineSpacing(3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                
-                Spacer()
+
+                Spacer(minLength: 0)
             }
-            
-            HStack(spacing: 8) {
-                Image(systemName: "crown.fill")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textTertiary)
-                
-                Text("Owner: \(displayedCircle.ownerDisplayName)")
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textTertiary)
-                    .lineLimit(1)
-                
-                Spacer()
+
+            if recentSharedEntries.isEmpty == false {
+                recentSharedPosterStrip
             }
-            
+
             inviteCodeBlock
         }
-        .padding(16)
+        .padding(18)
         .background(CloseCutColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
+        .shadow(color: .black.opacity(0.12), radius: 18, x: 0, y: 10)
     }
-    
+
+    private var rolePill: some View {
+        Text(membership.role.displayName)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(membership.isOwner ? CloseCutColors.accentLight : CloseCutColors.textTertiary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(CloseCutColors.input)
+            .clipShape(Capsule())
+    }
+
+    private var recentSharedPosterStrip: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: -10) {
+                ForEach(recentSharedEntries) { entry in
+                    CircleSharedPosterView(
+                        entry: entry,
+                        width: 42,
+                        height: 62,
+                        cornerRadius: 10
+                    )
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Recently shared")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+
+                Text(sharedEntries.count == 1 ? "1 memory in this Circle" : "\(sharedEntries.count) memories in this Circle")
+                    .font(.caption2)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+            }
+
+            Spacer()
+        }
+        .padding(12)
+        .background(CloseCutColors.input.opacity(0.75))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
     private var inviteCodeBlock: some View {
         HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
+            Image(systemName: "ticket.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CloseCutColors.accentLight)
+                .frame(width: 30, height: 30)
+                .background(CloseCutColors.input)
+                .clipShape(SwiftUI.Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
                 Text("Invite code")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textTertiary)
                     .textCase(.uppercase)
                     .tracking(0.8)
-                
+
                 Text(displayedCircle.inviteCode)
                     .font(.subheadline.monospaced().weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
                     .lineLimit(1)
             }
-            
+
             Spacer()
-            
+
             Button {
                 copyInviteCode()
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: copiedInviteCode ? "checkmark" : "doc.on.doc")
                         .font(.caption.weight(.semibold))
-                    
+
                     Text(copiedInviteCode ? "Copied" : "Copy")
                         .font(.caption.weight(.semibold))
                 }
@@ -405,13 +513,113 @@ struct CircleDetailView: View {
             .disabled(displayedCircle.inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .accessibilityLabel("Copy invite code")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(CloseCutColors.input)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(12)
+        .background(CloseCutColors.input.opacity(0.76))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
+
+    // MARK: - Stats
+
+    private var quickStatsStrip: some View {
+        HStack(spacing: 10) {
+            statPill(
+                value: "\(sharedEntries.count)",
+                label: sharedEntries.count == 1 ? "memory" : "memories",
+                icon: "film.stack.fill"
+            )
+
+            statPill(
+                value: "\(displayedMemberCount)",
+                label: displayedMemberCount == 1 ? "person" : "people",
+                icon: "person.2.fill"
+            )
+
+            statPill(
+                value: "\(activities.count)",
+                label: "updates",
+                icon: "bolt.fill"
+            )
+        }
+    }
+
+    private func statPill(
+        value: String,
+        label: String,
+        icon: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textTertiary)
+
+                Text(label)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .lineLimit(1)
+            }
+
+            Text(value)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textPrimary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(CloseCutColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(CloseCutColors.separator, lineWidth: 0.5)
+        }
+    }
+
+    // MARK: - Segment Control
+
+    private var premiumSegmentControl: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(CircleDetailSegment.allCases) { segment in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            selectedSegment = segment
+                        }
+                    } label: {
+                        segmentChip(segment)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(segment.title)
+                    .accessibilityAddTraits(selectedSegment == segment ? .isSelected : [])
+                }
+            }
+        }
+    }
+
+    private func segmentChip(
+        _ segment: CircleDetailSegment
+    ) -> some View {
+        let isSelected = selectedSegment == segment
+
+        return HStack(spacing: 7) {
+            Image(systemName: segment.systemImage)
+                .font(.caption.weight(.semibold))
+
+            Text(segment.title)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(isSelected ? .white : CloseCutColors.textSecondary)
+        .padding(.horizontal, 12)
+        .frame(height: 38)
+        .background(isSelected ? CloseCutColors.accent : CloseCutColors.card)
+        .clipShape(Capsule())
+        .overlay {
+            Capsule()
+                .stroke(isSelected ? CloseCutColors.accentLight : CloseCutColors.separator, lineWidth: 0.5)
+        }
+    }
+
     // MARK: - Status Banners
-    
+
     @ViewBuilder
     private var statusBanners: some View {
         if isRefreshing {
@@ -420,35 +628,35 @@ struct CircleDetailView: View {
                 style: .neutral
             )
         }
-        
+
         if isPullingSharedEntries {
             SyncResultBanner(
                 message: "Loading shared entries…",
                 style: .neutral
             )
         }
-        
+
         if let refreshErrorMessage {
             SyncResultBanner(
                 message: refreshErrorMessage,
                 style: .warning
             )
         }
-        
+
         if let sharedEntriesErrorMessage {
             SyncResultBanner(
                 message: sharedEntriesErrorMessage,
                 style: .warning
             )
         }
-        
+
         if let membersErrorMessage {
             SyncResultBanner(
                 message: membersErrorMessage,
                 style: .warning
             )
         }
-        
+
         if let activityErrorMessage {
             SyncResultBanner(
                 message: activityErrorMessage,
@@ -456,68 +664,137 @@ struct CircleDetailView: View {
             )
         }
     }
-    
+
     // MARK: - Selected Content
-    
+
     @ViewBuilder
     private var selectedContent: some View {
         switch selectedSegment {
         case .timeline:
             timelineSection
-            
+
         case .quickPick:
-            quickPickPlaceholder
-            
+            CircleQuickPickView(
+                sharedEntries: sharedEntries,
+                memberCount: displayedMemberCount,
+                state: circleQuickPickViewModel.state,
+                onShowAnother: {
+                    Task {
+                        _ = await circleQuickPickViewModel.showAnotherAndReturnState(
+                            history: sharedEntries
+                        )
+                    }
+                },
+                onOpenTimeline: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        selectedSegment = .timeline
+                    }
+                }
+            )
+
         case .members:
             membersSection
-            
+
         case .activity:
             activitySection
         }
     }
-    
+
     private var timelineSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionTitle(
+                title: "Shared memories",
+                subtitle: sharedEntries.count == 1
+                    ? "1 title shared with this Circle"
+                    : "\(sharedEntries.count) titles shared with this Circle",
+                trailing: sharedEntries.isEmpty ? nil : "Newest first"
+            )
+
             if isPullingSharedEntries && sharedEntries.isEmpty {
-                DetailSectionCard(title: "Shared timeline") {
-                    HStack(spacing: 10) {
-                        ProgressView()
-                        
-                        Text("Loading entries shared with this Circle…")
-                            .font(.caption)
-                            .foregroundStyle(CloseCutColors.textSecondary)
-                        
-                        Spacer()
-                    }
-                }
+                loadingSharedEntriesCard
             } else if sharedEntries.isEmpty {
                 EmptyStateView(
-                    title: "Nothing shared yet",
-                    message: "Share entries from your Personal Timeline to start building this Circle’s shared history.",
+                    title: "No shared memories yet",
+                    message: "Share a title from your Personal Timeline to make this Circle feel alive. Only selected entries appear here.",
                     systemImage: "film.stack",
                     actionTitle: nil,
                     action: nil
                 )
             } else {
-                DetailSectionCard(title: "Shared timeline") {
-                    VStack(spacing: 12) {
-                        ForEach(sharedEntries) { entry in
-                            NavigationLink {
-                                CircleEntryReadOnlyDetailView(
-                                    entry: entry,
-                                    currentUserId: currentUserId,
-                                    currentUserDisplayName: currentUserDisplayName,
-                                    circleId: displayedCircleId
-                                )
-                            } label: {
-                                CircleTimelineEntryRow(
-                                    entry: entry,
-                                    currentUserId: currentUserId
-                                )
-                            }
-                            .buttonStyle(.plain)
-                            
-                            if entry.id != sharedEntries.last?.id {
+                LazyVStack(spacing: 12) {
+                    ForEach(sharedEntries) { entry in
+                        NavigationLink {
+                            CircleEntryReadOnlyDetailView(
+                                entry: entry,
+                                currentUserId: currentUserId,
+                                currentUserDisplayName: currentUserDisplayName,
+                                circleId: displayedCircleId
+                            )
+                        } label: {
+                            CircleTimelineEntryCard(
+                                entry: entry,
+                                currentUserId: currentUserId
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private var loadingSharedEntriesCard: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+
+            Text("Loading entries shared with this Circle…")
+                .font(.caption)
+                .foregroundStyle(CloseCutColors.textSecondary)
+
+            Spacer()
+        }
+        .padding(16)
+        .background(CloseCutColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(CloseCutColors.separator, lineWidth: 0.5)
+        }
+    }
+
+    private var membersSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionTitle(
+                title: "People",
+                subtitle: "Only these members can see entries shared with this Circle.",
+                trailing: displayedMemberCountText
+            )
+
+            DetailSectionCard(title: displayedMemberCountText) {
+                VStack(spacing: 12) {
+                    if members.isEmpty && isRefreshing {
+                        HStack(spacing: 10) {
+                            ProgressView()
+
+                            Text("Loading members…")
+                                .font(.caption)
+                                .foregroundStyle(CloseCutColors.textSecondary)
+
+                            Spacer()
+                        }
+                    } else if members.isEmpty {
+                        Text("Circle members will appear here once this space is refreshed.")
+                            .font(.caption)
+                            .foregroundStyle(CloseCutColors.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        ForEach(sortedMembers) { member in
+                            CircleMemberRowView(
+                                member: member,
+                                currentUserId: currentUserId
+                            )
+
+                            if member.id != sortedMembers.last?.id {
                                 Divider()
                                     .overlay(CloseCutColors.separator)
                             }
@@ -527,93 +804,84 @@ struct CircleDetailView: View {
             }
         }
     }
-    
-    private var quickPickPlaceholder: some View {
-        EmptyStateView(
-            title: "Group QuickPick is coming",
-            message: "Once this Circle has enough shared taste history, CloseCut will suggest what this group may want to watch together.",
-            systemImage: "sparkles",
-            actionTitle: nil,
-            action: nil
+
+    private var activitySection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionTitle(
+                title: "Recent activity",
+                subtitle: "A lightweight history of changes inside this Circle.",
+                trailing: activities.isEmpty ? nil : "\(activities.count)"
+            )
+
+            DetailSectionCard(title: "Activity") {
+                VStack(spacing: 12) {
+                    if activities.isEmpty && isRefreshing {
+                        HStack(spacing: 10) {
+                            ProgressView()
+
+                            Text("Loading activity…")
+                                .font(.caption)
+                                .foregroundStyle(CloseCutColors.textSecondary)
+
+                            Spacer()
+                        }
+                    } else if activities.isEmpty {
+                        Text("Circle updates, joins, edits, and sharing activity will appear here.")
+                            .font(.caption)
+                            .foregroundStyle(CloseCutColors.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        ForEach(activities) { activity in
+                            CircleActivityRowView(activity: activity)
+
+                            if activity.id != activities.last?.id {
+                                Divider()
+                                    .overlay(CloseCutColors.separator)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func sectionTitle(
+        title: String,
+        subtitle: String,
+        trailing: String?
+    ) -> some View {
+        HStack(alignment: .bottom) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+
+            if let trailing {
+                Text(trailing)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textTertiary)
+            }
+        }
+        .padding(.horizontal, 2)
+    }
+
+    // MARK: - QuickPick
+
+    private func generateStableCircleQuickPick() {
+        circleQuickPickViewModel.generateStablePick(
+            userId: circleQuickPickStableUserId,
+            history: sharedEntries
         )
     }
-    
-    private var membersSection: some View {
-        DetailSectionCard(title: displayedMemberCountText) {
-            VStack(spacing: 12) {
-                Text("People who can see entries intentionally shared with this Circle.")
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textTertiary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                
-                if members.isEmpty && isRefreshing {
-                    HStack(spacing: 10) {
-                        ProgressView()
-                        
-                        Text("Loading members…")
-                            .font(.caption)
-                            .foregroundStyle(CloseCutColors.textSecondary)
-                        
-                        Spacer()
-                    }
-                } else if members.isEmpty {
-                    Text("Circle members will appear here once this space is refreshed.")
-                        .font(.caption)
-                        .foregroundStyle(CloseCutColors.textSecondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    ForEach(sortedMembers) { member in
-                        CircleMemberRowView(
-                            member: member,
-                            currentUserId: currentUserId
-                        )
-                        
-                        if member.id != sortedMembers.last?.id {
-                            Divider()
-                                .overlay(CloseCutColors.separator)
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    private var activitySection: some View {
-        DetailSectionCard(title: "Recent activity") {
-            VStack(spacing: 12) {
-                Text("A lightweight history of changes inside this Circle.")
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textTertiary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                
-                if activities.isEmpty && isRefreshing {
-                    HStack(spacing: 10) {
-                        ProgressView()
-                        
-                        Text("Loading activity…")
-                            .font(.caption)
-                            .foregroundStyle(CloseCutColors.textSecondary)
-                        
-                        Spacer()
-                    }
-                } else if activities.isEmpty {
-                    Text("Circle updates, joins, edits, and sharing activity will appear here.")
-                        .font(.caption)
-                        .foregroundStyle(CloseCutColors.textSecondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    ForEach(activities) { activity in
-                        CircleActivityRowView(activity: activity)
-                        
-                        if activity.id != activities.last?.id {
-                            Divider()
-                                .overlay(CloseCutColors.separator)
-                        }
-                    }
-                }
-            }
-        }
-    }
+
     // MARK: - Data Loading
 
     private func refreshCircleDetail() async {
