@@ -8,55 +8,19 @@
 import SwiftUI
 
 struct BattlePickResultCard: View {
-    let winner: Entry
+    let winner: BattleCandidate
     let optionCount: Int
     let onPickAgain: () -> Void
     let onClear: () -> Void
 
-    private var subtitle: String {
-        var parts: [String] = []
-
-        if let releaseYear = winner.releaseYear {
-            parts.append("\(releaseYear)")
-        }
-
-        parts.append(winner.type.displayName)
-
-        if let rating = winner.tmdbRating, rating > 0 {
-            parts.append(String(format: "%.1f TMDB", rating))
-        }
-
-        if winner.sourceType == .quickAdd {
-            parts.append("Quick Add")
-        }
-
-        return parts.joined(separator: " • ")
-    }
-
-    private var moodText: String {
-        let cleanedMood = winner.mood.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if cleanedMood.isEmpty {
-            return winner.quickSentiment?.displayName ?? "Selected memory"
-        }
-
-        return cleanedMood
-    }
-
     private var resultDescription: String {
-        if let takeaway = cleanOptional(winner.takeaway) {
-            return takeaway
-        }
-
-        if let overview = cleanOptional(winner.overview) {
-            return overview
-        }
-
-        return "CloseCut picked from your shortlist. Keep it, reroll, or clear the result and build a new Battle."
+        winner.descriptionText
     }
 
     private var revealLabel: String {
-        optionCount == 2 ? "Head-to-head energy" : "Picked from \(optionCount) options"
+        BattleResultDisplayHelper.resultLabel(
+            optionCount: optionCount
+        )
     }
 
     var body: some View {
@@ -85,7 +49,7 @@ struct BattlePickResultCard: View {
         }
         .shadow(color: .black.opacity(0.18), radius: 18, x: 0, y: 12)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Tonight’s pick is \(winner.displayTitle). \(subtitle).")
+        .accessibilityLabel("Tonight’s pick is \(winner.displayTitle). \(winner.metadataText).")
     }
 
     private var cardBackground: some ShapeStyle {
@@ -140,8 +104,8 @@ struct BattlePickResultCard: View {
     private var hero: some View {
         HStack(alignment: .top, spacing: 14) {
             ZStack(alignment: .bottomTrailing) {
-                EntryPosterThumbnailView(
-                    entry: winner,
+                BattleCandidatePosterView(
+                    candidate: winner,
                     width: 88,
                     height: 130,
                     cornerRadius: 18
@@ -166,7 +130,7 @@ struct BattlePickResultCard: View {
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text(subtitle)
+                Text(winner.metadataText)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .lineLimit(2)
@@ -183,13 +147,11 @@ struct BattlePickResultCard: View {
                     )
                 }
 
-                if winner.sourceType == .quickAdd {
-                    resultPill(
-                        icon: "bolt.fill",
-                        text: "Quick Add memory",
-                        isHighlighted: true
-                    )
-                }
+                resultPill(
+                    icon: winner.source.systemImage,
+                    text: winner.sourceLabelText,
+                    isHighlighted: winner.source != .archive
+                )
             }
 
             Spacer(minLength: 0)
@@ -205,7 +167,7 @@ struct BattlePickResultCard: View {
             HStack(spacing: 8) {
                 resultPill(
                     icon: "sparkle",
-                    text: moodText,
+                    text: winner.primarySignalText,
                     isHighlighted: true
                 )
 
@@ -216,7 +178,7 @@ struct BattlePickResultCard: View {
                     )
                 }
 
-                if winner.visibility == .circle {
+                if winner.isShared {
                     resultPill(
                         icon: "person.2.fill",
                         text: "Shared"
@@ -274,15 +236,5 @@ struct BattlePickResultCard: View {
         .padding(.vertical, 6)
         .background(CloseCutColors.input)
         .clipShape(Capsule())
-    }
-
-    private func cleanOptional(_ value: String?) -> String? {
-        guard let value else {
-            return nil
-        }
-
-        let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        return cleaned.isEmpty ? nil : cleaned
     }
 }

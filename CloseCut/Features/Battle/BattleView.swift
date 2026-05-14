@@ -14,13 +14,16 @@ struct BattleView: View {
     let user: AuthUser
     let profile: UserProfile
 
-    @State private var showOptionSelector = false
-    @State private var selectedEntries: [Entry] = []
-    @State private var pickedEntry: Entry?
+    @State private var showPickTonightSheet = false
+    @State private var selectedCandidates: [BattleCandidate] = []
+    @State private var pickedCandidate: BattleCandidate?
+
     @State private var showHeadToHeadBattle = false
     @State private var battleErrorMessage: String?
     @State private var showClearResultsConfirmation = false
     @State private var isClearingResults = false
+
+    @State private var noRepeatPolicy = BattleNoRepeatPolicy()
 
     @Query(sort: \LocalEntry.watchedAt, order: .reverse)
     private var localEntries: [LocalEntry]
@@ -29,14 +32,6 @@ struct BattleView: View {
     private var localBattleResults: [LocalBattleResult]
 
     private let battleResultRepository = BattleResultRepository()
-
-    private var selectedEntryIds: Set<String> {
-        Set(selectedEntries.map { $0.id })
-    }
-
-    private var canPickRandomWinner: Bool {
-        selectedEntries.count >= 2
-    }
 
     private var entries: [Entry] {
         localEntries
@@ -55,8 +50,16 @@ struct BattleView: View {
             }
     }
 
+    private var archiveCandidates: [BattleCandidate] {
+        BattleCandidateMapper.candidates(from: eligibleEntries)
+    }
+
     private var canStartLocalBattle: Bool {
-        eligibleEntries.count >= 2
+        archiveCandidates.count >= 2
+    }
+
+    private var canPickRandomWinner: Bool {
+        selectedCandidates.count >= 2
     }
 
     private var recentBattleResults: [BattleResult] {
@@ -77,13 +80,15 @@ struct BattleView: View {
     }
 
     private var readinessTitle: String {
-        canStartLocalBattle ? "Ready to play" : "Add one more title"
+        archiveCandidates.count >= 2
+            ? "Ready to play"
+            : "Use TMDB or add another title"
     }
 
     private var readinessMessage: String {
-        canStartLocalBattle
-            ? "Your archive has enough memories to run a pick or compare two titles."
-            : "Battle unlocks when your Personal Timeline has at least two movies or series."
+        archiveCandidates.count >= 2
+            ? "Your archive is ready, and you can also add new TMDB or manual options."
+            : "You can still use Pick for Tonight with TMDB or manual ideas even if your archive is small."
     }
 
     var body: some View {
@@ -104,16 +109,16 @@ struct BattleView: View {
 
                     primaryBattleCard
 
-                    if let pickedEntry {
+                    if let pickedCandidate {
                         BattlePickResultCard(
-                            winner: pickedEntry,
-                            optionCount: selectedEntries.count,
+                            winner: pickedCandidate,
+                            optionCount: selectedCandidates.count,
                             onPickAgain: pickRandomWinner,
                             onClear: clearBattleSelection
                         )
                     }
 
-                    if selectedEntries.isEmpty == false {
+                    if selectedCandidates.isEmpty == false {
                         selectedOptionsSection
                     }
 
@@ -134,26 +139,24 @@ struct BattleView: View {
         .navigationTitle("Battle")
         .navigationBarTitleDisplayMode(.inline)
         .preferredColorScheme(.dark)
-        .sheet(isPresented: $showOptionSelector) {
-            BattleOptionSelectorSheet(
-                entries: eligibleEntries,
-                initialSelection: selectedEntryIds,
+        .sheet(isPresented: $showPickTonightSheet) {
+            BattlePickTonightSheet(
+                archiveEntries: eligibleEntries,
+                initialSelection: selectedCandidates,
                 onCancel: {
-                    showOptionSelector = false
+                    showPickTonightSheet = false
                 },
-                onConfirm: { entries in
-                    selectedEntries = entries
-                    pickedEntry = nil
+                onConfirm: { candidates in
+                    selectedCandidates = BattleCandidateMapper.dedupe(candidates)
+                    pickedCandidate = nil
                     battleErrorMessage = nil
-                    showOptionSelector = false
+                    showPickTonightSheet = false
 
-                    if entries.count >= 2 {
+                    if selectedCandidates.count >= 2 {
                         pickRandomWinner()
                     }
                 }
             )
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showHeadToHeadBattle) {
             BattleHeadToHeadSheet(
@@ -193,12 +196,12 @@ struct BattleView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("Tonight, let your archive decide.")
+                    Text("Tonight, make choosing feel like a game.")
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("Turn your watch history into a game: pick what to watch, compare favorites, or settle a decision without endless scrolling.")
+                    Text("Use your archive, search anything on TMDB, or add a quick idea. Battle helps you stop scrolling and pick.")
                         .font(.subheadline)
                         .foregroundStyle(CloseCutColors.textSecondary)
                         .lineSpacing(3)
@@ -212,7 +215,7 @@ struct BattleView: View {
                         .fill(CloseCutColors.accent.opacity(0.18))
                         .frame(width: 48, height: 48)
 
-                    Image(systemName: "bolt.fill")
+                    Image(systemName: "gamecontroller.fill")
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(CloseCutColors.accentLight)
                 }
@@ -220,21 +223,21 @@ struct BattleView: View {
 
             HStack(spacing: 10) {
                 battleStatPill(
-                    value: "\(eligibleEntries.count)",
-                    label: "eligible",
+                    value: "\(archiveCandidates.count)",
+                    label: "archive",
                     icon: "film.stack"
+                )
+
+                battleStatPill(
+                    value: "\(selectedCandidates.count)",
+                    label: "shortlist",
+                    icon: "checkmark.circle.fill"
                 )
 
                 battleStatPill(
                     value: "\(recentBattleResults.count)",
                     label: "results",
                     icon: "trophy.fill"
-                )
-
-                battleStatPill(
-                    value: canStartLocalBattle ? "Ready" : "Soon",
-                    label: "status",
-                    icon: canStartLocalBattle ? "checkmark.circle.fill" : "clock.fill"
                 )
             }
 
@@ -265,9 +268,9 @@ struct BattleView: View {
 
     private var readinessStrip: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: canStartLocalBattle ? "gamecontroller.fill" : "sparkles")
+            Image(systemName: "sparkles")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(canStartLocalBattle ? CloseCutColors.accentLight : CloseCutColors.textTertiary)
+                .foregroundStyle(CloseCutColors.accentLight)
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 3) {
@@ -288,7 +291,9 @@ struct BattleView: View {
         .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
     }
 
-    private func latestResultStrip(_ result: BattleResult) -> some View {
+    private func latestResultStrip(
+        _ result: BattleResult
+    ) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: result.mode.systemImage)
                 .font(.caption.weight(.semibold))
@@ -300,7 +305,7 @@ struct BattleView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
 
-                Text("\(result.winnerTitle) • \(resultSubtitle(for: result))")
+                Text("\(result.winnerTitle) • \(BattleResultDisplayHelper.subtitle(for: result))")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .lineLimit(2)
@@ -314,149 +319,52 @@ struct BattleView: View {
         .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
     }
 
-    // MARK: - Primary Battle Card
+    // MARK: - Primary Modes
 
     private var primaryBattleCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Choose a mode")
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textPrimary)
-
-                Text("Start simple. Battle works best when it feels like a quick decision, not another form.")
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Button {
-                showOptionSelector = true
-            } label: {
-                premiumModeRow(
-                    icon: "shuffle",
-                    title: "Pick for tonight",
-                    badge: canStartLocalBattle ? "Available now" : "Need 2 titles",
-                    message: "Choose 2+ options from your archive and let CloseCut pick one.",
+        BattleSectionCard(
+            title: "Choose a game mode",
+            subtitle: "Battle should feel fast, playful, and useful."
+        ) {
+            VStack(alignment: .leading, spacing: 14) {
+                BattleModeCard(
+                    mode: .pickTonight,
                     isPrimary: true,
-                    isEnabled: canStartLocalBattle
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(canStartLocalBattle == false)
-
-            Divider()
-                .overlay(CloseCutColors.separator)
-
-            Button {
-                showHeadToHeadBattle = true
-            } label: {
-                premiumModeRow(
-                    icon: "bolt.fill",
-                    title: "Movie vs Movie",
-                    badge: canStartLocalBattle ? "Available now" : "Need 2 titles",
-                    message: "Put two titles head-to-head and choose what wins for you.",
-                    isPrimary: false,
-                    isEnabled: canStartLocalBattle
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(canStartLocalBattle == false)
-        }
-        .padding(16)
-        .background(CloseCutColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(CloseCutColors.separator, lineWidth: 0.5)
-        }
-    }
-
-    private func premiumModeRow(
-        icon: String,
-        title: String,
-        badge: String,
-        message: String,
-        isPrimary: Bool,
-        isEnabled: Bool
-    ) -> some View {
-        HStack(alignment: .top, spacing: 13) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .fill(isPrimary && isEnabled ? CloseCutColors.accent.opacity(0.22) : CloseCutColors.input)
-                    .frame(width: 46, height: 46)
-
-                Image(systemName: icon)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(isEnabled ? CloseCutColors.accentLight : CloseCutColors.textTertiary)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(isEnabled ? CloseCutColors.textPrimary : CloseCutColors.textTertiary)
-                        .lineLimit(1)
-
-                    Spacer(minLength: 8)
-
-                    Text(badge)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(isEnabled ? CloseCutColors.accentLight : CloseCutColors.textTertiary)
-                        .lineLimit(1)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(CloseCutColors.input)
-                        .clipShape(Capsule())
+                    isEnabled: true
+                ) {
+                    showPickTonightSheet = true
                 }
 
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+                Divider()
+                    .overlay(CloseCutColors.separator)
 
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(isEnabled ? CloseCutColors.textTertiary : CloseCutColors.inactive)
-                .padding(.top, 17)
+                BattleModeCard(
+                    mode: .headToHead,
+                    isPrimary: false,
+                    isEnabled: canStartLocalBattle
+                ) {
+                    showHeadToHeadBattle = true
+                }
+            }
         }
-        .contentShape(Rectangle())
-        .opacity(isEnabled ? 1 : 0.65)
     }
 
     // MARK: - Selected Options
 
     private var selectedOptionsSection: some View {
-        battleSection(
+        BattleSectionCard(
             title: "Current shortlist",
-            subtitle: "\(selectedEntries.count) options selected"
+            subtitle: "\(selectedCandidates.count) options selected"
         ) {
             VStack(alignment: .leading, spacing: 12) {
-                ForEach(selectedEntries) { entry in
-                    HStack(alignment: .top, spacing: 10) {
-                        EntryPosterThumbnailView(
-                            entry: entry,
-                            width: 42,
-                            height: 62,
-                            cornerRadius: 10
-                        )
+                ForEach(selectedCandidates) { candidate in
+                    BattleCandidateRow(
+                        candidate: candidate,
+                        isSelected: true,
+                        trailingStyle: .none
+                    ) {}
 
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(entry.title)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(CloseCutColors.textPrimary)
-                                .lineLimit(2)
-
-                            Text(optionSubtitle(for: entry))
-                                .font(.caption)
-                                .foregroundStyle(CloseCutColors.textSecondary)
-                                .lineLimit(1)
-                        }
-
-                        Spacer(minLength: 0)
-                    }
-
-                    if entry.id != selectedEntries.last?.id {
+                    if candidate.id != selectedCandidates.last?.id {
                         Divider()
                             .overlay(CloseCutColors.separator)
                     }
@@ -464,7 +372,7 @@ struct BattleView: View {
 
                 HStack(spacing: 10) {
                     Button {
-                        showOptionSelector = true
+                        showPickTonightSheet = true
                     } label: {
                         Text("Change options")
                             .font(.caption.weight(.semibold))
@@ -501,11 +409,11 @@ struct BattleView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Recent results")
+                    Text("Recent archive results")
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
 
-                    Text("Your last local Battle decisions.")
+                    Text("Saved results from archive-based Battles.")
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textSecondary)
                 }
@@ -526,32 +434,7 @@ struct BattleView: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(recentBattleResults) { result in
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: result.mode.systemImage)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(CloseCutColors.accentLight)
-                            .frame(width: 34, height: 34)
-                            .background(CloseCutColors.input)
-                            .clipShape(SwiftUI.Circle())
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(result.winnerTitle)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(CloseCutColors.textPrimary)
-                                .lineLimit(2)
-
-                            Text(resultSubtitle(for: result))
-                                .font(.caption)
-                                .foregroundStyle(CloseCutColors.textSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
-
-                            Text(result.createdAt.formatted(date: .abbreviated, time: .shortened))
-                                .font(.caption2)
-                                .foregroundStyle(CloseCutColors.textTertiary)
-                        }
-
-                        Spacer(minLength: 0)
-                    }
+                    recentResultRow(result)
 
                     if result.id != recentBattleResults.last?.id {
                         Divider()
@@ -570,10 +453,41 @@ struct BattleView: View {
         }
     }
 
+    private func recentResultRow(
+        _ result: BattleResult
+    ) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: result.mode.systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CloseCutColors.accentLight)
+                .frame(width: 34, height: 34)
+                .background(CloseCutColors.input)
+                .clipShape(SwiftUI.Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(result.winnerTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+                    .lineLimit(2)
+
+                Text(BattleResultDisplayHelper.subtitle(for: result))
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(result.createdAt.formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption2)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+
     // MARK: - Social Preview
 
     private var socialPreviewSection: some View {
-        battleSection(
+        BattleSectionCard(
             title: "Social battles",
             subtitle: "Coming later"
         ) {
@@ -581,7 +495,7 @@ struct BattleView: View {
                 compactFutureRow(
                     icon: "person.2.fill",
                     title: "Friend Battle",
-                    message: "Compare picks with one trusted person."
+                    message: "Compare options with one trusted person."
                 )
 
                 Divider()
@@ -634,7 +548,7 @@ struct BattleView: View {
                 .foregroundStyle(CloseCutColors.textTertiary)
                 .padding(.top, 2)
 
-            Text("Battle uses your private local archive. Results help you remember decisions, but they do not publish anything publicly.")
+            Text("Battle does not publish anything. TMDB and manual options are only used to help you decide unless you later save them to your Timeline.")
                 .font(.caption)
                 .foregroundStyle(CloseCutColors.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -685,119 +599,69 @@ struct BattleView: View {
         }
     }
 
-    private func battleSection<Content: View>(
-        title: String,
-        subtitle: String? = nil,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textPrimary)
-
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(CloseCutColors.textSecondary)
-                }
-            }
-            .padding(.horizontal, 2)
-
-            VStack(alignment: .leading, spacing: 12) {
-                content()
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(CloseCutColors.card)
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(CloseCutColors.separator, lineWidth: 0.5)
-            }
-        }
-    }
-
-    // MARK: - Text Helpers
-
-    private func optionSubtitle(for entry: Entry) -> String {
-        var parts: [String] = []
-
-        if let releaseYear = entry.releaseYear {
-            parts.append("\(releaseYear)")
-        }
-
-        parts.append(entry.type.displayName)
-
-        if entry.sourceType == .quickAdd {
-            parts.append("Quick Add")
-        }
-
-        if let rating = entry.tmdbRating, rating > 0 {
-            parts.append(String(format: "%.1f TMDB", rating))
-        }
-
-        if entry.visibility == .circle {
-            parts.append("Shared")
-        }
-
-        return parts.joined(separator: " • ")
-    }
-
-    private func resultSubtitle(for result: BattleResult) -> String {
-        switch result.mode {
-        case .randomPick:
-            return "Picked from \(result.optionTitles.count) options"
-
-        case .headToHead:
-            let opponents = result.optionTitles
-                .filter { $0 != result.winnerTitle }
-
-            if let opponent = opponents.first {
-                return "Won against \(opponent)"
-            }
-
-            return "Won a head-to-head Battle"
-
-        case .friend:
-            return "Won a Friend Battle"
-
-        case .circle:
-            return "Won a Circle Battle"
-        }
-    }
-
     // MARK: - Actions
 
     private func pickRandomWinner() {
-        guard selectedEntries.count >= 2 else {
-            pickedEntry = nil
+        guard selectedCandidates.count >= 2 else {
+            pickedCandidate = nil
             return
         }
 
-        let possibleWinners: [Entry]
+        let currentWinnerId = pickedCandidate?.id
 
-        if let pickedEntry,
-           selectedEntries.count > 1 {
-            let alternatives = selectedEntries.filter { $0.id != pickedEntry.id }
-            possibleWinners = alternatives.isEmpty ? selectedEntries : alternatives
-        } else {
-            possibleWinners = selectedEntries
-        }
-
-        guard let winner = possibleWinners.randomElement() else {
-            pickedEntry = nil
+        guard let winner = noRepeatPolicy.pickRandom(
+            from: selectedCandidates,
+            avoiding: currentWinnerId
+        ) else {
+            pickedCandidate = nil
             return
         }
 
-        pickedEntry = winner
+        pickedCandidate = winner
         battleErrorMessage = nil
+
+        saveRandomPickIfArchiveOnly(
+            winner: winner,
+            options: selectedCandidates
+        )
+    }
+
+    private func saveRandomPickIfArchiveOnly(
+        winner: BattleCandidate,
+        options: [BattleCandidate]
+    ) {
+        guard winner.source == .archive,
+              let winnerEntryId = winner.sourceEntryId else {
+            return
+        }
+
+        let archiveOptionEntryIds = options.compactMap { candidate in
+            candidate.source == .archive ? candidate.sourceEntryId : nil
+        }
+
+        guard archiveOptionEntryIds.count == options.count else {
+            return
+        }
+
+        let entriesById = Dictionary(
+            uniqueKeysWithValues: eligibleEntries.map { ($0.id, $0) }
+        )
+
+        guard let winnerEntry = entriesById[winnerEntryId] else {
+            return
+        }
+
+        let optionEntries = archiveOptionEntryIds.compactMap { entriesById[$0] }
+
+        guard optionEntries.count >= 2 else {
+            return
+        }
 
         do {
             _ = try battleResultRepository.createRandomPickResult(
                 ownerId: user.id,
-                options: selectedEntries,
-                winner: winner,
+                options: optionEntries,
+                winner: winnerEntry,
                 modelContext: modelContext
             )
         } catch BattleResultRepositoryError.duplicateRecentResult {
@@ -805,7 +669,7 @@ struct BattleView: View {
             print("ℹ️ Skipped duplicate random Battle result.")
             #endif
         } catch {
-            battleErrorMessage = "Couldn’t save Battle result."
+            battleErrorMessage = "Couldn’t save archive Battle result."
 
             #if DEBUG
             print("❌ Failed to save random Battle result:", error.localizedDescription)
@@ -870,8 +734,9 @@ struct BattleView: View {
     }
 
     private func clearBattleSelection() {
-        pickedEntry = nil
-        selectedEntries = []
+        pickedCandidate = nil
+        selectedCandidates = []
+        noRepeatPolicy.reset()
     }
 }
 
