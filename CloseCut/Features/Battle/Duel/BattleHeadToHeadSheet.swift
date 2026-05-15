@@ -21,6 +21,8 @@ struct BattleHeadToHeadSheet: View {
     @State private var winner: Entry?
     @State private var didSaveResult = false
     @State private var selectedRoundAnswers: [Int: String] = [:]
+    @State private var isAdvancingRound = false
+    @State private var lastRoundWinnerTitle: String?
 
     private let rounds: [DuelRound] = [
         DuelRound(
@@ -58,7 +60,7 @@ struct BattleHeadToHeadSheet: View {
     private var availableEntries: [Entry] {
         entries
             .filter { $0.deletedAt == nil }
-            .filter { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+            .filter { $0.displayTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
             .sorted { first, second in
                 first.watchedAt > second.watchedAt
             }
@@ -81,7 +83,11 @@ struct BattleHeadToHeadSheet: View {
     }
 
     private var progressText: String {
-        "Round \(min(currentRoundIndex + 1, rounds.count)) of \(rounds.count)"
+        if isDuelComplete {
+            return "Final result"
+        }
+
+        return "Round \(min(currentRoundIndex + 1, rounds.count)) of \(rounds.count)"
     }
 
     private var progressValue: Double {
@@ -89,7 +95,15 @@ struct BattleHeadToHeadSheet: View {
             return 0
         }
 
+        if isDuelComplete {
+            return 1
+        }
+
         return Double(min(currentRoundIndex + 1, rounds.count)) / Double(rounds.count)
+    }
+
+    private var selectedAnswerIdForCurrentRound: String? {
+        selectedRoundAnswers[currentRoundIndex]
     }
 
     var body: some View {
@@ -106,6 +120,7 @@ struct BattleHeadToHeadSheet: View {
 
                         if canStartDuel {
                             scoreboardSection
+                            roundFeedbackSection
                             duelSection
                         }
 
@@ -349,7 +364,7 @@ struct BattleHeadToHeadSheet: View {
         if let firstEntry, let secondEntry {
             BattleSectionCard(
                 title: "Scoreboard",
-                subtitle: isDuelComplete ? "Final score" : progressText
+                subtitle: progressText
             ) {
                 VStack(spacing: 14) {
                     ProgressView(value: progressValue)
@@ -413,7 +428,35 @@ struct BattleHeadToHeadSheet: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(isLeading ? CloseCutColors.accentLight.opacity(0.7) : CloseCutColors.separator, lineWidth: isLeading ? 0.9 : 0.5)
+                .stroke(
+                    isLeading ? CloseCutColors.accentLight.opacity(0.7) : CloseCutColors.separator,
+                    lineWidth: isLeading ? 0.9 : 0.5
+                )
+        }
+    }
+
+    // MARK: - Round Feedback
+
+    @ViewBuilder
+    private var roundFeedbackSection: some View {
+        if let lastRoundWinnerTitle, winner == nil {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.accentLight)
+                    .padding(.top, 2)
+
+                Text("\(lastRoundWinnerTitle) took the last round.")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Spacer(minLength: 0)
+            }
+            .padding(12)
+            .background(CloseCutColors.input)
+            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .transition(.opacity.combined(with: .move(edge: .top)))
         }
     }
 
@@ -444,7 +487,7 @@ struct BattleHeadToHeadSheet: View {
                                 .foregroundStyle(CloseCutColors.textPrimary)
                                 .fixedSize(horizontal: false, vertical: true)
 
-                            Text("Tap the title that wins this round.")
+                            Text(isAdvancingRound ? "Locking answer…" : "Tap the title that wins this round.")
                                 .font(.caption)
                                 .foregroundStyle(CloseCutColors.textSecondary)
                         }
@@ -472,7 +515,8 @@ struct BattleHeadToHeadSheet: View {
         entry: Entry,
         side: String
     ) -> some View {
-        let isSelected = selectedRoundAnswers[currentRoundIndex] == entry.id
+        let isSelected = selectedAnswerIdForCurrentRound == entry.id
+        let isLockedOut = isAdvancingRound || winner != nil
 
         return Button {
             answerRound(with: entry)
@@ -508,7 +552,7 @@ struct BattleHeadToHeadSheet: View {
                     .lineLimit(1)
 
                 if isSelected {
-                    Label("Round won", systemImage: "checkmark.circle.fill")
+                    Label("Round locked", systemImage: "checkmark.circle.fill")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(CloseCutColors.accentLight)
                 }
@@ -519,10 +563,16 @@ struct BattleHeadToHeadSheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(isSelected ? CloseCutColors.accentLight.opacity(0.85) : CloseCutColors.separator, lineWidth: isSelected ? 1 : 0.5)
+                    .stroke(
+                        isSelected ? CloseCutColors.accentLight.opacity(0.85) : CloseCutColors.separator,
+                        lineWidth: isSelected ? 1 : 0.5
+                    )
             }
+            .scaleEffect(isSelected ? 0.98 : 1)
+            .opacity(isLockedOut && isSelected == false ? 0.58 : 1)
         }
         .buttonStyle(.plain)
+        .disabled(isLockedOut)
     }
 
     // MARK: - Winner
@@ -535,53 +585,7 @@ struct BattleHeadToHeadSheet: View {
             subtitle: "CloseCut crowned a winner based on your answers."
         ) {
             VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top, spacing: 14) {
-                    ZStack(alignment: .bottomTrailing) {
-                        EntryPosterThumbnailView(
-                            entry: winner,
-                            width: 90,
-                            height: 132,
-                            cornerRadius: 18
-                        )
-
-                        ZStack {
-                            SwiftUI.Circle()
-                                .fill(CloseCutColors.backgroundPrimary)
-                                .frame(width: 32, height: 32)
-
-                            Image(systemName: "crown.fill")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(CloseCutColors.accentLight)
-                        }
-                        .offset(x: 6, y: 6)
-                    }
-
-                    VStack(alignment: .leading, spacing: 7) {
-                        Text("Winner")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(CloseCutColors.accentLight)
-                            .tracking(0.8)
-                            .textCase(.uppercase)
-
-                        Text(winner.displayTitle)
-                            .font(.title2.weight(.semibold))
-                            .foregroundStyle(CloseCutColors.textPrimary)
-                            .lineLimit(3)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        Text(subtitle(for: winner))
-                            .font(.caption)
-                            .foregroundStyle(CloseCutColors.textSecondary)
-                            .lineLimit(2)
-
-                        Text(winnerExplanation)
-                            .font(.caption)
-                            .foregroundStyle(CloseCutColors.textTertiary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Spacer(minLength: 0)
-                }
+                winnerHero(winner)
 
                 HStack(spacing: 10) {
                     Button {
@@ -616,6 +620,105 @@ struct BattleHeadToHeadSheet: View {
         }
     }
 
+    private func winnerHero(
+        _ winner: Entry
+    ) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            ZStack(alignment: .bottomTrailing) {
+                EntryPosterThumbnailView(
+                    entry: winner,
+                    width: 94,
+                    height: 138,
+                    cornerRadius: 19
+                )
+
+                ZStack {
+                    SwiftUI.Circle()
+                        .fill(CloseCutColors.backgroundPrimary)
+                        .frame(width: 34, height: 34)
+
+                    Image(systemName: "crown.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.accentLight)
+                }
+                .offset(x: 6, y: 6)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Winner")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(CloseCutColors.accentLight)
+                    .tracking(0.8)
+                    .textCase(.uppercase)
+
+                Text(winner.displayTitle)
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(subtitle(for: winner))
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .lineLimit(2)
+
+                Text(winnerExplanation)
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 7) {
+                    winnerPill(
+                        icon: "number",
+                        text: "\(max(firstScore, secondScore)) / \(rounds.count)"
+                    )
+
+                    winnerPill(
+                        icon: "gamecontroller.fill",
+                        text: "Duel result"
+                    )
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(
+            LinearGradient(
+                colors: [
+                    CloseCutColors.input.opacity(0.9),
+                    CloseCutColors.accent.opacity(0.12)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(CloseCutColors.accentLight.opacity(0.55), lineWidth: 0.8)
+        }
+    }
+
+    private func winnerPill(
+        icon: String,
+        text: String
+    ) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.caption2.weight(.semibold))
+
+            Text(text)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(CloseCutColors.textSecondary)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(CloseCutColors.card)
+        .clipShape(Capsule())
+    }
+
     private var winnerExplanation: String {
         if firstScore == secondScore {
             return "The duel ended tied, so CloseCut used your final instinct as the tiebreaker."
@@ -638,7 +741,13 @@ struct BattleHeadToHeadSheet: View {
             return
         }
 
+        guard isAdvancingRound == false else {
+            return
+        }
+
+        isAdvancingRound = true
         selectedRoundAnswers[currentRoundIndex] = entry.id
+        lastRoundWinnerTitle = entry.displayTitle
 
         withAnimation(.easeInOut(duration: 0.18)) {
             if entry.id == firstEntry.id {
@@ -648,19 +757,21 @@ struct BattleHeadToHeadSheet: View {
             }
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.42) {
             advanceRound()
         }
     }
 
     private func advanceRound() {
         guard let firstEntry, let secondEntry else {
+            isAdvancingRound = false
             return
         }
 
         if currentRoundIndex < rounds.count - 1 {
             withAnimation(.easeInOut(duration: 0.22)) {
                 currentRoundIndex += 1
+                isAdvancingRound = false
             }
             return
         }
@@ -678,6 +789,7 @@ struct BattleHeadToHeadSheet: View {
 
         withAnimation(.easeInOut(duration: 0.22)) {
             winner = resolvedWinner
+            isAdvancingRound = false
         }
 
         saveWinnerIfNeeded(
@@ -705,6 +817,8 @@ struct BattleHeadToHeadSheet: View {
         winner = nil
         didSaveResult = false
         selectedRoundAnswers = [:]
+        isAdvancingRound = false
+        lastRoundWinnerTitle = nil
     }
 
     // MARK: - Text Helpers
