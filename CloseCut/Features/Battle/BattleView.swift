@@ -15,10 +15,13 @@ struct BattleView: View {
     let profile: UserProfile
 
     @State private var showPickTonightSheet = false
+    @State private var showHeadToHeadBattle = false
+    @State private var showFriendBattle = false
+    @State private var showCircleBattle = false
+
     @State private var selectedCandidates: [BattleCandidate] = []
     @State private var pickedCandidate: BattleCandidate?
 
-    @State private var showHeadToHeadBattle = false
     @State private var battleErrorMessage: String?
     @State private var showClearResultsConfirmation = false
     @State private var isClearingResults = false
@@ -50,10 +53,6 @@ struct BattleView: View {
             }
     }
 
-    private var archiveCandidates: [BattleCandidate] {
-        BattleCandidateMapper.candidates(from: eligibleEntries)
-    }
-
     private var canUseArchiveModes: Bool {
         eligibleEntries.count >= 2
     }
@@ -80,19 +79,15 @@ struct BattleView: View {
     }
 
     private var readinessTitle: String {
-        if canUseArchiveModes {
-            return "Ready to play"
-        }
-
-        return "Battle is open"
+        canUseArchiveModes ? "Ready to play" : "Battle is open"
     }
 
     private var readinessMessage: String {
         if canUseArchiveModes {
-            return "Your archive can power Movie vs Movie, and Pick for Tonight can also use TMDB or manual ideas."
+            return "Your archive can power duels, and every mode can also use TMDB or manual ideas."
         }
 
-        return "You can still use Pick for Tonight with TMDB or manual options. Add two archive entries to unlock Movie vs Movie."
+        return "Use Pick for Tonight, Friend Battle, or Circle Battle with TMDB/manual options. Add two archive entries to unlock archive-only history saving."
     }
 
     var body: some View {
@@ -130,8 +125,6 @@ struct BattleView: View {
                         recentResultsSection
                     }
 
-                    socialPreviewSection
-
                     productNoteSection
 
                     Spacer(minLength: 24)
@@ -164,19 +157,57 @@ struct BattleView: View {
         }
         .sheet(isPresented: $showHeadToHeadBattle) {
             BattleHeadToHeadSheet(
-                entries: eligibleEntries,
+                archiveEntries: eligibleEntries,
+                initialCandidates: selectedCandidates,
                 onCancel: {
                     showHeadToHeadBattle = false
                 },
                 onWinnerSelected: { winner, options in
-                    saveHeadToHeadResult(
+                    pickedCandidate = winner
+                    selectedCandidates = BattleCandidateMapper.dedupe(options)
+                    saveCandidateBattleResultIfPossible(
                         winner: winner,
-                        options: options
+                        options: options,
+                        mode: .headToHead
                     )
                 }
             )
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showFriendBattle) {
+            BattleFriendSheet(
+                archiveEntries: eligibleEntries,
+                initialSelection: selectedCandidates,
+                onCancel: {
+                    showFriendBattle = false
+                },
+                onWinnerSelected: { winner, options in
+                    pickedCandidate = winner
+                    selectedCandidates = BattleCandidateMapper.dedupe(options)
+                    saveCandidateBattleResultIfPossible(
+                        winner: winner,
+                        options: options,
+                        mode: .friend
+                    )
+                }
+            )
+        }
+        .sheet(isPresented: $showCircleBattle) {
+            BattleCircleSheet(
+                archiveEntries: eligibleEntries,
+                initialSelection: selectedCandidates,
+                onCancel: {
+                    showCircleBattle = false
+                },
+                onWinnerSelected: { winner, options in
+                    pickedCandidate = winner
+                    selectedCandidates = BattleCandidateMapper.dedupe(options)
+                    saveCandidateBattleResultIfPossible(
+                        winner: winner,
+                        options: options,
+                        mode: .circle
+                    )
+                }
+            )
         }
         .confirmationDialog(
             "Clear Battle results?",
@@ -205,7 +236,7 @@ struct BattleView: View {
                         .foregroundStyle(CloseCutColors.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("Use your archive, search TMDB, or add quick ideas. CloseCut helps you stop scrolling and actually pick something.")
+                    Text("Use your archive, search TMDB, add quick ideas, or make it social. CloseCut helps you stop scrolling and actually pick something.")
                         .font(.subheadline)
                         .foregroundStyle(CloseCutColors.textSecondary)
                         .lineSpacing(3)
@@ -346,7 +377,7 @@ struct BattleView: View {
                 BattleModeCard(
                     mode: .headToHead,
                     isPrimary: false,
-                    isEnabled: canUseArchiveModes,
+                    isEnabled: true,
                     action: {
                         showHeadToHeadBattle = true
                     }
@@ -358,8 +389,10 @@ struct BattleView: View {
                 BattleModeCard(
                     mode: .friend,
                     isPrimary: false,
-                    isEnabled: false,
-                    action: {}
+                    isEnabled: true,
+                    action: {
+                        showFriendBattle = true
+                    }
                 )
 
                 Divider()
@@ -368,14 +401,16 @@ struct BattleView: View {
                 BattleModeCard(
                     mode: .circle,
                     isPrimary: false,
-                    isEnabled: false,
-                    action: {}
+                    isEnabled: true,
+                    action: {
+                        showCircleBattle = true
+                    }
                 )
             }
         }
     }
 
-    // MARK: - Pick Result
+    // MARK: - Shortlist
 
     private var currentShortlistSection: some View {
         BattleSectionCard(
@@ -434,7 +469,7 @@ struct BattleView: View {
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
 
-                    Text("Saved local Battle decisions from your archive.")
+                    Text("Saved local Battle decisions from archive-backed results.")
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textSecondary)
                 }
@@ -503,61 +538,6 @@ struct BattleView: View {
 
             Spacer(minLength: 0)
         }
-    }
-
-    // MARK: - Social Preview
-
-    private var socialPreviewSection: some View {
-        BattleSectionCard(
-            title: "Social battles",
-            subtitle: "Coming later"
-        ) {
-            VStack(alignment: .leading, spacing: 14) {
-                compactFutureRow(
-                    icon: "person.2.fill",
-                    title: "Friend Battle",
-                    message: "Compare options with one trusted person."
-                )
-
-                Divider()
-                    .overlay(CloseCutColors.separator)
-
-                compactFutureRow(
-                    icon: "person.3.fill",
-                    title: "Circle Battle",
-                    message: "Let a private Circle vote and choose a group winner."
-                )
-            }
-        }
-    }
-
-    private func compactFutureRow(
-        icon: String,
-        title: String,
-        message: String
-    ) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(CloseCutColors.textTertiary)
-                .frame(width: 32, height: 32)
-                .background(CloseCutColors.input)
-                .clipShape(SwiftUI.Circle())
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textPrimary)
-
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .opacity(0.86)
     }
 
     // MARK: - Product Note
@@ -641,77 +621,77 @@ struct BattleView: View {
         pickedCandidate = picked
         battleErrorMessage = nil
 
-        saveRandomPickIfCandidateComesFromArchive(picked)
+        saveCandidateBattleResultIfPossible(
+            winner: picked,
+            options: selectedCandidates,
+            mode: .randomPick
+        )
     }
 
-    private func saveRandomPickIfCandidateComesFromArchive(
-        _ winnerCandidate: BattleCandidate
+    private func saveCandidateBattleResultIfPossible(
+        winner: BattleCandidate,
+        options: [BattleCandidate],
+        mode: BattleMode
     ) {
-        guard winnerCandidate.source == .archive,
-              let winnerEntryId = winnerCandidate.sourceEntryId,
-              let winnerEntry = eligibleEntries.first(where: { entry in
-                  entry.id == winnerEntryId
-              }) else {
+        guard let winnerEntry = BattleCandidateMapper.entry(
+            from: winner,
+            eligibleEntries: eligibleEntries
+        ) else {
             return
         }
 
-        let optionEntries: [Entry] = selectedCandidates.compactMap { candidate -> Entry? in
-            guard candidate.source == .archive,
-                  let sourceEntryId = candidate.sourceEntryId else {
-                return nil
-            }
-
-            return eligibleEntries.first(where: { entry in
-                entry.id == sourceEntryId
-            })
-        }
+        let optionEntries = BattleCandidateMapper.entries(
+            from: options,
+            eligibleEntries: eligibleEntries
+        )
 
         guard optionEntries.count >= 2 else {
             return
         }
 
         do {
-            _ = try battleResultRepository.createRandomPickResult(
-                ownerId: user.id,
-                options: optionEntries,
-                winner: winnerEntry,
-                modelContext: modelContext
-            )
+            switch mode {
+            case .randomPick:
+                _ = try battleResultRepository.createRandomPickResult(
+                    ownerId: user.id,
+                    options: optionEntries,
+                    winner: winnerEntry,
+                    modelContext: modelContext
+                )
+
+            case .headToHead:
+                _ = try battleResultRepository.createHeadToHeadResult(
+                    ownerId: user.id,
+                    options: optionEntries,
+                    winner: winnerEntry,
+                    modelContext: modelContext
+                )
+
+            case .friend:
+                _ = try battleResultRepository.createFriendResult(
+                    ownerId: user.id,
+                    options: optionEntries,
+                    winner: winnerEntry,
+                    modelContext: modelContext
+                )
+
+            case .circle:
+                _ = try battleResultRepository.createCircleResult(
+                    ownerId: user.id,
+                    options: optionEntries,
+                    winner: winnerEntry,
+                    modelContext: modelContext
+                )
+            }
         } catch BattleResultRepositoryError.duplicateRecentResult {
             #if DEBUG
-            print("ℹ️ Skipped duplicate random Battle result.")
+            print("ℹ️ Skipped duplicate Battle result.")
             #endif
         } catch {
             battleErrorMessage = "Couldn’t save Battle result."
 
             #if DEBUG
-            print("❌ Failed to save random Battle result:", error.localizedDescription)
-            #endif
-        }
-    }
-
-    private func saveHeadToHeadResult(
-        winner: Entry,
-        options: [Entry]
-    ) {
-        battleErrorMessage = nil
-
-        do {
-            _ = try battleResultRepository.createHeadToHeadResult(
-                ownerId: user.id,
-                options: options,
-                winner: winner,
-                modelContext: modelContext
-            )
-        } catch BattleResultRepositoryError.duplicateRecentResult {
-            #if DEBUG
-            print("ℹ️ Skipped duplicate head-to-head Battle result.")
-            #endif
-        } catch {
-            battleErrorMessage = "Couldn’t save Movie vs Movie result."
-
-            #if DEBUG
-            print("❌ Failed to save head-to-head Battle result:", error.localizedDescription)
+            print("❌ Failed to save Battle result:", error.localizedDescription)
             #endif
         }
     }

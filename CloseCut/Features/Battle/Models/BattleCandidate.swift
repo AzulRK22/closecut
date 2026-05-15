@@ -172,6 +172,14 @@ struct BattleCandidate: Identifiable, Equatable, Hashable {
         return "\(displayTitle.normalizedTitleKey)|\(type.rawValue)"
     }
 
+    var isExternal: Bool {
+        source == .tmdb || source == .manual
+    }
+
+    var canPersistAsBattleResult: Bool {
+        source == .archive && sourceEntryId != nil
+    }
+
     var canBeSavedToTimeline: Bool {
         source == .tmdb || source == .manual
     }

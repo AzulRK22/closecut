@@ -8,21 +8,42 @@
 import SwiftUI
 
 struct BattleHeadToHeadSheet: View {
-    let entries: [Entry]
+    let archiveEntries: [Entry]
+    let initialCandidates: [BattleCandidate]
     let onCancel: () -> Void
-    let onWinnerSelected: (Entry, [Entry]) -> Void
+    let onWinnerSelected: (BattleCandidate, [BattleCandidate]) -> Void
 
-    @State private var firstEntry: Entry?
-    @State private var secondEntry: Entry?
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var firstCandidate: BattleCandidate?
+    @State private var secondCandidate: BattleCandidate?
+
+    @State private var query = ""
+    @State private var tmdbResults: [BattleCandidate] = []
+    @State private var isSearching = false
+    @State private var searchErrorMessage: String?
+    @State private var didSearch = false
+
+    @State private var manualTitle = ""
+    @State private var manualType: EntryType = .movie
 
     @State private var currentRoundIndex = 0
     @State private var firstScore = 0
     @State private var secondScore = 0
-    @State private var winner: Entry?
+    @State private var winner: BattleCandidate?
     @State private var didSaveResult = false
     @State private var selectedRoundAnswers: [Int: String] = [:]
     @State private var isAdvancingRound = false
     @State private var lastRoundWinnerTitle: String?
+
+    @FocusState private var focusedField: Field?
+
+    private let tmdbRepository = TMDBSearchRepository()
+
+    private enum Field {
+        case search
+        case manual
+    }
 
     private let rounds: [DuelRound] = [
         DuelRound(
@@ -33,8 +54,8 @@ struct BattleHeadToHeadSheet: View {
         ),
         DuelRound(
             id: "stronger-memory",
-            title: "Stronger memory",
-            question: "Which one stayed with you more?",
+            title: "Stronger pull",
+            question: "Which one feels more worth your time?",
             systemImage: "sparkles"
         ),
         DuelRound(
@@ -46,7 +67,7 @@ struct BattleHeadToHeadSheet: View {
         DuelRound(
             id: "rewatch-energy",
             title: "Rewatch energy",
-            question: "Which one would you rewatch sooner?",
+            question: "Which one would you revisit sooner?",
             systemImage: "arrow.clockwise.circle.fill"
         ),
         DuelRound(
@@ -57,21 +78,37 @@ struct BattleHeadToHeadSheet: View {
         )
     ]
 
-    private var availableEntries: [Entry] {
-        entries
-            .filter { $0.deletedAt == nil }
-            .filter { $0.displayTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+    private var archiveCandidates: [BattleCandidate] {
+        BattleCandidateMapper.candidates(from: archiveEntries)
             .sorted { first, second in
-                first.watchedAt > second.watchedAt
+                let firstDate = first.watchedAt ?? .distantPast
+                let secondDate = second.watchedAt ?? .distantPast
+                return firstDate > secondDate
             }
     }
 
+    private var cleanedQuery: String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var cleanedManualTitle: String {
+        manualTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canSearch: Bool {
+        cleanedQuery.count >= 2 && isSearching == false
+    }
+
+    private var canAddManual: Bool {
+        cleanedManualTitle.isEmpty == false
+    }
+
     private var canStartDuel: Bool {
-        guard let firstEntry, let secondEntry else {
+        guard let firstCandidate, let secondCandidate else {
             return false
         }
 
-        return firstEntry.id != secondEntry.id
+        return firstCandidate.normalizedIdentityKey != secondCandidate.normalizedIdentityKey
     }
 
     private var isDuelComplete: Bool {
@@ -116,7 +153,15 @@ struct BattleHeadToHeadSheet: View {
                     LazyVStack(alignment: .leading, spacing: 18) {
                         header
 
-                        pickerSection
+                        contenderSlotsSection
+
+                        searchSection
+
+                        tmdbResultsSection
+
+                        manualSection
+
+                        archiveSection
 
                         if canStartDuel {
                             scoreboardSection
@@ -133,6 +178,7 @@ struct BattleHeadToHeadSheet: View {
                     .padding(.horizontal, 20)
                     .padding(.vertical, 16)
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle("Movie vs Movie")
             .navigationBarTitleDisplayMode(.inline)
@@ -140,12 +186,26 @@ struct BattleHeadToHeadSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") {
                         onCancel()
+                        dismiss()
                     }
                     .foregroundStyle(CloseCutColors.textSecondary)
                 }
             }
         }
         .preferredColorScheme(.dark)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .onAppear {
+            let deduped = BattleCandidateMapper.dedupe(initialCandidates)
+
+            if firstCandidate == nil {
+                firstCandidate = deduped.first
+            }
+
+            if secondCandidate == nil {
+                secondCandidate = deduped.dropFirst().first
+            }
+        }
     }
 
     // MARK: - Header
@@ -159,7 +219,7 @@ struct BattleHeadToHeadSheet: View {
                         .foregroundStyle(CloseCutColors.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("A fast taste duel. Answer simple prompts and CloseCut crowns the winner.")
+                    Text("Choose two contenders from your archive, TMDB, or manual ideas. Then answer quick prompts and CloseCut crowns the winner.")
                         .font(.subheadline)
                         .foregroundStyle(CloseCutColors.textSecondary)
                         .lineSpacing(3)
@@ -182,17 +242,17 @@ struct BattleHeadToHeadSheet: View {
             HStack(spacing: 8) {
                 infoPill(
                     icon: "film.stack",
-                    text: "\(availableEntries.count) available"
+                    text: "\(archiveCandidates.count) archive"
+                )
+
+                infoPill(
+                    icon: "sparkles.tv",
+                    text: "TMDB"
                 )
 
                 infoPill(
                     icon: "gamecontroller.fill",
-                    text: "5-round duel"
-                )
-
-                infoPill(
-                    icon: "lock.fill",
-                    text: "Private"
+                    text: "5 rounds"
                 )
             }
         }
@@ -234,28 +294,36 @@ struct BattleHeadToHeadSheet: View {
         .clipShape(Capsule())
     }
 
-    // MARK: - Picker
+    // MARK: - Contender Slots
 
-    private var pickerSection: some View {
+    private var contenderSlotsSection: some View {
         BattleSectionCard(
             title: "Choose the matchup",
-            subtitle: "Pick two archive entries and start the duel."
+            subtitle: "Tap any result below to fill the next open challenger slot."
         ) {
-            VStack(alignment: .leading, spacing: 14) {
-                entryPicker(
+            VStack(spacing: 12) {
+                contenderSlot(
                     title: "Challenger A",
-                    selectedEntry: $firstEntry,
-                    excluding: secondEntry
-                )
+                    candidate: firstCandidate,
+                    side: "A"
+                ) {
+                    firstCandidate = nil
+                    resetDuelOnly()
+                }
 
-                entryPicker(
+                contenderSlot(
                     title: "Challenger B",
-                    selectedEntry: $secondEntry,
-                    excluding: firstEntry
-                )
+                    candidate: secondCandidate,
+                    side: "B"
+                ) {
+                    secondCandidate = nil
+                    resetDuelOnly()
+                }
 
-                if firstEntry?.id == secondEntry?.id && firstEntry != nil {
-                    Text("Choose two different entries.")
+                if let firstCandidate,
+                   let secondCandidate,
+                   firstCandidate.normalizedIdentityKey == secondCandidate.normalizedIdentityKey {
+                    Text("Choose two different contenders.")
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.failed)
                 }
@@ -278,90 +346,266 @@ struct BattleHeadToHeadSheet: View {
         }
     }
 
-    private func entryPicker(
+    private func contenderSlot(
         title: String,
-        selectedEntry: Binding<Entry?>,
-        excluding excludedEntry: Entry?
+        candidate: BattleCandidate?,
+        side: String,
+        onRemove: @escaping () -> Void
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased())
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(CloseCutColors.textTertiary)
-                .tracking(0.8)
+        HStack(alignment: .top, spacing: 12) {
+            Text(side)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(candidate == nil ? CloseCutColors.textTertiary : .white)
+                .frame(width: 28, height: 28)
+                .background(candidate == nil ? CloseCutColors.input : CloseCutColors.accent)
+                .clipShape(SwiftUI.Circle())
 
-            Menu {
-                ForEach(availableEntries.filter { $0.id != excludedEntry?.id }) { entry in
-                    Button {
-                        selectedEntry.wrappedValue = entry
-                        resetDuelOnly()
-                    } label: {
-                        Text(entry.displayTitle)
-                    }
-                }
-            } label: {
-                selectedPickerLabel(
-                    entry: selectedEntry.wrappedValue
-                )
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private func selectedPickerLabel(
-        entry: Entry?
-    ) -> some View {
-        HStack(spacing: 12) {
-            if let entry {
-                EntryPosterThumbnailView(
-                    entry: entry,
-                    width: 46,
-                    height: 68,
+            if let candidate {
+                BattleCandidatePosterView(
+                    candidate: candidate,
+                    width: 48,
+                    height: 70,
                     cornerRadius: 11
                 )
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(entry.displayTitle)
+                    Text(title.uppercased())
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .tracking(0.8)
+
+                    Text(candidate.displayTitle)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
-                        .lineLimit(1)
+                        .lineLimit(2)
 
-                    Text(subtitle(for: entry))
+                    Text(candidate.metadataText)
                         .font(.caption)
-                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .foregroundStyle(CloseCutColors.textSecondary)
                         .lineLimit(1)
                 }
-            } else {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .fill(CloseCutColors.card)
-                        .frame(width: 46, height: 68)
 
-                    Image(systemName: "film.stack")
-                        .font(.caption.weight(.semibold))
+                Spacer(minLength: 0)
+
+                Button {
+                    onRemove()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textTertiary)
                 }
+                .buttonStyle(.plain)
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title.uppercased())
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .tracking(0.8)
 
-                Text("Select entry")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textTertiary)
+                    Text("Select a contender below")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                }
+
+                Spacer(minLength: 0)
             }
-
-            Spacer()
-
-            Image(systemName: "chevron.down")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(CloseCutColors.textTertiary)
         }
         .padding(12)
-        .background(CloseCutColors.input)
+        .background(CloseCutColors.input.opacity(0.74))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    // MARK: - Search
+
+    private var searchSection: some View {
+        BattleSectionCard(
+            title: "Search contender",
+            subtitle: "Use TMDB when the title is not in your archive."
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textTertiary)
+
+                    TextField("Search movies or series", text: $query)
+                        .focused($focusedField, equals: .search)
+                        .font(.body)
+                        .foregroundStyle(CloseCutColors.textPrimary)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                        .submitLabel(.search)
+                        .onSubmit {
+                            Task {
+                                await searchTMDB()
+                            }
+                        }
+
+                    if isSearching {
+                        ProgressView()
+                            .scaleEffect(0.75)
+                    } else if cleanedQuery.isEmpty == false {
+                        Button {
+                            query = ""
+                            tmdbResults = []
+                            didSearch = false
+                            searchErrorMessage = nil
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(CloseCutColors.textTertiary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(14)
+                .background(CloseCutColors.input)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                Button {
+                    Task {
+                        await searchTMDB()
+                    }
+                } label: {
+                    Label(isSearching ? "Searching…" : "Search TMDB", systemImage: "sparkles.tv")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(canSearch ? .white : CloseCutColors.textTertiary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(canSearch ? CloseCutColors.accent : CloseCutColors.input)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(canSearch == false)
+
+                if let searchErrorMessage {
+                    Text(searchErrorMessage)
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.failed)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var tmdbResultsSection: some View {
+        if tmdbResults.isEmpty == false {
+            BattleSectionCard(
+                title: "TMDB results",
+                subtitle: "Tap a title to assign it to the next open challenger slot."
+            ) {
+                VStack(spacing: 10) {
+                    ForEach(tmdbResults) { candidate in
+                        BattleCandidateRow(
+                            candidate: candidate,
+                            isSelected: isSelected(candidate)
+                        ) {
+                            selectCandidate(candidate)
+                        }
+                    }
+                }
+            }
+        } else if didSearch && isSearching == false && searchErrorMessage == nil {
+            BattleSectionCard(
+                title: "No TMDB matches",
+                subtitle: "Try a shorter query or add it manually."
+            ) {
+                Text("No results found for “\(cleanedQuery)”.")
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+            }
+        }
+    }
+
+    // MARK: - Manual
+
+    private var manualSection: some View {
+        BattleSectionCard(
+            title: "Manual contender",
+            subtitle: "Add a quick title without searching."
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                Picker("Manual type", selection: $manualType) {
+                    Text("Movie")
+                        .tag(EntryType.movie)
+
+                    Text("Series")
+                        .tag(EntryType.series)
+                }
+                .pickerStyle(.segmented)
+
+                HStack(spacing: 10) {
+                    Image(systemName: "plus.circle")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textTertiary)
+
+                    TextField("Type a title", text: $manualTitle)
+                        .focused($focusedField, equals: .manual)
+                        .font(.body)
+                        .foregroundStyle(CloseCutColors.textPrimary)
+                        .textInputAutocapitalization(.words)
+                        .submitLabel(.done)
+                        .onSubmit {
+                            addManualCandidate()
+                        }
+                }
+                .padding(14)
+                .background(CloseCutColors.input)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                Button {
+                    addManualCandidate()
+                } label: {
+                    Label("Add as contender", systemImage: "plus")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(canAddManual ? .white : CloseCutColors.textTertiary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(canAddManual ? CloseCutColors.accent : CloseCutColors.input)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(canAddManual == false)
+            }
+        }
+    }
+
+    // MARK: - Archive
+
+    private var archiveSection: some View {
+        BattleSectionCard(
+            title: "From your archive",
+            subtitle: "Tap a title to assign it to the next open challenger slot."
+        ) {
+            if archiveCandidates.isEmpty {
+                EmptyStateView(
+                    title: "No archive options yet",
+                    message: "Use TMDB search or manual contenders for this duel.",
+                    systemImage: "film.stack",
+                    actionTitle: nil,
+                    action: nil
+                )
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(archiveCandidates) { candidate in
+                        BattleCandidateRow(
+                            candidate: candidate,
+                            isSelected: isSelected(candidate)
+                        ) {
+                            selectCandidate(candidate)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Scoreboard
 
     @ViewBuilder
     private var scoreboardSection: some View {
-        if let firstEntry, let secondEntry {
+        if let firstCandidate, let secondCandidate {
             BattleSectionCard(
                 title: "Scoreboard",
                 subtitle: progressText
@@ -372,7 +616,7 @@ struct BattleHeadToHeadSheet: View {
 
                     HStack(spacing: 12) {
                         scoreCard(
-                            entry: firstEntry,
+                            candidate: firstCandidate,
                             score: firstScore,
                             side: "A",
                             isLeading: firstScore >= secondScore && firstScore > 0
@@ -383,7 +627,7 @@ struct BattleHeadToHeadSheet: View {
                             .foregroundStyle(CloseCutColors.textTertiary)
 
                         scoreCard(
-                            entry: secondEntry,
+                            candidate: secondCandidate,
                             score: secondScore,
                             side: "B",
                             isLeading: secondScore >= firstScore && secondScore > 0
@@ -395,7 +639,7 @@ struct BattleHeadToHeadSheet: View {
     }
 
     private func scoreCard(
-        entry: Entry,
+        candidate: BattleCandidate,
         score: Int,
         side: String,
         isLeading: Bool
@@ -416,7 +660,7 @@ struct BattleHeadToHeadSheet: View {
                     .foregroundStyle(CloseCutColors.textPrimary)
             }
 
-            Text(entry.displayTitle)
+            Text(candidate.displayTitle)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(CloseCutColors.textSecondary)
                 .lineLimit(2)
@@ -464,7 +708,7 @@ struct BattleHeadToHeadSheet: View {
 
     @ViewBuilder
     private var duelSection: some View {
-        if let firstEntry, let secondEntry, winner == nil {
+        if let firstCandidate, let secondCandidate, winner == nil {
             BattleSectionCard(
                 title: currentRound.title,
                 subtitle: progressText
@@ -497,12 +741,12 @@ struct BattleHeadToHeadSheet: View {
 
                     HStack(alignment: .top, spacing: 12) {
                         duelOptionButton(
-                            entry: firstEntry,
+                            candidate: firstCandidate,
                             side: "A"
                         )
 
                         duelOptionButton(
-                            entry: secondEntry,
+                            candidate: secondCandidate,
                             side: "B"
                         )
                     }
@@ -512,19 +756,19 @@ struct BattleHeadToHeadSheet: View {
     }
 
     private func duelOptionButton(
-        entry: Entry,
+        candidate: BattleCandidate,
         side: String
     ) -> some View {
-        let isSelected = selectedAnswerIdForCurrentRound == entry.id
+        let isSelected = selectedAnswerIdForCurrentRound == candidate.id
         let isLockedOut = isAdvancingRound || winner != nil
 
         return Button {
-            answerRound(with: entry)
+            answerRound(with: candidate)
         } label: {
             VStack(alignment: .leading, spacing: 10) {
                 ZStack(alignment: .topTrailing) {
-                    EntryPosterThumbnailView(
-                        entry: entry,
+                    BattleCandidatePosterView(
+                        candidate: candidate,
                         width: 126,
                         height: 184,
                         cornerRadius: 18
@@ -540,13 +784,13 @@ struct BattleHeadToHeadSheet: View {
                 }
                 .frame(maxWidth: .infinity)
 
-                Text(entry.displayTitle)
+                Text(candidate.displayTitle)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text(moodText(for: entry))
+                Text(candidate.primarySignalText)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textTertiary)
                     .lineLimit(1)
@@ -578,7 +822,7 @@ struct BattleHeadToHeadSheet: View {
     // MARK: - Winner
 
     private func winnerSection(
-        _ winner: Entry
+        _ winner: BattleCandidate
     ) -> some View {
         BattleSectionCard(
             title: "Duel complete",
@@ -602,8 +846,8 @@ struct BattleHeadToHeadSheet: View {
                     .buttonStyle(.plain)
 
                     Button {
-                        firstEntry = nil
-                        secondEntry = nil
+                        firstCandidate = nil
+                        secondCandidate = nil
                         resetDuelOnly()
                     } label: {
                         Text("New matchup")
@@ -621,12 +865,12 @@ struct BattleHeadToHeadSheet: View {
     }
 
     private func winnerHero(
-        _ winner: Entry
+        _ winner: BattleCandidate
     ) -> some View {
         HStack(alignment: .top, spacing: 14) {
             ZStack(alignment: .bottomTrailing) {
-                EntryPosterThumbnailView(
-                    entry: winner,
+                BattleCandidatePosterView(
+                    candidate: winner,
                     width: 94,
                     height: 138,
                     cornerRadius: 19
@@ -657,7 +901,7 @@ struct BattleHeadToHeadSheet: View {
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text(subtitle(for: winner))
+                Text(winner.metadataText)
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .lineLimit(2)
@@ -674,8 +918,8 @@ struct BattleHeadToHeadSheet: View {
                     )
 
                     winnerPill(
-                        icon: "gamecontroller.fill",
-                        text: "Duel result"
+                        icon: winner.source.systemImage,
+                        text: winner.source.shortDisplayName
                     )
                 }
             }
@@ -730,10 +974,77 @@ struct BattleHeadToHeadSheet: View {
 
     // MARK: - Actions
 
-    private func answerRound(
-        with entry: Entry
+    private func searchTMDB() async {
+        guard canSearch else {
+            return
+        }
+
+        isSearching = true
+        didSearch = true
+        searchErrorMessage = nil
+
+        do {
+            let results = try await tmdbRepository.searchMedia(
+                query: cleanedQuery
+            )
+
+            let candidates = results
+                .prefix(10)
+                .map { BattleCandidateMapper.candidate(from: $0) }
+
+            tmdbResults = BattleCandidateMapper.dedupe(candidates)
+        } catch {
+            searchErrorMessage = "Couldn’t search TMDB right now. You can still add a manual contender."
+
+            #if DEBUG
+            print("⚠️ Duel TMDB search failed:", error.localizedDescription)
+            #endif
+        }
+
+        isSearching = false
+    }
+
+    private func addManualCandidate() {
+        guard canAddManual else {
+            return
+        }
+
+        let candidate = BattleCandidateMapper.manualCandidate(
+            title: cleanedManualTitle,
+            type: manualType
+        )
+
+        selectCandidate(candidate)
+        manualTitle = ""
+    }
+
+    private func selectCandidate(
+        _ candidate: BattleCandidate
     ) {
-        guard let firstEntry, let secondEntry else {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            if firstCandidate == nil {
+                firstCandidate = candidate
+            } else if secondCandidate == nil {
+                secondCandidate = candidate
+            } else {
+                secondCandidate = candidate
+            }
+
+            resetDuelOnly()
+        }
+    }
+
+    private func isSelected(
+        _ candidate: BattleCandidate
+    ) -> Bool {
+        firstCandidate?.normalizedIdentityKey == candidate.normalizedIdentityKey ||
+        secondCandidate?.normalizedIdentityKey == candidate.normalizedIdentityKey
+    }
+
+    private func answerRound(
+        with candidate: BattleCandidate
+    ) {
+        guard let firstCandidate, let secondCandidate else {
             return
         }
 
@@ -746,13 +1057,13 @@ struct BattleHeadToHeadSheet: View {
         }
 
         isAdvancingRound = true
-        selectedRoundAnswers[currentRoundIndex] = entry.id
-        lastRoundWinnerTitle = entry.displayTitle
+        selectedRoundAnswers[currentRoundIndex] = candidate.id
+        lastRoundWinnerTitle = candidate.displayTitle
 
         withAnimation(.easeInOut(duration: 0.18)) {
-            if entry.id == firstEntry.id {
+            if candidate.id == firstCandidate.id {
                 firstScore += 1
-            } else if entry.id == secondEntry.id {
+            } else if candidate.id == secondCandidate.id {
                 secondScore += 1
             }
         }
@@ -763,7 +1074,7 @@ struct BattleHeadToHeadSheet: View {
     }
 
     private func advanceRound() {
-        guard let firstEntry, let secondEntry else {
+        guard let firstCandidate, let secondCandidate else {
             isAdvancingRound = false
             return
         }
@@ -776,15 +1087,15 @@ struct BattleHeadToHeadSheet: View {
             return
         }
 
-        let resolvedWinner: Entry
+        let resolvedWinner: BattleCandidate
 
         if firstScore > secondScore {
-            resolvedWinner = firstEntry
+            resolvedWinner = firstCandidate
         } else if secondScore > firstScore {
-            resolvedWinner = secondEntry
+            resolvedWinner = secondCandidate
         } else {
             let finalAnswerId = selectedRoundAnswers[rounds.count - 1]
-            resolvedWinner = finalAnswerId == secondEntry.id ? secondEntry : firstEntry
+            resolvedWinner = finalAnswerId == secondCandidate.id ? secondCandidate : firstCandidate
         }
 
         withAnimation(.easeInOut(duration: 0.22)) {
@@ -794,13 +1105,13 @@ struct BattleHeadToHeadSheet: View {
 
         saveWinnerIfNeeded(
             winner: resolvedWinner,
-            options: [firstEntry, secondEntry]
+            options: [firstCandidate, secondCandidate]
         )
     }
 
     private func saveWinnerIfNeeded(
-        winner: Entry,
-        options: [Entry]
+        winner: BattleCandidate,
+        options: [BattleCandidate]
     ) {
         guard didSaveResult == false else {
             return
@@ -819,42 +1130,6 @@ struct BattleHeadToHeadSheet: View {
         selectedRoundAnswers = [:]
         isAdvancingRound = false
         lastRoundWinnerTitle = nil
-    }
-
-    // MARK: - Text Helpers
-
-    private func subtitle(
-        for entry: Entry
-    ) -> String {
-        var parts: [String] = []
-
-        if let releaseYear = entry.releaseYear {
-            parts.append("\(releaseYear)")
-        }
-
-        parts.append(entry.type.displayName)
-
-        if let rating = entry.tmdbRating, rating > 0 {
-            parts.append(String(format: "%.1f TMDB", rating))
-        }
-
-        if entry.sourceType == .quickAdd {
-            parts.append("Quick Add")
-        }
-
-        return parts.joined(separator: " • ")
-    }
-
-    private func moodText(
-        for entry: Entry
-    ) -> String {
-        let cleanedMood = entry.mood.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if cleanedMood.isEmpty {
-            return entry.quickSentiment?.displayName ?? "Memory"
-        }
-
-        return cleanedMood
     }
 }
 

@@ -44,6 +44,37 @@ final class BattleResultRepository {
             modelContext: modelContext
         )
     }
+    func createFriendResult(
+        ownerId: String,
+        options: [Entry],
+        winner: Entry,
+        modelContext: ModelContext
+    ) throws -> BattleResult {
+        try createResult(
+            ownerId: ownerId,
+            mode: .friend,
+            title: BattleMode.friend.displayName,
+            options: options,
+            winner: winner,
+            modelContext: modelContext
+        )
+    }
+
+    func createCircleResult(
+        ownerId: String,
+        options: [Entry],
+        winner: Entry,
+        modelContext: ModelContext
+    ) throws -> BattleResult {
+        try createResult(
+            ownerId: ownerId,
+            mode: .circle,
+            title: BattleMode.circle.displayName,
+            options: options,
+            winner: winner,
+            modelContext: modelContext
+        )
+    }
 
     func createResult(
         ownerId: String,

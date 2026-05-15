@@ -35,9 +35,9 @@ enum BattleGameMode: String, CaseIterable, Identifiable {
         case .headToHead:
             return "A fast mini-quiz to decide which title wins."
         case .friend:
-            return "Compare options with one trusted person."
+            return "Pass-and-play voting for two people."
         case .circle:
-            return "Let a private Circle vote on a group winner."
+            return "A local group picker for shared watch decisions."
         }
     }
 
@@ -58,17 +58,14 @@ enum BattleGameMode: String, CaseIterable, Identifiable {
         switch self {
         case .pickTonight, .headToHead:
             return "Available now"
-        case .friend, .circle:
-            return "Coming later"
+        case .friend:
+            return "Local mode"
+        case .circle:
+            return "Local mode"
         }
     }
 
     var isAvailableNow: Bool {
-        switch self {
-        case .pickTonight, .headToHead:
-            return true
-        case .friend, .circle:
-            return false
-        }
+        true
     }
 }

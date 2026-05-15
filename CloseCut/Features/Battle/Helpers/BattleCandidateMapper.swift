@@ -74,12 +74,12 @@ enum BattleCandidateMapper {
 
     static func manualCandidate(
         title: String,
-        type: EntryType = .movie
+        type: EntryType
     ) -> BattleCandidate {
         let cleanedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
 
         return BattleCandidate(
-            id: "manual-\(cleanedTitle.normalizedTitleKey)-\(UUID().uuidString)",
+            id: "manual-\(cleanedTitle.normalizedTitleKey)-\(type.rawValue)-\(UUID().uuidString)",
             source: .manual,
             title: cleanedTitle,
             type: type,
@@ -120,5 +120,35 @@ enum BattleCandidateMapper {
         }
 
         return unique
+    }
+
+    static func entries(
+        from candidates: [BattleCandidate],
+        eligibleEntries: [Entry]
+    ) -> [Entry] {
+        candidates.compactMap { candidate in
+            guard candidate.source == .archive,
+                  let sourceEntryId = candidate.sourceEntryId else {
+                return nil
+            }
+
+            return eligibleEntries.first { entry in
+                entry.id == sourceEntryId
+            }
+        }
+    }
+
+    static func entry(
+        from candidate: BattleCandidate,
+        eligibleEntries: [Entry]
+    ) -> Entry? {
+        guard candidate.source == .archive,
+              let sourceEntryId = candidate.sourceEntryId else {
+            return nil
+        }
+
+        return eligibleEntries.first { entry in
+            entry.id == sourceEntryId
+        }
     }
 }

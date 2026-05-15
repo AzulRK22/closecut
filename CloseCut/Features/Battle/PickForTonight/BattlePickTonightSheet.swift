@@ -18,9 +18,11 @@ struct BattlePickTonightSheet: View {
     @State private var query = ""
     @State private var selectedCandidates: [BattleCandidate] = []
     @State private var tmdbResults: [BattleCandidate] = []
+    @State private var didSearch = false
     @State private var isSearching = false
     @State private var searchErrorMessage: String?
     @State private var manualTitle = ""
+    @State private var manualType: EntryType = .movie
 
     @FocusState private var focusedField: Field?
 
@@ -56,6 +58,10 @@ struct BattlePickTonightSheet: View {
         cleanedManualTitle.isEmpty == false
     }
 
+    private var canSearch: Bool {
+        cleanedQuery.count >= 2 && isSearching == false
+    }
+
     private var confirmTitle: String {
         canConfirm
             ? "Pick from \(selectedCandidates.count) options"
@@ -79,9 +85,7 @@ struct BattlePickTonightSheet: View {
 
                             searchSection
 
-                            if tmdbResults.isEmpty == false {
-                                tmdbResultsSection
-                            }
+                            tmdbResultsOrEmptySection
 
                             manualSection
 
@@ -222,16 +226,33 @@ struct BattlePickTonightSheet: View {
         BattleSectionCard(
             title: canConfirm ? "Shortlist ready" : "Shortlist",
             subtitle: canConfirm
-                ? "You can pick now or keep adding options."
+                ? "You can pick now, clear the list, or keep adding options."
                 : "Add at least two options to start."
         ) {
-            if selectedCandidates.isEmpty {
-                emptyShortlist
-            } else {
-                VStack(spacing: 10) {
-                    ForEach(selectedCandidates) { candidate in
-                        selectedCandidateRow(candidate)
+            VStack(alignment: .leading, spacing: 12) {
+                if selectedCandidates.isEmpty {
+                    emptyShortlist
+                } else {
+                    VStack(spacing: 10) {
+                        ForEach(selectedCandidates) { candidate in
+                            selectedCandidateRow(candidate)
+                        }
                     }
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            selectedCandidates = []
+                        }
+                    } label: {
+                        Label("Clear shortlist", systemImage: "trash")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textSecondary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 38)
+                            .background(CloseCutColors.input)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -335,6 +356,7 @@ struct BattlePickTonightSheet: View {
                         Button {
                             query = ""
                             tmdbResults = []
+                            didSearch = false
                             searchErrorMessage = nil
                         } label: {
                             Image(systemName: "xmark.circle.fill")
@@ -375,8 +397,33 @@ struct BattlePickTonightSheet: View {
         }
     }
 
-    private var canSearch: Bool {
-        cleanedQuery.count >= 2 && isSearching == false
+    @ViewBuilder
+    private var tmdbResultsOrEmptySection: some View {
+        if tmdbResults.isEmpty == false {
+            tmdbResultsSection
+        } else if didSearch && isSearching == false && searchErrorMessage == nil {
+            BattleSectionCard(
+                title: "No TMDB matches",
+                subtitle: "Try the original title, a shorter query, or add it manually."
+            ) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .padding(.top, 2)
+
+                    Text("No results found for “\(cleanedQuery)”.")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 0)
+                }
+                .padding(12)
+                .background(CloseCutColors.input)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+        }
     }
 
     private var tmdbResultsSection: some View {
@@ -405,6 +452,15 @@ struct BattlePickTonightSheet: View {
             subtitle: "For titles you remember but do not want to search right now."
         ) {
             VStack(alignment: .leading, spacing: 12) {
+                Picker("Manual type", selection: $manualType) {
+                    Text("Movie")
+                        .tag(EntryType.movie)
+
+                    Text("Series")
+                        .tag(EntryType.series)
+                }
+                .pickerStyle(.segmented)
+
                 HStack(spacing: 10) {
                     Image(systemName: "plus.circle")
                         .font(.subheadline.weight(.semibold))
@@ -519,6 +575,7 @@ struct BattlePickTonightSheet: View {
         }
 
         isSearching = true
+        didSearch = true
         searchErrorMessage = nil
 
         do {
@@ -549,7 +606,7 @@ struct BattlePickTonightSheet: View {
 
         let candidate = BattleCandidateMapper.manualCandidate(
             title: cleanedManualTitle,
-            type: .movie
+            type: manualType
         )
 
         withAnimation(.easeInOut(duration: 0.18)) {
