@@ -19,6 +19,13 @@ struct SettingsView: View {
     @State private var lastSyncBannerStyle: SyncResultBannerStyle = .neutral
     @State private var showSignOutConfirmation = false
 
+    @State private var showEditProfileSheet = false
+    @State private var isSavingProfile = false
+    @State private var localDisplayNameOverride: String?
+    @State private var selectedAvatarPreset: AvatarPreset = .defaultPreset
+    @State private var profileActionMessage: String?
+    @State private var profileActionBannerStyle: SyncResultBannerStyle = .neutral
+
     @Query(sort: \PendingAction.updatedAt, order: .reverse)
     private var pendingActions: [PendingAction]
 
@@ -117,6 +124,41 @@ struct SettingsView: View {
         max(currentUserEntries.count - currentUserSharedEntryCount, 0)
     }
 
+    private var effectiveDisplayName: String {
+        if let localDisplayNameOverride,
+           localDisplayNameOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            return localDisplayNameOverride
+        }
+
+        let profileName = profile.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if profileName.isEmpty == false {
+            return profileName
+        }
+
+        if let userDisplayName = user.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           userDisplayName.isEmpty == false {
+            return userDisplayName
+        }
+
+        return "CloseCut user"
+    }
+
+    private var displayProfile: UserProfile {
+        UserProfile(
+            id: profile.id,
+            displayName: effectiveDisplayName,
+            email: profile.email,
+            photoURL: profile.photoURL,
+            circleId: profile.circleId,
+            circleIds: profile.circleIds,
+            defaultVisibility: profile.defaultVisibility,
+            createdAt: profile.createdAt,
+            updatedAt: profile.updatedAt,
+            syncStatus: profile.syncStatus
+        )
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -125,12 +167,28 @@ struct SettingsView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        settingsHeader
+                        SettingsHeroCard(
+                            entriesCount: currentUserEntries.count,
+                            circleCount: currentUserCircleCount,
+                            pendingCount: visiblePendingCount,
+                            failedCount: visibleFailedCount
+                        )
 
                         ProfileHeaderCard(
                             user: user,
-                            profile: profile
+                            profile: displayProfile,
+                            avatarPreset: selectedAvatarPreset,
+                            onEditProfile: {
+                                showEditProfileSheet = true
+                            }
                         )
+
+                        if let profileActionMessage {
+                            SyncResultBanner(
+                                message: profileActionMessage,
+                                style: profileActionBannerStyle
+                            )
+                        }
 
                         ArchiveHealthCard(
                             entries: currentUserEntries,
@@ -177,35 +235,30 @@ struct SettingsView: View {
             } message: {
                 Text("You can sign back in later. Your synced entries remain in your private cloud database.")
             }
-        }
-    }
-
-    private var settingsHeader: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Control center")
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textPrimary)
-
-                Text("Manage your account, archive health, privacy, and local-first sync.")
-                    .font(.subheadline)
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            .sheet(isPresented: $showEditProfileSheet) {
+                EditProfileSheet(
+                    currentDisplayName: effectiveDisplayName,
+                    currentAvatarPreset: selectedAvatarPreset,
+                    isSaving: isSavingProfile,
+                    onCancel: {
+                        showEditProfileSheet = false
+                    },
+                    onSave: { displayName, avatarPreset in
+                        saveProfileLocallyForNow(
+                            displayName: displayName,
+                            avatarPreset: avatarPreset
+                        )
+                    }
+                )
             }
-
-            Spacer()
-
-            Image(systemName: "gearshape.fill")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(CloseCutColors.accentLight)
-                .frame(width: 38, height: 38)
-                .background(CloseCutColors.input)
-                .clipShape(SwiftUI.Circle())
         }
     }
 
     private var syncSection: some View {
-        settingsSection(title: "Sync") {
+        SettingsSectionCard(
+            title: "Sync",
+            subtitle: "Control cloud refresh, retries, and local-first changes."
+        ) {
             VStack(alignment: .leading, spacing: 12) {
                 if sessionSyncViewModel.isInitialCloudRefreshRunning {
                     SyncResultBanner(
@@ -290,27 +343,30 @@ struct SettingsView: View {
     }
 
     private var privacySection: some View {
-        settingsSection(title: "Privacy & sharing") {
+        SettingsSectionCard(
+            title: "Privacy & sharing",
+            subtitle: "Understand what stays private and what can be shared."
+        ) {
             VStack(alignment: .leading, spacing: 12) {
-                settingsRow(
+                SettingsRow(
                     icon: "lock.fill",
                     title: "Default visibility",
                     value: profile.defaultVisibility.displayName
                 )
 
-                settingsRow(
+                SettingsRow(
                     icon: "film.stack",
                     title: "Private memories",
                     value: "\(currentUserPrivateEntryCount)"
                 )
 
-                settingsRow(
+                SettingsRow(
                     icon: "person.2.fill",
                     title: "Shared memories",
                     value: "\(currentUserSharedEntryCount)"
                 )
 
-                settingsRow(
+                SettingsRow(
                     icon: "circle.grid.2x2.fill",
                     title: "Active Circles",
                     value: "\(currentUserCircleCount)"
@@ -341,33 +397,36 @@ struct SettingsView: View {
     }
 
     private var localDataSection: some View {
-        settingsSection(title: "Local data") {
+        SettingsSectionCard(
+            title: "Local data",
+            subtitle: "Your device keeps CloseCut usable even before cloud sync finishes."
+        ) {
             VStack(alignment: .leading, spacing: 12) {
-                settingsRow(
+                SettingsRow(
                     icon: "iphone",
                     title: "Local journal",
                     value: "Enabled"
                 )
 
-                settingsRow(
+                SettingsRow(
                     icon: "film.stack",
                     title: "Local entries",
                     value: "\(currentUserEntries.count)"
                 )
 
-                settingsRow(
+                SettingsRow(
                     icon: "clock.fill",
                     title: "Pending local entries",
                     value: "\(currentUserPendingEntries.count)"
                 )
 
-                settingsRow(
+                SettingsRow(
                     icon: "tray.full.fill",
                     title: "Queued actions",
                     value: "\(currentUserPendingActions.count)"
                 )
 
-                settingsRow(
+                SettingsRow(
                     icon: "checkmark.circle.fill",
                     title: "Completed sync actions",
                     value: "\(currentUserCompletedActions.count)"
@@ -397,12 +456,15 @@ struct SettingsView: View {
     }
 
     private var accountSection: some View {
-        settingsSection(title: "Account") {
+        SettingsSectionCard(
+            title: "Account",
+            subtitle: "Manage access to this CloseCut session."
+        ) {
             VStack(alignment: .leading, spacing: 12) {
-                settingsRow(
+                SettingsRow(
                     icon: "person.crop.circle.fill",
                     title: "Signed in as",
-                    value: profile.displayName
+                    value: effectiveDisplayName
                 )
 
                 Button {
@@ -435,21 +497,24 @@ struct SettingsView: View {
     }
 
     private var appInfoSection: some View {
-        settingsSection(title: "App info") {
+        SettingsSectionCard(
+            title: "App info",
+            subtitle: "Build and product information."
+        ) {
             VStack(spacing: 10) {
-                settingsRow(
+                SettingsRow(
                     icon: "sparkles",
                     title: "CloseCut MVP",
                     value: "Local-first"
                 )
 
-                settingsRow(
+                SettingsRow(
                     icon: "number",
                     title: "Version",
                     value: AppBuildInfo.displayVersion
                 )
 
-                settingsRow(
+                SettingsRow(
                     icon: "shippingbox",
                     title: "Bundle",
                     value: AppBuildInfo.bundleIdentifier
@@ -468,59 +533,6 @@ struct SettingsView: View {
         }
 
         return "Sync now"
-    }
-
-    private func settingsSection<Content: View>(
-        title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title.uppercased())
-                .font(.caption2.weight(.semibold))
-                .tracking(0.8)
-                .foregroundStyle(CloseCutColors.textTertiary)
-                .padding(.horizontal, 2)
-
-            VStack(alignment: .leading, spacing: 12) {
-                content()
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(CloseCutColors.card)
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(CloseCutColors.separator, lineWidth: 0.5)
-            }
-        }
-    }
-
-    private func settingsRow(
-        icon: String,
-        title: String,
-        value: String
-    ) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(CloseCutColors.accentLight)
-                .frame(width: 30, height: 30)
-                .background(CloseCutColors.input)
-                .clipShape(SwiftUI.Circle())
-
-            Text(title)
-                .font(.subheadline)
-                .foregroundStyle(CloseCutColors.textPrimary)
-                .lineLimit(1)
-
-            Spacer(minLength: 12)
-
-            Text(value)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(CloseCutColors.textSecondary)
-                .lineLimit(1)
-        }
-        .frame(minHeight: 36)
     }
 
     private func privacySignalRow(
@@ -549,6 +561,43 @@ struct SettingsView: View {
 
             Spacer()
         }
+    }
+
+    private func saveProfileLocallyForNow(
+        displayName: String,
+        avatarPreset: AvatarPreset
+    ) {
+        let cleanedDisplayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard cleanedDisplayName.isEmpty == false else {
+            profileActionBannerStyle = .warning
+            profileActionMessage = "Add a display name before saving."
+            return
+        }
+
+        guard cleanedDisplayName.count <= 40 else {
+            profileActionBannerStyle = .warning
+            profileActionMessage = "Display name must be 40 characters or less."
+            return
+        }
+
+        isSavingProfile = true
+        profileActionMessage = nil
+
+        withAnimation(.easeInOut(duration: 0.2)) {
+            localDisplayNameOverride = cleanedDisplayName
+            selectedAvatarPreset = avatarPreset
+        }
+
+        isSavingProfile = false
+        showEditProfileSheet = false
+
+        profileActionBannerStyle = .success
+        profileActionMessage = "Profile preview updated on this device."
+
+        #if DEBUG
+        print("ℹ️ Profile preview updated locally. Persist avatar/display name in the next block.")
+        #endif
     }
 
     private func syncNow() async {
