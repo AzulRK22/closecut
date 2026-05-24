@@ -16,7 +16,7 @@ enum BattleMode: String, Codable, CaseIterable {
     var displayName: String {
         switch self {
         case .randomPick:
-            return "Random Pick"
+            return "Pick for Tonight"
         case .headToHead:
             return "Movie vs Movie"
         case .friend:
@@ -37,6 +37,19 @@ enum BattleMode: String, Codable, CaseIterable {
         case .circle:
             return "person.3.fill"
         }
+    }
+
+    var isSocialMode: Bool {
+        switch self {
+        case .friend, .circle:
+            return true
+        case .randomPick, .headToHead:
+            return false
+        }
+    }
+
+    var isPersonalMode: Bool {
+        isSocialMode == false
     }
 }
 
