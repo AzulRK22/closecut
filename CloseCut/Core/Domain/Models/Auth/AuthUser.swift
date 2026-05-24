@@ -12,6 +12,19 @@ struct AuthUser: Identifiable, Equatable {
     let email: String?
     let displayName: String?
     let photoURL: URL?
+    let isAnonymous: Bool
 
-    var isAnonymous: Bool = false
+    init(
+        id: String,
+        email: String?,
+        displayName: String?,
+        photoURL: URL?,
+        isAnonymous: Bool = false
+    ) {
+        self.id = id
+        self.email = email
+        self.displayName = displayName
+        self.photoURL = photoURL
+        self.isAnonymous = isAnonymous
+    }
 }

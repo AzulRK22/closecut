@@ -13,4 +13,3 @@ enum AuthState: Equatable {
     case signedIn(AuthUser)
     case error(String)
 }
-
