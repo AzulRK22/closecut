@@ -18,12 +18,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             FirebaseApp.configure()
         }
 
-        configureFirestore()
+        configureFirestorePersistence()
 
         return true
     }
 
-    private func configureFirestore() {
+    private func configureFirestorePersistence() {
         guard FirebaseApp.app() != nil else {
             return
         }

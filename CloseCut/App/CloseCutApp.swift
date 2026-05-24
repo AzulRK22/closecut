@@ -35,14 +35,6 @@ struct CloseCutApp: App {
                 .environmentObject(sessionViewModel)
                 .environmentObject(sessionSyncViewModel)
         }
-        .modelContainer(for: [
-            LocalEntry.self,
-            LocalCircle.self,
-            LocalCircleMembership.self,
-            LocalUserProfile.self,
-            LocalUserState.self,
-            PendingAction.self,
-            LocalBattleResult.self
-        ])
+        .modelContainer(for: AppModelContainer.models)
     }
 }
