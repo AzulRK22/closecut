@@ -40,6 +40,82 @@ struct QuickAddDraft: Equatable, Identifiable {
     }
 
     var isValid: Bool {
-        title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        title.trimmed.isEmpty == false
+    }
+
+    var displayTitle: String {
+        let cleaned = title.trimmed
+        return cleaned.isEmpty ? "Untitled" : cleaned
+    }
+
+    var metadataText: String {
+        var parts: [String] = []
+
+        if let releaseYear {
+            parts.append("\(releaseYear)")
+        }
+
+        parts.append(type.displayName)
+
+        if externalMetadata != nil {
+            parts.append("TMDB")
+        }
+
+        return parts.joined(separator: " • ")
+    }
+
+    var sentimentText: String {
+        quickSentiment?.displayName ?? "No reaction yet"
+    }
+
+    var sentimentEmojiText: String {
+        guard let quickSentiment else {
+            return "No reaction yet"
+        }
+
+        return "\(quickSentiment.emoji) \(quickSentiment.displayName)"
+    }
+
+    var dateText: String {
+        watchedDateApprox?.resolvedDisplayLabel ?? "Unknown date"
+    }
+
+    var hasExternalMetadata: Bool {
+        externalMetadata != nil
+    }
+
+    var posterURL: URL? {
+        externalMetadata?.posterURL
+    }
+
+    func withTitle(
+        _ newTitle: String
+    ) -> QuickAddDraft {
+        QuickAddDraft(
+            id: id,
+            title: newTitle,
+            type: type,
+            releaseYear: releaseYear,
+            quickSentiment: quickSentiment,
+            watchedDateApprox: watchedDateApprox,
+            externalMetadata: externalMetadata
+        )
+    }
+
+    func enriched(
+        with metadata: EntryExternalMetadata,
+        title: String? = nil,
+        releaseYear: Int? = nil,
+        type: EntryType? = nil
+    ) -> QuickAddDraft {
+        QuickAddDraft(
+            id: id,
+            title: title ?? self.title,
+            type: type ?? self.type,
+            releaseYear: releaseYear ?? self.releaseYear,
+            quickSentiment: quickSentiment,
+            watchedDateApprox: watchedDateApprox,
+            externalMetadata: metadata
+        )
     }
 }

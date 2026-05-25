@@ -7,8 +7,12 @@
 
 import Foundation
 
-enum ExternalMediaSource: String, Codable {
+enum ExternalMediaSource: String, Codable, CaseIterable, Identifiable {
     case tmdb
+
+    var id: String {
+        rawValue
+    }
 
     var displayName: String {
         switch self {
@@ -16,10 +20,18 @@ enum ExternalMediaSource: String, Codable {
             return "TMDB"
         }
     }
+
+    var systemImage: String {
+        switch self {
+        case .tmdb:
+            return "sparkles.tv"
+        }
+    }
 }
 
 struct EntryExternalMetadata: Codable, Equatable {
     var source: ExternalMediaSource
+
     var tmdbId: Int
     var tmdbMediaTypeRaw: String
 
@@ -45,12 +57,58 @@ struct EntryExternalMetadata: Codable, Equatable {
         self.source = source
         self.tmdbId = tmdbId
         self.tmdbMediaTypeRaw = tmdbMediaTypeRaw
-        self.posterPath = posterPath
-        self.backdropPath = backdropPath
-        self.overview = overview
+        self.posterPath = posterPath?.trimmed.nilIfEmpty
+        self.backdropPath = backdropPath?.trimmed.nilIfEmpty
+        self.overview = overview?.trimmed.nilIfEmpty
         self.tmdbRating = tmdbRating
         self.tmdbPopularity = tmdbPopularity
         self.tmdbGenreIds = tmdbGenreIds
+    }
+
+    var hasPoster: Bool {
+        posterPath?.trimmed.isEmpty == false
+    }
+
+    var hasBackdrop: Bool {
+        backdropPath?.trimmed.isEmpty == false
+    }
+
+    var hasOverview: Bool {
+        overview?.trimmed.isEmpty == false
+    }
+
+    var hasRating: Bool {
+        guard let tmdbRating else {
+            return false
+        }
+
+        return tmdbRating > 0
+    }
+
+    var hasUsefulMetadata: Bool {
+        hasPoster ||
+        hasBackdrop ||
+        hasOverview ||
+        hasRating ||
+        tmdbGenreIds.isEmpty == false
+    }
+
+    var identityKey: String {
+        "\(source.rawValue)-\(tmdbMediaTypeRaw)-\(tmdbId)"
+    }
+
+    var posterURL: URL? {
+        TMDBImageURLBuilder.imageURL(
+            path: posterPath,
+            size: .posterMedium
+        )
+    }
+
+    var backdropURL: URL? {
+        TMDBImageURLBuilder.imageURL(
+            path: backdropPath,
+            size: .backdropMedium
+        )
     }
 }
 

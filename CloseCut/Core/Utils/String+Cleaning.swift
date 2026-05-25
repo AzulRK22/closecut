@@ -17,6 +17,10 @@ extension String {
         return cleaned.isEmpty ? nil : cleaned
     }
 
+    var nilIfEmpty: String? {
+        nilIfBlank
+    }
+
     var isBlank: Bool {
         trimmed.isEmpty
     }

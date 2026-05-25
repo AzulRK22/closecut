@@ -58,17 +58,76 @@ struct Entry: Identifiable, Codable, Equatable {
         deletedAt != nil
     }
 
+    var isActive: Bool {
+        isDeleted == false
+    }
+
     var isQuickAdd: Bool {
         sourceType == .quickAdd
     }
 
+    var isFullEntry: Bool {
+        sourceType == .fullEntry
+    }
+
+    var isImported: Bool {
+        sourceType == .imported
+    }
+
+    var hasTitle: Bool {
+        displayTitle.trimmed.isEmpty == false
+    }
+
     var hasFullEmotionalDetails: Bool {
         sourceType == .fullEntry &&
-        mood.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        mood.trimmed.isEmpty == false
+    }
+
+    var hasAnyPersonalSignal: Bool {
+        mood.trimmed.isEmpty == false ||
+        quickSentiment != nil ||
+        takeaway.trimmed.isEmpty == false ||
+        quote?.trimmed.isEmpty == false ||
+        tags.isEmpty == false ||
+        intensity > 0
+    }
+
+    var hasUsefulContentForDetail: Bool {
+        primaryBodyText.trimmed.isEmpty == false ||
+        quote?.trimmed.isEmpty == false ||
+        tags.isEmpty == false ||
+        hasCinemaExperience
     }
 
     var hasTMDBMetadata: Bool {
         externalSourceRaw == ExternalMediaSource.tmdb.rawValue && tmdbId != nil
+    }
+
+    var hasPoster: Bool {
+        posterPath?.trimmed.isEmpty == false
+    }
+
+    var hasBackdrop: Bool {
+        backdropPath?.trimmed.isEmpty == false
+    }
+
+    var hasCinemaExperience: Bool {
+        cinemaAudio != nil ||
+        cinemaScreen != nil ||
+        cinemaComfort != nil ||
+        watchContext == .cinema
+    }
+
+    var isRecommendationPositiveSignal: Bool {
+        if let quickSentiment {
+            return quickSentiment.isPositiveSignal
+        }
+
+        return intensity >= 4
+    }
+
+    var isRecommendationNegativeSignal: Bool {
+        quickSentiment?.isNegativeSignal == true
     }
 
     // MARK: - Sharing
@@ -85,10 +144,20 @@ struct Entry: Identifiable, Codable, Equatable {
         isDeleted == false && isSharedWithCircle
     }
 
-    func isShared(with circleId: String) -> Bool {
-        activeSharedCircleIds.contains(
-            circleId.trimmingCharacters(in: .whitespacesAndNewlines)
-        )
+    var isPrivateOnly: Bool {
+        visibility == .privateOnly || isSharedWithCircle == false
+    }
+
+    func isOwned(
+        by userId: String
+    ) -> Bool {
+        ownerId.trimmed == userId.trimmed
+    }
+
+    func isShared(
+        with circleId: String
+    ) -> Bool {
+        activeSharedCircleIds.contains(circleId.trimmed)
     }
 
     // MARK: - Display Helpers
@@ -99,17 +168,31 @@ struct Entry: Identifiable, Codable, Equatable {
     }
 
     var displayMoodText: String {
-        let cleanedMood = mood.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedMood = mood.trimmed
 
-        if cleanedMood.isEmpty {
-            return quickSentiment?.displayName ?? "No mood yet"
+        if cleanedMood.isEmpty == false {
+            return cleanedMood
         }
 
-        return cleanedMood
+        return quickSentiment?.displayName ?? "No mood yet"
+    }
+
+    var displayMoodWithEmoji: String {
+        if let quickSentiment, mood.trimmed.isEmpty {
+            return "\(quickSentiment.emoji) \(quickSentiment.displayName)"
+        }
+
+        let parsedMood = Mood.from(mood)
+
+        if parsedMood != .empty {
+            return "\(parsedMood.emoji) \(parsedMood.label)"
+        }
+
+        return displayMoodText
     }
 
     var displayDateText: String {
-        watchedDateApprox?.displayLabel
+        watchedDateApprox?.resolvedDisplayLabel
             ?? watchedAt.formatted(date: .abbreviated, time: .omitted)
     }
 
@@ -124,6 +207,22 @@ struct Entry: Identifiable, Codable, Equatable {
 
         if let tmdbRating, tmdbRating > 0 {
             parts.append(String(format: "%.1f TMDB", tmdbRating))
+        }
+
+        return parts.joined(separator: " • ")
+    }
+
+    var compactMetadataText: String {
+        var parts: [String] = []
+
+        if let releaseYear {
+            parts.append("\(releaseYear)")
+        }
+
+        parts.append(type.displayName)
+
+        if sourceType == .quickAdd {
+            parts.append("Quick Add")
         }
 
         return parts.joined(separator: " • ")
@@ -145,8 +244,12 @@ struct Entry: Identifiable, Codable, Equatable {
         sourceType == .quickAdd ? "Quick Add" : nil
     }
 
+    var sourceDisplayText: String {
+        sourceType.displayName
+    }
+
     var primaryBodyText: String {
-        let cleanedTakeaway = takeaway.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedTakeaway = takeaway.trimmed
 
         if cleanedTakeaway.isEmpty == false {
             return cleanedTakeaway
@@ -163,6 +266,52 @@ struct Entry: Identifiable, Codable, Equatable {
         return sourceType == .quickAdd
             ? "Added to your history"
             : "No takeaway added yet."
+    }
+
+    var quoteText: String? {
+        cleanOptional(quote)
+    }
+
+    var cleanTags: [String] {
+        Self.cleanTags(tags)
+    }
+
+    var topTags: [String] {
+        Array(cleanTags.prefix(4))
+    }
+
+    var intensityText: String {
+        guard intensity > 0 else {
+            return "No intensity"
+        }
+
+        return "\(intensity)/5"
+    }
+
+    var cinemaExperienceSummary: String? {
+        guard hasCinemaExperience else {
+            return nil
+        }
+
+        var parts: [String] = []
+
+        if let cinemaAudio {
+            parts.append("Audio \(cinemaAudio)/5")
+        }
+
+        if let cinemaScreen {
+            parts.append("Screen \(cinemaScreen)/5")
+        }
+
+        if let cinemaComfort {
+            parts.append("Comfort \(cinemaComfort)/5")
+        }
+
+        if parts.isEmpty {
+            return "Watched in cinema"
+        }
+
+        return parts.joined(separator: " • ")
     }
 
     // MARK: - External Metadata
@@ -187,7 +336,10 @@ struct Entry: Identifiable, Codable, Equatable {
     }
 
     var posterURL: URL? {
-        TMDBImageURLBuilder.imageURL(path: posterPath)
+        TMDBImageURLBuilder.imageURL(
+            path: posterPath,
+            size: .posterMedium
+        )
     }
 
     var backdropURL: URL? {
@@ -197,25 +349,106 @@ struct Entry: Identifiable, Codable, Equatable {
         )
     }
 
+    var externalIdentityKey: String? {
+        guard let tmdbId,
+              let tmdbMediaTypeRaw else {
+            return nil
+        }
+
+        return "\(ExternalMediaSource.tmdb.rawValue)-\(tmdbMediaTypeRaw)-\(tmdbId)"
+    }
+
+    var normalizedIdentityKey: String {
+        if let externalIdentityKey {
+            return externalIdentityKey
+        }
+
+        return "\(displayTitle.normalizedTitleKey)|\(type.rawValue)"
+    }
+
+    // MARK: - Mutation Helpers
+
+    mutating func normalizeForLocalUse() {
+        title = displayTitle
+        normalizedTitle = displayTitle.normalizedTitleKey
+        tags = cleanTags
+        sharedCircleIds = activeSharedCircleIds
+        mood = mood.trimmed
+        takeaway = takeaway.trimmed
+        quote = cleanOptional(quote)
+        posterPath = cleanOptional(posterPath)
+        backdropPath = cleanOptional(backdropPath)
+        overview = cleanOptional(overview)
+        updatedAt = Date()
+    }
+
+    func withUpdatedSharing(
+        visibility: EntryVisibility,
+        sharedCircleIds: [String]
+    ) -> Entry {
+        var copy = self
+        copy.visibility = visibility
+        copy.sharedCircleIds = Self.cleanIds(sharedCircleIds)
+        copy.updatedAt = Date()
+        return copy
+    }
+
+    func enriched(
+        with metadata: EntryExternalMetadata
+    ) -> Entry {
+        var copy = self
+
+        copy.externalSourceRaw = metadata.source.rawValue
+        copy.tmdbId = metadata.tmdbId
+        copy.tmdbMediaTypeRaw = metadata.tmdbMediaTypeRaw
+        copy.posterPath = metadata.posterPath
+        copy.backdropPath = metadata.backdropPath
+        copy.overview = metadata.overview
+        copy.tmdbRating = metadata.tmdbRating
+        copy.tmdbPopularity = metadata.tmdbPopularity
+        copy.tmdbGenreIds = metadata.tmdbGenreIds
+        copy.updatedAt = Date()
+
+        return copy
+    }
+
     // MARK: - Helpers
 
-    private static func cleanIds(_ ids: [String]) -> [String] {
+    private static func cleanIds(
+        _ ids: [String]
+    ) -> [String] {
         Array(
             Set(
                 ids
-                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                    .filter { !$0.isEmpty }
+                    .map { $0.trimmed }
+                    .filter { $0.isEmpty == false }
             )
         )
         .sorted()
     }
 
-    private func cleanOptional(_ value: String?) -> String? {
+    private static func cleanTags(
+        _ tags: [String]
+    ) -> [String] {
+        Array(
+            Set(
+                tags
+                    .map { $0.trimmed }
+                    .filter { $0.isEmpty == false }
+                    .map { $0.lowercased() }
+            )
+        )
+        .sorted()
+    }
+
+    private func cleanOptional(
+        _ value: String?
+    ) -> String? {
         guard let value else {
             return nil
         }
 
-        let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleaned = value.trimmed
         return cleaned.isEmpty ? nil : cleaned
     }
 }
