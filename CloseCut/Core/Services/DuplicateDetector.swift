@@ -96,6 +96,16 @@ enum DuplicateDetector {
         }
     }
 
+    static func containsDuplicate(
+        draft: QuickAddDraft,
+        in entries: [Entry]
+    ) -> Bool {
+        findDuplicate(
+            draft: draft,
+            in: entries
+        ) != nil
+    }
+
     // MARK: - Matching Rules
 
     private static func isSameTMDBMedia(
@@ -125,8 +135,7 @@ enum DuplicateDetector {
         releaseYear: Int?,
         existingEntry: Entry
     ) -> Bool {
-        let cleanedNormalizedTitle = normalizedTitle
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedNormalizedTitle = normalizedTitle.trimmed
 
         guard cleanedNormalizedTitle.isEmpty == false else {
             return false
@@ -140,7 +149,8 @@ enum DuplicateDetector {
             return false
         }
 
-        if let releaseYear, let existingYear = existingEntry.releaseYear {
+        if let releaseYear,
+           let existingYear = existingEntry.releaseYear {
             return releaseYear == existingYear
         }
 

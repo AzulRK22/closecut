@@ -18,20 +18,13 @@ struct EntryPayload: Codable {
         sharedCircleIds: [String]? = nil
     ) {
         self.entry = entry
-        self.sharedCircleIds = Self.cleanCircleIds(
+        self.sharedCircleIds = Self.cleanIds(
             sharedCircleIds ?? entry.sharedCircleIds
         )
     }
 
-    private static func cleanCircleIds(_ ids: [String]) -> [String] {
-        Array(
-            Set(
-                ids
-                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                    .filter { !$0.isEmpty }
-            )
-        )
-        .sorted()
+    private static func cleanIds(_ ids: [String]) -> [String] {
+        ids.cleanedUniqueIds
     }
 }
 
@@ -51,25 +44,14 @@ struct VisibilityPayload: Codable {
         sharedCircleIds: [String] = [],
         updatedAt: Date
     ) {
-        self.entryId = entryId
-        self.ownerId = ownerId
+        self.entryId = entryId.trimmed
+        self.ownerId = ownerId.trimmed
 
-        let cleanedSharedCircleIds = Self.cleanCircleIds(sharedCircleIds)
+        let cleanedSharedCircleIds = sharedCircleIds.cleanedUniqueIds
 
         self.sharedCircleIds = cleanedSharedCircleIds
         self.visibility = cleanedSharedCircleIds.isEmpty ? .privateOnly : visibility
         self.updatedAt = updatedAt
-    }
-
-    private static func cleanCircleIds(_ ids: [String]) -> [String] {
-        Array(
-            Set(
-                ids
-                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                    .filter { !$0.isEmpty }
-            )
-        )
-        .sorted()
     }
 }
 
@@ -92,9 +74,58 @@ struct ProfilePayload: Codable {
     let profile: UserProfile
 }
 
+struct ProfileIdentityPayload: Codable {
+    let userId: String
+    let displayName: String
+    let avatarSymbol: String?
+    let avatarColorRaw: String?
+    let photoURL: String?
+    let updatedAt: Date
+
+    init(
+        userId: String,
+        displayName: String,
+        avatarSymbol: String?,
+        avatarColorRaw: String?,
+        photoURL: String?,
+        updatedAt: Date = Date()
+    ) {
+        self.userId = userId.trimmed
+        self.displayName = displayName.trimmed
+        self.avatarSymbol = avatarSymbol.trimmedOrNil
+        self.avatarColorRaw = avatarColorRaw.trimmedOrNil
+        self.photoURL = photoURL.trimmedOrNil
+        self.updatedAt = updatedAt
+    }
+}
+
+struct DefaultVisibilityPayload: Codable {
+    let userId: String
+    let defaultVisibility: EntryVisibility
+    let updatedAt: Date
+
+    init(
+        userId: String,
+        defaultVisibility: EntryVisibility,
+        updatedAt: Date = Date()
+    ) {
+        self.userId = userId.trimmed
+        self.defaultVisibility = defaultVisibility
+        self.updatedAt = updatedAt
+    }
+}
+
 // MARK: - Circle
 
 struct JoinCirclePayload: Codable {
     let userId: String
     let inviteCode: String
+
+    init(
+        userId: String,
+        inviteCode: String
+    ) {
+        self.userId = userId.trimmed
+        self.inviteCode = inviteCode.normalizedInviteCode
+    }
 }

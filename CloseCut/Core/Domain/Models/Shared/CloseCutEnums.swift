@@ -21,6 +21,24 @@ enum EntryType: String, Codable, CaseIterable, Identifiable {
             return "Series"
         }
     }
+
+    var pluralDisplayName: String {
+        switch self {
+        case .movie:
+            return "Movies"
+        case .series:
+            return "Series"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .movie:
+            return "film.fill"
+        case .series:
+            return "tv.fill"
+        }
+    }
 }
 
 enum WatchContext: String, Codable, CaseIterable, Identifiable {
@@ -35,6 +53,15 @@ enum WatchContext: String, Codable, CaseIterable, Identifiable {
             return "Home"
         case .cinema:
             return "Cinema"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .home:
+            return "house.fill"
+        case .cinema:
+            return "popcorn.fill"
         }
     }
 }
@@ -53,12 +80,59 @@ enum EntryVisibility: String, Codable, CaseIterable, Identifiable {
             return "Circle"
         }
     }
+
+    var systemImage: String {
+        switch self {
+        case .privateOnly:
+            return "lock.fill"
+        case .circle:
+            return "person.2.fill"
+        }
+    }
+
+    var isPrivate: Bool {
+        self == .privateOnly
+    }
+
+    var requiresCircleSelection: Bool {
+        self == .circle
+    }
 }
 
 enum SyncStatus: String, Codable, CaseIterable {
     case synced
     case pending
     case failed
+
+    var displayName: String {
+        switch self {
+        case .synced:
+            return "Synced"
+        case .pending:
+            return "Pending"
+        case .failed:
+            return "Needs retry"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .synced:
+            return "checkmark.circle.fill"
+        case .pending:
+            return "clock.fill"
+        case .failed:
+            return "exclamationmark.triangle.fill"
+        }
+    }
+
+    var isFinal: Bool {
+        self == .synced
+    }
+
+    var needsUserAttention: Bool {
+        self == .failed
+    }
 }
 
 enum ReactionType: String, Codable, CaseIterable, Identifiable {
@@ -103,5 +177,26 @@ enum ReactionType: String, Codable, CaseIterable, Identifiable {
         case .iconic:
             return "star.fill"
         }
+    }
+
+    var emoji: String {
+        switch self {
+        case .loved:
+            return "❤️"
+        case .feltThat:
+            return "✨"
+        case .surprised:
+            return "😮"
+        case .comfort:
+            return "🌙"
+        case .heavy:
+            return "🌧️"
+        case .iconic:
+            return "⭐️"
+        }
+    }
+
+    var accessibilityLabel: String {
+        "\(emoji) \(displayName)"
     }
 }
