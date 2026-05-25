@@ -30,11 +30,13 @@ enum TMDBConfiguration {
 
     static let apiBaseURL = URL(string: "https://api.themoviedb.org/3")!
 
-    static let defaultPage = 1
-    static let defaultLanguage = "en-US"
     static let requestTimeout: TimeInterval = 20
-    static let minimumSearchQueryLength = 2
-    static let maximumSearchResults = 10
-    static let maximumDiscoveryGenreCount = 3
-    static let minimumDiscoveryVoteAverage = 6.8
+
+    static let defaultPage = 1
+
+    static let defaultLanguage = "en-US"
+
+    static let discoverMinimumVoteAverage: Double = 6.8
+
+    static let discoverMinimumVoteCount = 80
 }
