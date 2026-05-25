@@ -11,7 +11,7 @@ extension Array where Element == String {
     var cleanedUniqueIds: [String] {
         Array(
             Set(
-                map { $0.trimmed }
+                map(\.trimmed)
                     .filter { $0.isEmpty == false }
             )
         )
