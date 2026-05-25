@@ -38,7 +38,7 @@ struct BattleHeadToHeadSheet: View {
 
     @FocusState private var focusedField: Field?
 
-    private let tmdbRepository = TMDBSearchRepository()
+    private let tmdbRepository = TMDBMediaRepository()
 
     private enum Field {
         case search

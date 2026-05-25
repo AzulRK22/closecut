@@ -14,7 +14,7 @@ final class QuickPickEngine {
     private let maxHistoryBasedCandidates = 8
 
     private var noRepeatPolicy = NoRepeatPolicy()
-    private let tmdbRepository = TMDBSearchRepository()
+    private let tmdbRepository = TMDBMediaRepository()
 
     private let seedCandidates: [SuggestionCandidate] = [
         SuggestionCandidate(

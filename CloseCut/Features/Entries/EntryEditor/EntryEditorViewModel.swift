@@ -36,7 +36,7 @@ final class EntryEditorViewModel: ObservableObject {
     @Published var errors: [String] = []
 
     private let repository = EntryRepository()
-    private let tmdbRepository = TMDBSearchRepository()
+    private let tmdbRepository = TMDBMediaRepository()
     private var titleSearchTask: Task<Void, Never>?
 
     private(set) var editingEntry: Entry?

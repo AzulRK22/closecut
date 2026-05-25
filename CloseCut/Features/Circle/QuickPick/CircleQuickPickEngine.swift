@@ -14,7 +14,7 @@ final class CircleQuickPickEngine {
     private let maxSharedMemoryCandidates = 8
 
     private var noRepeatPolicy = NoRepeatPolicy()
-    private let tmdbRepository = TMDBSearchRepository()
+    private let tmdbRepository = TMDBMediaRepository()
 
     private let seedCandidates: [SuggestionCandidate] = [
         SuggestionCandidate(

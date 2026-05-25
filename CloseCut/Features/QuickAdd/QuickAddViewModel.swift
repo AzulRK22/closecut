@@ -25,7 +25,7 @@ final class QuickAddViewModel: ObservableObject {
     @Published private(set) var lastAddedEntry: Entry?
 
     private let repository = EntryRepository()
-    private let tmdbRepository = TMDBSearchRepository()
+    private let tmdbRepository = TMDBMediaRepository()
     private var searchTask: Task<Void, Never>?
 
     private let localSuggestions: [QuickAddSuggestion] = [

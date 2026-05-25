@@ -23,7 +23,7 @@ struct MediaSearchView: View {
 
     @FocusState private var isSearchFocused: Bool
 
-    private let repository = TMDBSearchRepository()
+    private let repository = TMDBMediaRepository()
     private let debounceNanoseconds: UInt64 = 450_000_000
     private let maxDisplayedResults = 20
 

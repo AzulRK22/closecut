@@ -12,24 +12,30 @@ enum TMDBImageSize: String {
     case posterMedium = "w342"
     case posterLarge = "w500"
     case backdropMedium = "w780"
+    case backdropLarge = "w1280"
     case original = "original"
 }
 
 enum TMDBImageURLBuilder {
-    private static let imageBaseURL = URL(string: "https://image.tmdb.org/t/p")!
-
     static func imageURL(
         path: String?,
         size: TMDBImageSize = .posterMedium
     ) -> URL? {
-        guard let path,
-              path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+        guard let path else {
             return nil
         }
 
-        let normalizedPath = path.hasPrefix("/") ? String(path.dropFirst()) : path
+        let cleanedPath = path.trimmed
 
-        return imageBaseURL
+        guard cleanedPath.isEmpty == false else {
+            return nil
+        }
+
+        let normalizedPath = cleanedPath.hasPrefix("/")
+            ? String(cleanedPath.dropFirst())
+            : cleanedPath
+
+        return TMDBConfiguration.imageBaseURL
             .appendingPathComponent(size.rawValue)
             .appendingPathComponent(normalizedPath)
     }
