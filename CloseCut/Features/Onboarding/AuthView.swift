@@ -14,26 +14,77 @@ struct AuthView: View {
     @State private var password = ""
     @State private var isCreatingAccount = false
     @State private var isSubmitting = false
+    @State private var isPasswordVisible = false
+
+    @FocusState private var focusedField: AuthField?
+
+    private enum AuthField {
+        case email
+        case password
+    }
 
     private var cleanedEmail: String {
-        email.trimmingCharacters(in: .whitespacesAndNewlines)
+        email.trimmed.lowercased()
+    }
+
+    private var isEmailValid: Bool {
+        cleanedEmail.contains("@") &&
+        cleanedEmail.contains(".") &&
+        cleanedEmail.count >= 5
+    }
+
+    private var isPasswordValid: Bool {
+        password.count >= 6
     }
 
     private var canSubmit: Bool {
-        cleanedEmail.contains("@") &&
-        cleanedEmail.contains(".") &&
-        password.count >= 6 &&
+        isEmailValid &&
+        isPasswordValid &&
         isSubmitting == false
     }
 
     private var titleText: String {
-        isCreatingAccount ? "Create your private taste library" : "Welcome back"
+        isCreatingAccount
+            ? "Create your private taste library"
+            : "Welcome back"
     }
 
     private var subtitleText: String {
         isCreatingAccount
-        ? "Add what you watched, remember what stayed with you, and get better picks from your own history."
-        : "Continue your private library, QuickPick, and trusted Circles."
+            ? "Build a private record of what you watch, what stayed with you, and what your taste says about you."
+            : "Continue your private Timeline, QuickPick, and trusted Circles."
+    }
+
+    private var primaryButtonTitle: String {
+        if isSubmitting {
+            return isCreatingAccount ? "Creating account…" : "Signing in…"
+        }
+
+        return isCreatingAccount ? "Create account" : "Sign in"
+    }
+
+    private var passwordHintText: String {
+        if password.isEmpty {
+            return "Use at least 6 characters."
+        }
+
+        if isPasswordValid == false {
+            return "Password is too short."
+        }
+
+        return isCreatingAccount ? "Looks good." : "Password ready."
+    }
+
+    private var emailHintText: String {
+        if cleanedEmail.isEmpty {
+            return "Use the email connected to your CloseCut account."
+        }
+
+        if isEmailValid == false {
+            return "Enter a valid email address."
+        }
+
+        return "Email ready."
     }
 
     var body: some View {
@@ -43,10 +94,12 @@ struct AuthView: View {
                     .ignoresSafeArea()
 
                 ScrollView {
-                    VStack(spacing: 28) {
-                        Spacer(minLength: 44)
+                    VStack(spacing: 24) {
+                        Spacer(minLength: 34)
 
                         brandHeader
+
+                        valueSignals
 
                         authForm
 
@@ -62,9 +115,10 @@ struct AuthView: View {
 
                         Spacer(minLength: 32)
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 20)
+                    .padding(.horizontal, CloseCutSpacing.xxl)
+                    .padding(.vertical, CloseCutSpacing.xl)
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
@@ -72,6 +126,7 @@ struct AuthView: View {
         .preferredColorScheme(.dark)
         .onChange(of: isCreatingAccount) { _, _ in
             password = ""
+            focusedField = .email
         }
     }
 
@@ -87,6 +142,8 @@ struct AuthView: View {
                 Text(titleText)
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Text(subtitleText)
                     .font(.subheadline)
@@ -94,54 +151,137 @@ struct AuthView: View {
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 4)
             }
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("CloseCut. \(titleText). \(subtitleText)")
+    }
+
+    private var valueSignals: some View {
+        HStack(spacing: 8) {
+            signalPill(
+                icon: "lock.fill",
+                text: "Private"
+            )
+
+            signalPill(
+                icon: "sparkles",
+                text: "QuickPick"
+            )
+
+            signalPill(
+                icon: "person.2.fill",
+                text: "Circles"
+            )
         }
         .frame(maxWidth: .infinity)
     }
 
     private var authForm: some View {
-        VStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Email")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textTertiary)
-                    .textCase(.uppercase)
-                    .tracking(0.8)
-
+        VStack(spacing: 14) {
+            inputGroup(
+                label: "Email",
+                hint: emailHintText,
+                isValid: cleanedEmail.isEmpty ? nil : isEmailValid
+            ) {
                 TextField("you@example.com", text: $email)
+                    .focused($focusedField, equals: .email)
                     .textInputAutocapitalization(.never)
                     .keyboardType(.emailAddress)
                     .textContentType(.emailAddress)
                     .autocorrectionDisabled()
+                    .submitLabel(.next)
+                    .onSubmit {
+                        focusedField = .password
+                    }
                     .font(.body)
                     .foregroundStyle(CloseCutColors.textPrimary)
-                    .padding(14)
-                    .background(CloseCutColors.input)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Password")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textTertiary)
-                    .textCase(.uppercase)
-                    .tracking(0.8)
-
-                SecureField("Minimum 6 characters", text: $password)
+            inputGroup(
+                label: "Password",
+                hint: passwordHintText,
+                isValid: password.isEmpty ? nil : isPasswordValid
+            ) {
+                HStack(spacing: 10) {
+                    Group {
+                        if isPasswordVisible {
+                            TextField("Minimum 6 characters", text: $password)
+                        } else {
+                            SecureField("Minimum 6 characters", text: $password)
+                        }
+                    }
+                    .focused($focusedField, equals: .password)
                     .textContentType(isCreatingAccount ? .newPassword : .password)
+                    .submitLabel(.go)
+                    .onSubmit {
+                        Task {
+                            await submit()
+                        }
+                    }
                     .font(.body)
                     .foregroundStyle(CloseCutColors.textPrimary)
-                    .padding(14)
-                    .background(CloseCutColors.input)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                    Button {
+                        isPasswordVisible.toggle()
+                    } label: {
+                        Image(systemName: isPasswordVisible ? "eye.slash.fill" : "eye.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isPasswordVisible ? "Hide password" : "Show password")
+                }
             }
         }
         .padding(16)
         .background(CloseCutColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
+        }
+    }
+
+    private func inputGroup<Content: View>(
+        label: String,
+        hint: String,
+        isValid: Bool?,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(label.uppercased())
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .tracking(0.8)
+
+                Spacer()
+
+                if let isValid {
+                    Image(systemName: isValid ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(isValid ? CloseCutColors.synced : CloseCutColors.pending)
+                        .accessibilityHidden(true)
+                }
+            }
+
+            content()
+                .padding(14)
+                .background(CloseCutColors.input)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(inputBorderColor(isValid: isValid), lineWidth: 0.6)
+                }
+
+            Text(hint)
+                .font(.caption2)
+                .foregroundStyle(CloseCutColors.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -155,9 +295,10 @@ struct AuthView: View {
                 if isSubmitting {
                     ProgressView()
                         .scaleEffect(0.9)
+                        .tint(.white)
                 }
 
-                Text(isSubmitting ? "Working…" : isCreatingAccount ? "Create account" : "Sign in")
+                Text(primaryButtonTitle)
                     .font(.headline.weight(.semibold))
             }
             .foregroundStyle(canSubmit ? .white : CloseCutColors.textTertiary)
@@ -195,10 +336,16 @@ struct AuthView: View {
                 .foregroundStyle(CloseCutColors.failed)
                 .padding(.top, 2)
 
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(CloseCutColors.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Couldn’t continue")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             Spacer(minLength: 0)
         }
@@ -224,13 +371,44 @@ struct AuthView: View {
         .padding(.horizontal, 4)
     }
 
+    private func signalPill(
+        icon: String,
+        text: String
+    ) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.caption2.weight(.semibold))
+
+            Text(text)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(CloseCutColors.textSecondary)
+        .padding(.horizontal, 10)
+        .frame(height: 30)
+        .background(CloseCutColors.input)
+        .clipShape(Capsule())
+    }
+
+    private func inputBorderColor(isValid: Bool?) -> Color {
+        guard let isValid else {
+            return CloseCutColors.separator
+        }
+
+        return isValid ? CloseCutColors.separator : CloseCutColors.pending.opacity(0.7)
+    }
+
     private func submit() async {
         guard canSubmit else {
             return
         }
 
+        focusedField = nil
         isSubmitting = true
-        defer { isSubmitting = false }
+
+        defer {
+            isSubmitting = false
+        }
 
         if isCreatingAccount {
             await authService.signUp(
