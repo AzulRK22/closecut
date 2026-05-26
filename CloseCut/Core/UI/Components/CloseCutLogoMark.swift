@@ -9,6 +9,7 @@ import SwiftUI
 
 struct CloseCutLogoMark: View {
     var size: CGFloat = 72
+    var systemImage: String = "film.stack.fill"
     var showShadow: Bool = true
 
     var body: some View {
@@ -25,7 +26,7 @@ struct CloseCutLogoMark: View {
                     )
                 )
 
-            Image(systemName: "film.stack.fill")
+            Image(systemName: systemImage)
                 .font(.system(size: size * 0.42, weight: .semibold))
                 .foregroundStyle(.white)
         }

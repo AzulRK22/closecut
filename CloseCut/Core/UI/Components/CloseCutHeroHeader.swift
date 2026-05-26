@@ -11,14 +11,32 @@ struct CloseCutHeroHeader: View {
     let title: String
     let subtitle: String
     var systemImage: String? = nil
+    var style: Style = .plain
+
+    enum Style {
+        case plain
+        case card
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let systemImage {
-                icon(systemImage)
+        content
+            .padding(style == .card ? 18 : 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(background)
+            .clipShape(RoundedRectangle(cornerRadius: style == .card ? 24 : 0, style: .continuous))
+            .overlay {
+                if style == .card {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(CloseCutColors.separator, lineWidth: 0.5)
+                }
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(title). \(subtitle)")
+    }
 
-            VStack(alignment: .leading, spacing: 6) {
+    private var content: some View {
+        HStack(alignment: .top, spacing: 14) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text(title)
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
@@ -30,20 +48,42 @@ struct CloseCutHeroHeader: View {
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            Spacer(minLength: 12)
+
+            if let systemImage {
+                icon(systemImage)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title). \(subtitle)")
+    }
+
+    @ViewBuilder
+    private var background: some View {
+        switch style {
+        case .plain:
+            Color.clear
+
+        case .card:
+            LinearGradient(
+                colors: [
+                    CloseCutColors.card,
+                    CloseCutColors.card.opacity(0.94),
+                    CloseCutColors.accent.opacity(0.10)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
     }
 
     private func icon(_ systemImage: String) -> some View {
         ZStack {
             SwiftUI.Circle()
-                .fill(CloseCutColors.card)
-                .frame(width: 56, height: 56)
+                .fill(CloseCutColors.accent.opacity(0.16))
+                .frame(width: 50, height: 50)
 
             Image(systemName: systemImage)
-                .font(.title2.weight(.semibold))
+                .font(.title3.weight(.semibold))
                 .foregroundStyle(CloseCutColors.accentLight)
         }
         .accessibilityHidden(true)

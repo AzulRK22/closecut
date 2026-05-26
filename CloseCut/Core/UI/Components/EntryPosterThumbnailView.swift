@@ -24,6 +24,18 @@ struct EntryPosterThumbnailView: View {
         entry.type == .movie ? "film.fill" : "tv.fill"
     }
 
+    private var fallbackInitials: String {
+        let words = entry.displayTitle
+            .split(separator: " ")
+            .map(String.init)
+
+        if words.count >= 2 {
+            return "\(words[0].prefix(1))\(words[1].prefix(1))".uppercased()
+        }
+
+        return String(entry.displayTitle.prefix(2)).uppercased()
+    }
+
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -33,8 +45,7 @@ struct EntryPosterThumbnailView: View {
                 AsyncImage(url: posterURL) { phase in
                     switch phase {
                     case .empty:
-                        ProgressView()
-                            .scaleEffect(0.7)
+                        loadingPoster
 
                     case .success(let image):
                         image
@@ -58,20 +69,37 @@ struct EntryPosterThumbnailView: View {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
+        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 5)
         .accessibilityHidden(true)
     }
 
-    private var fallbackContent: some View {
-        VStack(spacing: 7) {
-            Image(systemName: fallbackIcon)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(CloseCutColors.textTertiary)
+    private var loadingPoster: some View {
+        ProgressView()
+            .scaleEffect(0.7)
+    }
 
-            Text(entry.type.displayName)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(CloseCutColors.textTertiary)
-                .lineLimit(1)
+    private var fallbackContent: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    CloseCutColors.accent.opacity(0.20),
+                    CloseCutColors.card.opacity(0.96)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            VStack(spacing: 7) {
+                Image(systemName: fallbackIcon)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.accentLight)
+
+                Text(fallbackInitials)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .lineLimit(1)
+            }
+            .padding(8)
         }
-        .padding(6)
     }
 }

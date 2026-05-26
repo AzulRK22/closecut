@@ -14,7 +14,7 @@ enum PendingSyncBadgeSize {
     var font: Font {
         switch self {
         case .inline:
-            return .caption2
+            return .caption2.weight(.semibold)
         case .banner:
             return .caption.weight(.semibold)
         }
@@ -41,9 +41,9 @@ enum PendingSyncBadgeSize {
     var cornerRadius: CGFloat {
         switch self {
         case .inline:
-            return 6
+            return 8
         case .banner:
-            return 10
+            return 12
         }
     }
 }
@@ -62,7 +62,7 @@ struct PendingSyncBadge: View {
             badge(
                 dotColor: CloseCutColors.pending,
                 background: CloseCutColors.pendingBackground,
-                text: "Pending sync"
+                text: "Saved locally"
             )
 
         case .failed:
@@ -73,7 +73,7 @@ struct PendingSyncBadge: View {
                     badge(
                         dotColor: CloseCutColors.failed,
                         background: CloseCutColors.failedBackground,
-                        text: "Tap to retry"
+                        text: "Retry sync"
                     )
                 }
                 .buttonStyle(.plain)

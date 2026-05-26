@@ -69,10 +69,16 @@ struct MoodPill: View {
         .overlay {
             Capsule()
                 .stroke(
-                    isSelected ? Color.white.opacity(0.9) : Color.clear,
-                    lineWidth: 1.5
+                    isSelected ? Color.white.opacity(0.9) : Color.white.opacity(0.08),
+                    lineWidth: isSelected ? 1.5 : 0.5
                 )
         }
+        .shadow(
+            color: isSelected ? mood.color.opacity(0.35) : .clear,
+            radius: isSelected ? 8 : 0,
+            x: 0,
+            y: isSelected ? 4 : 0
+        )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Mood: \(mood.label)")
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])

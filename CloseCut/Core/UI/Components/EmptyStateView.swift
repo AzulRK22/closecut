@@ -14,18 +14,25 @@ struct EmptyStateView: View {
     let actionTitle: String?
     let action: (() -> Void)?
 
+    var secondaryActionTitle: String? = nil
+    var secondaryAction: (() -> Void)? = nil
+
     init(
         title: String,
         message: String,
         systemImage: String,
         actionTitle: String? = nil,
-        action: (() -> Void)? = nil
+        action: (() -> Void)? = nil,
+        secondaryActionTitle: String? = nil,
+        secondaryAction: (() -> Void)? = nil
     ) {
         self.title = title
         self.message = message
         self.systemImage = systemImage
         self.actionTitle = actionTitle
         self.action = action
+        self.secondaryActionTitle = secondaryActionTitle
+        self.secondaryAction = secondaryAction
     }
 
     var body: some View {
@@ -48,27 +55,21 @@ struct EmptyStateView: View {
             }
             .padding(.horizontal, 12)
 
-            if let actionTitle, let action {
-                Button {
-                    action()
-                } label: {
-                    Text(actionTitle)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .background(CloseCutColors.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 20)
-                .padding(.top, 2)
-                .accessibilityLabel(actionTitle)
-            }
+            actionStack
         }
         .padding(24)
         .frame(maxWidth: .infinity)
-        .background(CloseCutColors.card.opacity(0.55))
+        .background(
+            LinearGradient(
+                colors: [
+                    CloseCutColors.card.opacity(0.72),
+                    CloseCutColors.card.opacity(0.48),
+                    CloseCutColors.accent.opacity(0.06)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -80,7 +81,7 @@ struct EmptyStateView: View {
     private var icon: some View {
         ZStack {
             SwiftUI.Circle()
-                .fill(CloseCutColors.card)
+                .fill(CloseCutColors.accent.opacity(0.14))
                 .frame(width: 92, height: 92)
 
             Image(systemName: systemImage)
@@ -88,5 +89,46 @@ struct EmptyStateView: View {
                 .foregroundStyle(CloseCutColors.accentLight)
         }
         .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var actionStack: some View {
+        if actionTitle != nil || secondaryActionTitle != nil {
+            VStack(spacing: 10) {
+                if let actionTitle, let action {
+                    Button {
+                        action()
+                    } label: {
+                        Text(actionTitle)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .background(CloseCutColors.accent)
+                            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(actionTitle)
+                }
+
+                if let secondaryActionTitle, let secondaryAction {
+                    Button {
+                        secondaryAction()
+                    } label: {
+                        Text(secondaryActionTitle)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textSecondary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                            .background(CloseCutColors.input)
+                            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(secondaryActionTitle)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 2)
+        }
     }
 }
