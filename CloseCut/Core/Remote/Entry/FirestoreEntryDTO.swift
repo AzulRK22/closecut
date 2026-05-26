@@ -11,10 +11,10 @@ import FirebaseFirestore
 struct FirestoreEntryDTO: Codable {
     var ownerId: String
 
-    // Legacy field. Keep for backward compatibility for now.
+    // Legacy field. Keep for backward compatibility while sharedCircleIds becomes the source of truth.
     var circleId: String?
 
-    // New multi-circle field.
+    // Multi-circle field.
     var sharedCircleIds: [String]?
 
     var title: String
@@ -60,14 +60,20 @@ struct FirestoreEntryDTO: Codable {
 }
 
 extension FirestoreEntryDTO {
-    init(entry: Entry, circleId: String? = nil) {
+    init(
+        entry: Entry,
+        circleId: String? = nil
+    ) {
+        let cleanedSharedCircleIds = entry.sharedCircleIds.cleanedUniqueIds
+        let cleanedLegacyCircleId = circleId.trimmedOrNil
+
         self.ownerId = entry.ownerId
 
         // Legacy compatibility:
-        // If caller passes circleId, use it. Otherwise use first shared circle if any.
-        self.circleId = circleId ?? entry.sharedCircleIds.first
-
-        self.sharedCircleIds = entry.sharedCircleIds
+        // New code should rely on sharedCircleIds.
+        // circleId remains populated only to support old data / old queries.
+        self.circleId = cleanedLegacyCircleId ?? cleanedSharedCircleIds.first
+        self.sharedCircleIds = cleanedSharedCircleIds
 
         self.title = entry.title
         self.normalizedTitle = entry.normalizedTitle
@@ -83,7 +89,9 @@ extension FirestoreEntryDTO {
 
         self.watchContext = entry.watchContext.rawValue
         self.watchedDateApproxKind = entry.watchedDateApprox?.kind.rawValue
-        self.watchedDateApproxExactDate = entry.watchedDateApprox?.exactDate.map { Timestamp(date: $0) }
+        self.watchedDateApproxExactDate = entry.watchedDateApprox?.exactDate.map {
+            Timestamp(date: $0)
+        }
         self.watchedDateApproxMonth = entry.watchedDateApprox?.month
         self.watchedDateApproxYear = entry.watchedDateApprox?.year
         self.watchedDateApproxDisplayLabel = entry.watchedDateApprox?.displayLabel
@@ -108,10 +116,15 @@ extension FirestoreEntryDTO {
         self.watchedAt = Timestamp(date: entry.watchedAt)
         self.createdAt = Timestamp(date: entry.createdAt)
         self.updatedAt = Timestamp(date: entry.updatedAt)
-        self.deletedAt = entry.deletedAt.map { Timestamp(date: $0) }
+        self.deletedAt = entry.deletedAt.map {
+            Timestamp(date: $0)
+        }
     }
 
-    func domain(id: String, syncStatus: SyncStatus = .synced) -> Entry {
+    func domain(
+        id: String,
+        syncStatus: SyncStatus = .synced
+    ) -> Entry {
         let approxDate: WatchedDateApprox?
 
         if let watchedDateApproxKind,
@@ -130,11 +143,19 @@ extension FirestoreEntryDTO {
         let resolvedSharedCircleIds: [String]
 
         if let sharedCircleIds {
-            resolvedSharedCircleIds = sharedCircleIds
+            resolvedSharedCircleIds = sharedCircleIds.cleanedUniqueIds
         } else if let circleId {
-            resolvedSharedCircleIds = [circleId]
+            resolvedSharedCircleIds = [circleId].cleanedUniqueIds
         } else {
             resolvedSharedCircleIds = []
+        }
+
+        let resolvedVisibility: EntryVisibility
+
+        if resolvedSharedCircleIds.isEmpty {
+            resolvedVisibility = .privateOnly
+        } else {
+            resolvedVisibility = EntryVisibility(rawValue: visibility) ?? .circle
         }
 
         return Entry(
@@ -145,7 +166,9 @@ extension FirestoreEntryDTO {
             type: EntryType(rawValue: type) ?? .movie,
             releaseYear: releaseYear,
             mood: mood,
-            quickSentiment: quickSentiment.flatMap { QuickSentiment(rawValue: $0) },
+            quickSentiment: quickSentiment.flatMap {
+                QuickSentiment(rawValue: $0)
+            },
             takeaway: takeaway,
             quote: quote,
             tags: tags,
@@ -155,7 +178,7 @@ extension FirestoreEntryDTO {
             cinemaAudio: cinemaAudio,
             cinemaScreen: cinemaScreen,
             cinemaComfort: cinemaComfort,
-            visibility: EntryVisibility(rawValue: visibility) ?? .privateOnly,
+            visibility: resolvedVisibility,
             sharedCircleIds: resolvedSharedCircleIds,
             sourceType: EntrySourceType(rawValue: sourceType) ?? .fullEntry,
             externalSourceRaw: externalSource,
