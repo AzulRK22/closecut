@@ -13,6 +13,7 @@ struct OnboardingView: View {
 
     @StateObject private var viewModel = OnboardingViewModel()
     @State private var isShowingQuickAdd = false
+    @State private var didOpenQuickAddPath = false
 
     let user: AuthUser
     let onCompleted: () -> Void
@@ -27,45 +28,13 @@ struct OnboardingView: View {
                     topBar
 
                     TabView(selection: $viewModel.currentStep) {
-                        onboardingPage(
-                            title: "Your private taste library.",
-                            message: "CloseCut helps you keep a personal record of the movies and series that shaped you.",
-                            systemImage: "film.stack",
-                            isLogo: true,
-                            pills: [
-                                OnboardingHeroPill(icon: "lock.fill", text: "Private by default"),
-                                OnboardingHeroPill(icon: "rectangle.stack.fill", text: "Personal library")
-                            ]
-                        )
-                        .tag(0)
-
-                        onboardingPage(
-                            title: "Add what you already watched.",
-                            message: "Start with a few titles you remember. Posters, dates, and quick reactions make your history useful from day one.",
-                            systemImage: "bolt.fill",
-                            isLogo: false,
-                            pills: [
-                                OnboardingHeroPill(icon: "magnifyingglass", text: "Search"),
-                                OnboardingHeroPill(icon: "plus.circle.fill", text: "Preview"),
-                                OnboardingHeroPill(icon: "checkmark.circle.fill", text: "Add fast")
-                            ]
-                        )
-                        .tag(1)
-
-                        onboardingPage(
-                            title: "Know what to watch next.",
-                            message: "QuickPick uses your own history, moods, tags, and memories to suggest something that actually fits you.",
-                            systemImage: "sparkles",
-                            isLogo: false,
-                            pills: [
-                                OnboardingHeroPill(icon: "wand.and.stars", text: "Personal picks"),
-                                OnboardingHeroPill(icon: "arrow.triangle.2.circlepath", text: "Rewatch signals")
-                            ]
-                        )
-                        .tag(2)
+                        ForEach(viewModel.steps) { step in
+                            onboardingPage(step)
+                                .tag(step.id)
+                        }
 
                         chooseStartPage
-                            .tag(3)
+                            .tag(viewModel.totalSteps - 1)
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
                     .disabled(viewModel.isCompleting)
@@ -84,7 +53,26 @@ struct OnboardingView: View {
         }
         .preferredColorScheme(.dark)
         .interactiveDismissDisabled(viewModel.isCompleting)
+        .confirmationDialog(
+            "Skip setup?",
+            isPresented: $viewModel.showSkipConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Skip setup", role: .destructive) {
+                Task {
+                    await complete(path: .skipped)
+                }
+            }
+
+            Button("Continue setup", role: .cancel) {}
+        } message: {
+            Text("You can still add past watches later, but CloseCut works better when your library has a few memories from the start.")
+        }
         .sheet(isPresented: $isShowingQuickAdd, onDismiss: {
+            guard didOpenQuickAddPath else {
+                return
+            }
+
             onCompleted()
         }) {
             QuickAddPastWatchesView(user: user)
@@ -127,9 +115,7 @@ struct OnboardingView: View {
             Spacer()
 
             Button {
-                Task {
-                    await complete(path: .skipped)
-                }
+                viewModel.requestSkipConfirmation()
             } label: {
                 if viewModel.isCompleting {
                     ProgressView()
@@ -144,27 +130,22 @@ struct OnboardingView: View {
             }
             .buttonStyle(.plain)
             .disabled(viewModel.isCompleting)
+            .accessibilityLabel("Skip onboarding")
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)
     }
 
-    private func onboardingPage(
-        title: String,
-        message: String,
-        systemImage: String,
-        isLogo: Bool,
-        pills: [OnboardingHeroPill]
-    ) -> some View {
+    private func onboardingPage(_ step: OnboardingStepContent) -> some View {
         VStack(spacing: 28) {
             Spacer(minLength: 36)
 
             OnboardingHeroCard(
-                title: title,
-                message: message,
-                systemImage: systemImage,
-                isLogo: isLogo,
-                pills: pills
+                title: step.title,
+                message: step.message,
+                systemImage: step.systemImage,
+                isLogo: step.isLogo,
+                pills: step.pills
             )
 
             Spacer(minLength: 28)
@@ -180,7 +161,7 @@ struct OnboardingView: View {
                     CloseCutLogoMark(size: 76)
 
                     VStack(spacing: 10) {
-                        Text("Start with your first memories.")
+                        Text("Make CloseCut yours.")
                             .font(.largeTitle.weight(.semibold))
                             .foregroundStyle(CloseCutColors.textPrimary)
                             .multilineTextAlignment(.center)
@@ -188,7 +169,7 @@ struct OnboardingView: View {
                             .minimumScaleFactor(0.86)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        Text("A few past watches are enough for CloseCut to begin feeling personal.")
+                        Text("Start with a few memories or go straight in. The more history you add, the better your Timeline and QuickPick become.")
                             .font(.body)
                             .foregroundStyle(CloseCutColors.textSecondary)
                             .multilineTextAlignment(.center)
@@ -200,7 +181,7 @@ struct OnboardingView: View {
                     HStack(spacing: 8) {
                         OnboardingFeaturePill(
                             icon: "film.fill",
-                            text: "History"
+                            text: "Timeline"
                         )
 
                         OnboardingFeaturePill(
@@ -218,7 +199,7 @@ struct OnboardingView: View {
                 VStack(spacing: 12) {
                     OnboardingChoiceCard(
                         title: "Add past watches",
-                        message: "Search, preview, and add a few movies or series you already watched. Best way to make CloseCut useful immediately.",
+                        message: "Best start. Add movies or series you already watched so your library, QuickPick, and taste patterns become useful immediately.",
                         systemImage: "bolt.fill",
                         badgeText: "Recommended",
                         isPrimary: true,
@@ -231,7 +212,7 @@ struct OnboardingView: View {
 
                     OnboardingChoiceCard(
                         title: "Start fresh",
-                        message: "Go straight to your Personal library and log your next watch when you're ready.",
+                        message: "Go to your library now and log your next watch whenever you're ready.",
                         systemImage: "plus.circle",
                         badgeText: nil,
                         isPrimary: false,
@@ -265,6 +246,7 @@ struct OnboardingView: View {
     private var loadingBanner: some View {
         HStack(spacing: 10) {
             ProgressView()
+                .tint(CloseCutColors.accentLight)
 
             Text("Preparing your space…")
                 .font(.caption)
@@ -275,6 +257,8 @@ struct OnboardingView: View {
         .padding(12)
         .background(CloseCutColors.input)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Preparing your space")
     }
 
     private var pageDots: some View {
@@ -309,6 +293,7 @@ struct OnboardingView: View {
         }
         .buttonStyle(.plain)
         .disabled(viewModel.isCompleting)
+        .accessibilityLabel("Continue")
     }
 
     private func errorBanner(_ message: String) -> some View {
@@ -345,6 +330,8 @@ struct OnboardingView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Private by default. Circle sharing only happens when you explicitly choose it.")
     }
 
     private func startQuickAddPath() async {
@@ -355,6 +342,7 @@ struct OnboardingView: View {
         )
 
         if didComplete {
+            didOpenQuickAddPath = true
             isShowingQuickAdd = true
         }
     }
@@ -370,4 +358,25 @@ struct OnboardingView: View {
             onCompleted()
         }
     }
+}
+
+#Preview {
+    OnboardingView(
+        user: AuthUser(
+            id: "preview-user",
+            email: "preview@closecut.dev",
+            displayName: "Preview",
+            photoURL: nil
+        ),
+        onCompleted: {}
+    )
+    .modelContainer(for: [
+        LocalEntry.self,
+        LocalCircle.self,
+        LocalCircleMembership.self,
+        LocalUserProfile.self,
+        LocalUserState.self,
+        PendingAction.self,
+        LocalBattleResult.self
+    ], inMemory: true)
 }
