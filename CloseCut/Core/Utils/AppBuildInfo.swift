@@ -8,6 +8,10 @@
 import Foundation
 
 enum AppBuildInfo {
+    static var appName: String {
+        value(for: "CFBundleName", fallback: "CloseCut")
+    }
+
     static var version: String {
         value(for: "CFBundleShortVersionString", fallback: "1.0")
     }
@@ -18,6 +22,10 @@ enum AppBuildInfo {
 
     static var displayVersion: String {
         "\(version) (\(build))"
+    }
+
+    static var shortDisplayVersion: String {
+        "v\(version)"
     }
 
     static var bundleIdentifier: String {
@@ -32,7 +40,7 @@ enum AppBuildInfo {
             return fallback
         }
 
-        let cleanedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedValue = value.trimmed
 
         return cleanedValue.isEmpty ? fallback : cleanedValue
     }

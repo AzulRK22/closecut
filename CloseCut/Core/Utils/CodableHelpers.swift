@@ -34,6 +34,17 @@ enum CodableHelpers {
         try makeDecoder().decode(type, from: data)
     }
 
+    static func decodeIfPossible<T: Decodable>(
+        _ type: T.Type,
+        from data: Data?
+    ) -> T? {
+        guard let data else {
+            return nil
+        }
+
+        return try? makeDecoder().decode(type, from: data)
+    }
+
     #if DEBUG
     static func prettyPrintedString<T: Encodable>(
         from value: T

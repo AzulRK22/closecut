@@ -20,6 +20,30 @@ extension Date {
         Calendar.current.component(.year, from: self)
     }
 
+    var isToday: Bool {
+        Calendar.current.isDateInToday(self)
+    }
+
+    var isYesterday: Bool {
+        Calendar.current.isDateInYesterday(self)
+    }
+
+    var closeCutRelativeDisplay: String {
+        if isToday {
+            return "Today"
+        }
+
+        if isYesterday {
+            return "Yesterday"
+        }
+
+        if closeCutYear == Date().closeCutYear {
+            return formatted(.dateTime.month(.abbreviated).day())
+        }
+
+        return closeCutShortDate
+    }
+
     func isWithinLastDays(_ days: Int) -> Bool {
         guard days > 0 else {
             return false

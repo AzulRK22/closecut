@@ -24,6 +24,28 @@ extension String {
     var isBlank: Bool {
         trimmed.isEmpty
     }
+
+    var isNotBlank: Bool {
+        isBlank == false
+    }
+
+    var lowercasedTrimmed: String {
+        trimmed.lowercased()
+    }
+
+    func limited(to maxLength: Int) -> String {
+        guard maxLength > 0 else {
+            return ""
+        }
+
+        let cleaned = trimmed
+
+        guard cleaned.count > maxLength else {
+            return cleaned
+        }
+
+        return String(cleaned.prefix(maxLength))
+    }
 }
 
 extension Optional where Wrapped == String {
@@ -37,5 +59,9 @@ extension Optional where Wrapped == String {
 
     var trimmedOrEmpty: String {
         self?.trimmed ?? ""
+    }
+
+    var isNilOrBlank: Bool {
+        trimmedOrNil == nil
     }
 }

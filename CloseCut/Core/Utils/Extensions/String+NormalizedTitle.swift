@@ -9,7 +9,7 @@ import Foundation
 
 extension String {
     var normalizedTitleKey: String {
-        trimmingCharacters(in: .whitespacesAndNewlines)
+        trimmed
             .lowercased()
             .folding(
                 options: [.diacriticInsensitive, .caseInsensitive],
@@ -18,6 +18,6 @@ extension String {
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { $0.isEmpty == false }
             .joined(separator: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmed
     }
 }

@@ -14,10 +14,18 @@ extension Color {
 
     static func fromHex(_ hex: String) -> Color? {
         let cleanedHex = hex
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmed
             .replacingOccurrences(of: "#", with: "")
 
-        guard cleanedHex.count == 6 || cleanedHex.count == 8 else {
+        let expandedHex: String
+
+        if cleanedHex.count == 3 {
+            expandedHex = cleanedHex.map { "\($0)\($0)" }.joined()
+        } else {
+            expandedHex = cleanedHex
+        }
+
+        guard expandedHex.count == 6 || expandedHex.count == 8 else {
             #if DEBUG
             print("⚠️ Invalid hex color length:", hex)
             #endif
@@ -25,7 +33,7 @@ extension Color {
         }
 
         var value: UInt64 = 0
-        let scanner = Scanner(string: cleanedHex)
+        let scanner = Scanner(string: expandedHex)
 
         guard scanner.scanHexInt64(&value) else {
             #if DEBUG
@@ -39,7 +47,7 @@ extension Color {
         let blue: Double
         let alpha: Double
 
-        if cleanedHex.count == 8 {
+        if expandedHex.count == 8 {
             red = Double((value >> 24) & 0xFF) / 255.0
             green = Double((value >> 16) & 0xFF) / 255.0
             blue = Double((value >> 8) & 0xFF) / 255.0

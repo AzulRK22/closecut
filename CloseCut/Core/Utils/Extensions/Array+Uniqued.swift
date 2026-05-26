@@ -12,12 +12,7 @@ extension Array where Element: Hashable {
         var seen = Set<Element>()
 
         return filter { element in
-            if seen.contains(element) {
-                return false
-            }
-
-            seen.insert(element)
-            return true
+            seen.insert(element).inserted
         }
     }
 }
@@ -37,14 +32,7 @@ extension Array {
         var seen = Set<Key>()
 
         return filter { element in
-            let key = keyProvider(element)
-
-            if seen.contains(key) {
-                return false
-            }
-
-            seen.insert(key)
-            return true
+            seen.insert(keyProvider(element)).inserted
         }
     }
 }

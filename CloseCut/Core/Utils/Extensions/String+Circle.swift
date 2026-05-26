@@ -9,7 +9,7 @@ import Foundation
 
 extension String {
     var normalizedInviteCode: String {
-        trimmingCharacters(in: .whitespacesAndNewlines)
+        trimmed
             .uppercased()
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .joined()
