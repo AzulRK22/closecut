@@ -20,30 +20,46 @@ struct StateContainerView<Value, Content: View>: View {
     var emptyTitle: String
     var emptyMessage: String
     var emptySystemImage: String
+    var emptyActionTitle: String?
+    var emptyAction: (() -> Void)?
 
     var loadingMessage: String
     var errorTitle: String
-
     var retry: (() -> Void)?
+
+    var style: Style = .card
+
     let content: (Value) -> Content
+
+    enum Style {
+        case plain
+        case card
+        case fullScreen
+    }
 
     init(
         state: ViewState<Value>,
         emptyTitle: String,
         emptyMessage: String,
         emptySystemImage: String = "film",
+        emptyActionTitle: String? = nil,
+        emptyAction: (() -> Void)? = nil,
         loadingMessage: String = "Loading…",
         errorTitle: String = "Something went wrong",
         retry: (() -> Void)? = nil,
+        style: Style = .card,
         @ViewBuilder content: @escaping (Value) -> Content
     ) {
         self.state = state
         self.emptyTitle = emptyTitle
         self.emptyMessage = emptyMessage
         self.emptySystemImage = emptySystemImage
+        self.emptyActionTitle = emptyActionTitle
+        self.emptyAction = emptyAction
         self.loadingMessage = loadingMessage
         self.errorTitle = errorTitle
         self.retry = retry
+        self.style = style
         self.content = content
     }
 
@@ -56,7 +72,9 @@ struct StateContainerView<Value, Content: View>: View {
             EmptyStateView(
                 title: emptyTitle,
                 message: emptyMessage,
-                systemImage: emptySystemImage
+                systemImage: emptySystemImage,
+                actionTitle: emptyActionTitle,
+                action: emptyAction
             )
 
         case .success(let value):
@@ -68,22 +86,30 @@ struct StateContainerView<Value, Content: View>: View {
     }
 
     private var loadingView: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: CloseCutSpacing.lg) {
             ProgressView()
                 .tint(CloseCutColors.accentLight)
 
             Text(loadingMessage)
-                .font(.subheadline)
+                .font(CloseCutTypography.secondary)
                 .foregroundStyle(CloseCutColors.textSecondary)
         }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(CloseCutSpacing.xxl)
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: style == .fullScreen ? .infinity : nil
+        )
+        .background(containerBackground)
+        .clipShape(containerShape)
+        .overlay {
+            containerBorder
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(loadingMessage)
     }
 
     private func errorView(_ message: String) -> some View {
-        VStack(spacing: 16) {
+        VStack(spacing: CloseCutSpacing.lg) {
             ZStack {
                 SwiftUI.Circle()
                     .fill(CloseCutColors.failedBackground)
@@ -93,15 +119,16 @@ struct StateContainerView<Value, Content: View>: View {
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(CloseCutColors.failed)
             }
+            .accessibilityHidden(true)
 
-            VStack(spacing: 8) {
+            VStack(spacing: CloseCutSpacing.sm) {
                 Text(errorTitle)
-                    .font(.headline.weight(.semibold))
+                    .font(CloseCutTypography.sectionTitle)
                     .foregroundStyle(CloseCutColors.textPrimary)
                     .multilineTextAlignment(.center)
 
                 Text(message)
-                    .font(.subheadline)
+                    .font(CloseCutTypography.secondary)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
@@ -113,26 +140,57 @@ struct StateContainerView<Value, Content: View>: View {
                     retry()
                 } label: {
                     Text("Retry")
-                        .font(.subheadline.weight(.semibold))
+                        .font(CloseCutTypography.button)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 46)
+                        .frame(height: CloseCutTheme.Size.buttonHeight)
                         .background(CloseCutColors.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: CloseCutTheme.Radius.md, style: .continuous))
                 }
                 .buttonStyle(.plain)
-                .padding(.top, 4)
+                .padding(.top, CloseCutSpacing.xs)
                 .accessibilityHint("Attempts to load this content again.")
             }
         }
-        .padding(24)
-        .frame(maxWidth: .infinity)
-        .background(CloseCutColors.card.opacity(0.55))
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .padding(CloseCutSpacing.xxl)
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: style == .fullScreen ? .infinity : nil
+        )
+        .background(containerBackground)
+        .clipShape(containerShape)
         .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(CloseCutColors.separator, lineWidth: 0.5)
+            containerBorder
         }
         .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private var containerBackground: some View {
+        switch style {
+        case .plain:
+            Color.clear
+
+        case .card:
+            CloseCutColors.card.opacity(0.55)
+
+        case .fullScreen:
+            Color.clear
+        }
+    }
+
+    private var containerShape: some Shape {
+        RoundedRectangle(
+            cornerRadius: style == .plain || style == .fullScreen ? 0 : CloseCutTheme.Radius.xxl,
+            style: .continuous
+        )
+    }
+
+    @ViewBuilder
+    private var containerBorder: some View {
+        if style == .card {
+            RoundedRectangle(cornerRadius: CloseCutTheme.Radius.xxl, style: .continuous)
+                .stroke(CloseCutColors.separator, lineWidth: 0.5)
+        }
     }
 }
