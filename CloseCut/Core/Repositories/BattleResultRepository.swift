@@ -44,6 +44,7 @@ final class BattleResultRepository {
             modelContext: modelContext
         )
     }
+
     func createFriendResult(
         ownerId: String,
         options: [Entry],
@@ -84,7 +85,7 @@ final class BattleResultRepository {
         winner: Entry,
         modelContext: ModelContext
     ) throws -> BattleResult {
-        let cleanedOwnerId = ownerId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedOwnerId = ownerId.trimmed
 
         guard cleanedOwnerId.isEmpty == false else {
             throw BattleResultRepositoryError.missingOwnerId
@@ -114,17 +115,16 @@ final class BattleResultRepository {
             throw BattleResultRepositoryError.duplicateRecentResult
         }
 
-        let cleanedTitle = title
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedTitle = title.trimmed
 
         let localResult = LocalBattleResult(
             ownerId: cleanedOwnerId,
             mode: mode,
             title: cleanedTitle.isEmpty ? mode.displayName : cleanedTitle,
             optionEntryIds: optionEntryIds,
-            optionTitles: cleanedOptions.map(\.title),
+            optionTitles: cleanedOptions.map(\.displayTitle),
             winnerEntryId: winner.id,
-            winnerTitle: winner.title,
+            winnerTitle: winner.displayTitle,
             createdAt: Date()
         )
 
@@ -141,7 +141,7 @@ final class BattleResultRepository {
         limit: Int? = nil,
         modelContext: ModelContext
     ) throws -> [BattleResult] {
-        let cleanedOwnerId = ownerId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedOwnerId = ownerId.trimmed
 
         guard cleanedOwnerId.isEmpty == false else {
             return []
@@ -183,7 +183,7 @@ final class BattleResultRepository {
         resultId: String,
         modelContext: ModelContext
     ) throws {
-        let cleanedResultId = resultId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedResultId = resultId.trimmed
 
         guard cleanedResultId.isEmpty == false else {
             return
@@ -207,7 +207,7 @@ final class BattleResultRepository {
         ownerId: String,
         modelContext: ModelContext
     ) throws -> Int {
-        let cleanedOwnerId = ownerId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedOwnerId = ownerId.trimmed
 
         guard cleanedOwnerId.isEmpty == false else {
             return 0
@@ -264,35 +264,37 @@ final class BattleResultRepository {
     private func cleanOptions(_ options: [Entry]) -> [Entry] {
         var seenIds = Set<String>()
 
-        return options
-            .filter { entry in
-                let cleanedTitle = entry.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return options.filter { entry in
+            let cleanedTitle = entry.displayTitle.trimmed
 
-                guard cleanedTitle.isEmpty == false else {
-                    return false
-                }
-
-                guard entry.deletedAt == nil else {
-                    return false
-                }
-
-                guard seenIds.contains(entry.id) == false else {
-                    return false
-                }
-
-                seenIds.insert(entry.id)
-                return true
+            guard cleanedTitle.isEmpty == false else {
+                return false
             }
+
+            guard entry.deletedAt == nil else {
+                return false
+            }
+
+            guard seenIds.contains(entry.id) == false else {
+                return false
+            }
+
+            seenIds.insert(entry.id)
+            return true
+        }
     }
 
     private func minimumOptionCount(for mode: BattleMode) -> Int {
         switch mode {
         case .randomPick:
-            return 1
+            return 2
+
         case .headToHead:
             return 2
+
         case .friend:
             return 2
+
         case .circle:
             return 2
         }
