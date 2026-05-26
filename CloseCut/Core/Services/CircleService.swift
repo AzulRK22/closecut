@@ -23,20 +23,21 @@ final class CircleService {
         circleDescription: String? = nil,
         modelContext: ModelContext
     ) async throws -> CloseCircle {
-        let cleanedName = circleName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ownerDisplayName = profile.displayNameText
+        let cleanedName = circleName.trimmed
 
         let resolvedName = cleanedName.isEmpty
-            ? "\(profile.displayName)'s Circle"
+            ? "\(ownerDisplayName)'s Circle"
             : cleanedName
 
         let inviteCode = try await generateUniqueInviteCode(
             circleName: resolvedName,
-            ownerDisplayName: profile.displayName
+            ownerDisplayName: ownerDisplayName
         )
 
         let circle = try circleRepository.createLocalCircle(
             ownerId: user.id,
-            ownerDisplayName: profile.displayName,
+            ownerDisplayName: ownerDisplayName,
             circleName: resolvedName,
             circleDescription: circleDescription,
             inviteCode: inviteCode,
@@ -45,7 +46,7 @@ final class CircleService {
 
         let ownerMember = CircleMember(
             userId: user.id,
-            displayName: profile.displayName,
+            displayName: ownerDisplayName,
             email: profile.email ?? user.email,
             role: .owner,
             status: .active,
@@ -62,8 +63,8 @@ final class CircleService {
             circleId: circle.id,
             type: .circleCreated,
             actorId: user.id,
-            actorDisplayName: profile.displayName,
-            message: "\(profile.displayName) created this Circle."
+            actorDisplayName: ownerDisplayName,
+            message: "\(ownerDisplayName) created this Circle."
         )
 
         _ = try circleRepository.upsertLocalMembership(
@@ -149,9 +150,11 @@ final class CircleService {
             throw CircleServiceError.circleNotFound
         }
 
+        let memberDisplayName = profile.displayNameText
+
         let member = CircleMember(
             userId: user.id,
-            displayName: profile.displayName,
+            displayName: memberDisplayName,
             email: profile.email ?? user.email,
             role: remoteCircle.ownerId == user.id ? .owner : .member,
             status: .active,
@@ -168,8 +171,8 @@ final class CircleService {
             circleId: remoteCircle.id,
             type: .memberJoined,
             actorId: user.id,
-            actorDisplayName: profile.displayName,
-            message: "\(profile.displayName) joined the Circle."
+            actorDisplayName: memberDisplayName,
+            message: "\(memberDisplayName) joined the Circle."
         )
 
         try await userProfileRepository.addRemoteCircleId(
@@ -218,6 +221,10 @@ final class CircleService {
             throw CircleServiceError.ownerCannotLeaveCircle
         }
 
+        let cleanedActorDisplayName = actorDisplayName.trimmed.isEmpty
+            ? "Circle member"
+            : actorDisplayName.trimmed
+
         try await circleRemoteDataSource.leaveCircle(
             circleId: circle.id,
             userId: membership.userId
@@ -227,8 +234,8 @@ final class CircleService {
             circleId: circle.id,
             type: .memberLeft,
             actorId: membership.userId,
-            actorDisplayName: actorDisplayName,
-            message: "\(actorDisplayName) left the Circle."
+            actorDisplayName: cleanedActorDisplayName,
+            message: "\(cleanedActorDisplayName) left the Circle."
         )
 
         try await userProfileRepository.removeRemoteCircleId(
@@ -262,13 +269,16 @@ final class CircleService {
             throw CircleServiceError.ownerOnlyAction
         }
 
-        let cleanedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedName = name.trimmed
 
         guard cleanedName.isEmpty == false else {
             throw CircleServiceError.invalidCircleName
         }
 
         let cleanedDescription = cleanOptionalText(description)
+        let actorDisplayName = circle.ownerDisplayName.trimmed.isEmpty
+            ? "Circle owner"
+            : circle.ownerDisplayName.trimmed
 
         try await circleRemoteDataSource.updateCircleDetails(
             circleId: circle.id,
@@ -280,8 +290,8 @@ final class CircleService {
             circleId: circle.id,
             type: .circleUpdated,
             actorId: membership.userId,
-            actorDisplayName: circle.ownerDisplayName,
-            message: "\(circle.ownerDisplayName) updated the Circle details."
+            actorDisplayName: actorDisplayName,
+            message: "\(actorDisplayName) updated the Circle details."
         )
 
         return try circleRepository.updateLocalCircleDetails(
@@ -303,12 +313,16 @@ final class CircleService {
             throw CircleServiceError.ownerOnlyAction
         }
 
+        let actorDisplayName = circle.ownerDisplayName.trimmed.isEmpty
+            ? "Circle owner"
+            : circle.ownerDisplayName.trimmed
+
         try? await circleRemoteDataSource.createActivity(
             circleId: circle.id,
             type: .circleDeleted,
             actorId: membership.userId,
-            actorDisplayName: circle.ownerDisplayName,
-            message: "\(circle.ownerDisplayName) deleted this Circle."
+            actorDisplayName: actorDisplayName,
+            message: "\(actorDisplayName) deleted this Circle."
         )
 
         try await circleRemoteDataSource.deleteCircle(
@@ -340,13 +354,7 @@ final class CircleService {
     // MARK: - Helpers
 
     private func cleanOptionalText(_ value: String?) -> String? {
-        guard let value else {
-            return nil
-        }
-
-        let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        return cleaned.isEmpty ? nil : cleaned
+        value?.nilIfBlank
     }
 
     private func generateUniqueInviteCode(

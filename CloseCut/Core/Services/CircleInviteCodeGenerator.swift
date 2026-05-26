@@ -13,6 +13,10 @@ enum CircleInviteCodeGenerator {
     private static let defaultSuffixLength = 5
     private static let separator = "-"
 
+    private static let allowedSuffixCharacters = Array(
+        "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    )
+
     static func generateCandidate(
         circleName: String,
         ownerDisplayName: String
@@ -43,27 +47,36 @@ enum CircleInviteCodeGenerator {
         return "\(prefix)\(separator)\(randomSuffix())"
     }
 
+    // MARK: - Helpers
+
     private static func resolvedPrefix(
         preferredBase: String,
         fallbackBase: String
     ) -> String {
-        if preferredBase.isEmpty == false {
-            return String(preferredBase.prefix(maxPrefixLength))
+        let preferred = preferredBase.trimmed
+        let fallback = fallbackBase.trimmed
+
+        if preferred.isEmpty == false {
+            return String(preferred.prefix(maxPrefixLength))
         }
 
-        if fallbackBase.isEmpty == false {
-            return String(fallbackBase.prefix(maxPrefixLength))
+        if fallback.isEmpty == false {
+            return String(fallback.prefix(maxPrefixLength))
         }
 
         return fallbackPrefix
     }
 
-    private static func randomSuffix(length: Int = defaultSuffixLength) -> String {
-        let characters = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
+    private static func randomSuffix(
+        length: Int = defaultSuffixLength
+    ) -> String {
+        guard length > 0 else {
+            return ""
+        }
 
         return String(
             (0..<length).compactMap { _ in
-                characters.randomElement()
+                allowedSuffixCharacters.randomElement()
             }
         )
     }
