@@ -12,6 +12,13 @@ enum PendingActionType: String, Codable, CaseIterable {
     case updateEntry
     case deleteEntry
     case updateVisibility
+
+    var isEntryAction: Bool {
+        switch self {
+        case .createEntry, .updateEntry, .deleteEntry, .updateVisibility:
+            return true
+        }
+    }
 }
 
 enum PendingActionStatus: String, Codable, CaseIterable {
@@ -32,4 +39,8 @@ struct PendingEntryPayload: Codable, Equatable {
 enum PendingActionCleanupPolicy {
     static let completedActionRetentionDays: Int = 7
     static let maxRetryAttempts: Int = 5
+
+    // If the app closes while an action is marked syncing,
+    // this lets the queue recover it later.
+    static let staleSyncingActionMinutes: Int = 5
 }

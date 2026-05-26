@@ -17,11 +17,13 @@ final class SessionSyncViewModel: ObservableObject {
     private let entrySyncService = EntrySyncService()
     private var refreshedUserIds: Set<String> = []
 
+    // MARK: - Initial Session Refresh
+
     func runInitialCloudRefreshIfNeeded(
         userId: String,
         modelContext: ModelContext
     ) async {
-        let cleanedUserId = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedUserId = userId.trimmed
 
         guard cleanedUserId.isEmpty == false else {
             lastInitialCloudRefreshError = "Missing user."
@@ -43,26 +45,81 @@ final class SessionSyncViewModel: ObservableObject {
             isInitialCloudRefreshRunning = false
         }
 
-        let pushSummary = await entrySyncService.syncPendingEntries(
+        let summary = await refreshCloudSession(
             userId: cleanedUserId,
             modelContext: modelContext
         )
 
-        let pullSummary = await entrySyncService.pullRemoteEntries(
-            userId: cleanedUserId,
-            modelContext: modelContext
-        )
-
-        if pushSummary.hasFailures || pullSummary.hasFailures {
+        if summary.hasFailures {
             lastInitialCloudRefreshError = "Cloud refresh partially failed."
         } else {
             refreshedUserIds.insert(cleanedUserId)
         }
     }
 
+    func forceRefreshCloudSession(
+        userId: String,
+        modelContext: ModelContext
+    ) async -> EntrySyncSummary {
+        let cleanedUserId = userId.trimmed
+
+        guard cleanedUserId.isEmpty == false else {
+            lastInitialCloudRefreshError = "Missing user."
+
+            return EntrySyncSummary(
+                syncedCount: 0,
+                failedCount: 1,
+                pulledCount: 0
+            )
+        }
+
+        isInitialCloudRefreshRunning = true
+        lastInitialCloudRefreshError = nil
+
+        defer {
+            isInitialCloudRefreshRunning = false
+        }
+
+        let summary = await refreshCloudSession(
+            userId: cleanedUserId,
+            modelContext: modelContext
+        )
+
+        if summary.hasFailures {
+            lastInitialCloudRefreshError = "Cloud refresh partially failed."
+        } else {
+            refreshedUserIds.insert(cleanedUserId)
+        }
+
+        return summary
+    }
+
     func reset() {
         refreshedUserIds.removeAll()
         isInitialCloudRefreshRunning = false
         lastInitialCloudRefreshError = nil
+    }
+
+    // MARK: - Private
+
+    private func refreshCloudSession(
+        userId: String,
+        modelContext: ModelContext
+    ) async -> EntrySyncSummary {
+        let pushSummary = await entrySyncService.syncPendingEntries(
+            userId: userId,
+            modelContext: modelContext
+        )
+
+        let pullSummary = await entrySyncService.pullRemoteEntries(
+            userId: userId,
+            modelContext: modelContext
+        )
+
+        return EntrySyncSummary(
+            syncedCount: pushSummary.syncedCount,
+            failedCount: pushSummary.failedCount + pullSummary.failedCount,
+            pulledCount: pullSummary.pulledCount
+        )
     }
 }

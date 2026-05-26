@@ -20,7 +20,7 @@ final class EntrySyncService {
         userId: String,
         modelContext: ModelContext
     ) async -> EntrySyncSummary {
-        let cleanedUserId = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedUserId = userId.trimmed
 
         guard cleanedUserId.isEmpty == false else {
             return EntrySyncSummary(
@@ -40,7 +40,7 @@ final class EntrySyncService {
                 modelContext: modelContext
             )
 
-            for action in actions where isEntryAction(action) {
+            for action in actions where action.actionType.isEntryAction {
                 do {
                     action.markSyncing()
                     try modelContext.save()
@@ -51,14 +51,17 @@ final class EntrySyncService {
                     )
 
                     syncedEntryIds.insert(syncedEntryId)
+
                     action.markCompleted()
+                    try modelContext.save()
+
                     syncedCount += 1
                 } catch {
                     action.markFailed(error.localizedDescription)
+                    try? modelContext.save()
+
                     failedCount += 1
                 }
-
-                try? modelContext.save()
             }
 
             let orphanSummary = await syncOrphanPendingEntries(
@@ -86,6 +89,10 @@ final class EntrySyncService {
                 pulledCount: 0
             )
         } catch {
+            #if DEBUG
+            print("⚠️ Failed to fetch syncable actions:", error.localizedDescription)
+            #endif
+
             return EntrySyncSummary(
                 syncedCount: syncedCount,
                 failedCount: failedCount + 1,
@@ -100,7 +107,7 @@ final class EntrySyncService {
         userId: String,
         modelContext: ModelContext
     ) async -> EntrySyncSummary {
-        let cleanedUserId = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedUserId = userId.trimmed
 
         guard cleanedUserId.isEmpty == false else {
             return EntrySyncSummary(
@@ -150,6 +157,10 @@ final class EntrySyncService {
         action: PendingAction,
         modelContext: ModelContext
     ) async throws -> String {
+        guard action.actionType.isEntryAction else {
+            throw EntrySyncError.unsupportedAction(action.actionType.rawValue)
+        }
+
         guard let payloadData = action.payloadData else {
             throw EntrySyncError.missingPayload
         }
@@ -183,6 +194,7 @@ final class EntrySyncService {
                 modelContext: modelContext
             )
         }
+
         return entry.id
     }
 
@@ -231,6 +243,10 @@ final class EntrySyncService {
                 pulledCount: 0
             )
         } catch {
+            #if DEBUG
+            print("⚠️ Failed to sync orphan pending entries:", error.localizedDescription)
+            #endif
+
             return EntrySyncSummary(
                 syncedCount: 0,
                 failedCount: 1,
@@ -245,7 +261,7 @@ final class EntrySyncService {
         modelContext: ModelContext
     ) throws -> [Entry] {
         let pendingRaw = SyncStatus.pending.rawValue
-        let cleanedUserId = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedUserId = userId.trimmed
 
         let descriptor = FetchDescriptor<LocalEntry>(
             predicate: #Predicate { entry in
@@ -260,13 +276,6 @@ final class EntrySyncService {
         return try modelContext.fetch(descriptor)
             .map { $0.domain }
             .filter { excludingEntryIds.contains($0.id) == false }
-    }
-
-    private func isEntryAction(_ action: PendingAction) -> Bool {
-        switch action.actionType {
-        case .createEntry, .updateEntry, .deleteEntry, .updateVisibility:
-            return true
-        }
     }
 }
 
@@ -303,8 +312,10 @@ enum EntrySyncError: LocalizedError {
         switch self {
         case .missingPayload:
             return "Missing sync payload."
+
         case .entryNotFound:
             return "Entry was not found locally."
+
         case .unsupportedAction(let action):
             return "Unsupported entry sync action: \(action)."
         }

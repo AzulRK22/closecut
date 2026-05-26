@@ -20,17 +20,15 @@ final class PendingActionQueue {
         dedupeKey: String? = nil,
         modelContext: ModelContext
     ) throws {
-        let cleanedUserId = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedUserId = userId.trimmed
 
         guard cleanedUserId.isEmpty == false else {
             throw PendingActionQueueError.missingUserId
         }
 
-        let normalizedDedupeKey = dedupeKey?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedDedupeKey = dedupeKey?.trimmed.nilIfBlank
 
         if let normalizedDedupeKey,
-           normalizedDedupeKey.isEmpty == false,
            let existing = try fetchActionByDedupeKey(
                 userId: cleanedUserId,
                 dedupeKey: normalizedDedupeKey,
@@ -51,7 +49,7 @@ final class PendingActionQueue {
             actionType: actionType,
             status: .pending,
             payloadData: payloadData,
-            dedupeKey: normalizedDedupeKey?.isEmpty == false ? normalizedDedupeKey : nil
+            dedupeKey: normalizedDedupeKey
         )
 
         modelContext.insert(action)
@@ -65,7 +63,7 @@ final class PendingActionQueue {
         payloadData: Data?,
         modelContext: ModelContext
     ) throws {
-        let cleanedEntryId = entryId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedEntryId = entryId.trimmed
 
         guard cleanedEntryId.isEmpty == false else {
             throw PendingActionQueueError.missingEntryId
@@ -106,7 +104,7 @@ final class PendingActionQueue {
         modelContext: ModelContext
     ) throws -> [PendingAction] {
         let pendingRaw = PendingActionStatus.pending.rawValue
-        let cleanedUserId = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedUserId = userId.trimmed
 
         let descriptor = FetchDescriptor<PendingAction>(
             predicate: #Predicate { action in
@@ -126,7 +124,7 @@ final class PendingActionQueue {
         modelContext: ModelContext
     ) throws -> [PendingAction] {
         let failedRaw = PendingActionStatus.failed.rawValue
-        let cleanedUserId = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedUserId = userId.trimmed
 
         let descriptor = FetchDescriptor<PendingAction>(
             predicate: #Predicate { action in
@@ -145,9 +143,14 @@ final class PendingActionQueue {
         userId: String,
         modelContext: ModelContext
     ) throws -> [PendingAction] {
+        try recoverStaleSyncingActions(
+            userId: userId,
+            modelContext: modelContext
+        )
+
         let pendingRaw = PendingActionStatus.pending.rawValue
         let failedRaw = PendingActionStatus.failed.rawValue
-        let cleanedUserId = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedUserId = userId.trimmed
         let maxAttempts = PendingActionCleanupPolicy.maxRetryAttempts
 
         let descriptor = FetchDescriptor<PendingAction>(
@@ -175,6 +178,42 @@ final class PendingActionQueue {
             userId: userId,
             modelContext: modelContext
         ).count
+    }
+
+    // MARK: - Recovery
+
+    func recoverStaleSyncingActions(
+        userId: String,
+        modelContext: ModelContext
+    ) throws {
+        let syncingRaw = PendingActionStatus.syncing.rawValue
+        let pendingRaw = PendingActionStatus.pending.rawValue
+        let cleanedUserId = userId.trimmed
+
+        let cutoffDate = Calendar.current.date(
+            byAdding: .minute,
+            value: -PendingActionCleanupPolicy.staleSyncingActionMinutes,
+            to: Date()
+        ) ?? Date()
+
+        let descriptor = FetchDescriptor<PendingAction>(
+            predicate: #Predicate { action in
+                action.userId == cleanedUserId &&
+                action.statusRaw == syncingRaw &&
+                action.updatedAt < cutoffDate
+            }
+        )
+
+        let staleActions = try modelContext.fetch(descriptor)
+
+        for action in staleActions {
+            action.statusRaw = pendingRaw
+            action.updatedAt = Date()
+        }
+
+        if staleActions.isEmpty == false {
+            try modelContext.save()
+        }
     }
 
     // MARK: - Cleanup
@@ -219,7 +258,7 @@ final class PendingActionQueue {
         modelContext: ModelContext
     ) throws -> Int {
         let completedRaw = PendingActionStatus.completed.rawValue
-        let cleanedUserId = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedUserId = userId.trimmed
 
         let descriptor = FetchDescriptor<PendingAction>(
             predicate: #Predicate { action in
@@ -274,6 +313,7 @@ final class PendingActionQueue {
             createAction.statusRaw = PendingActionStatus.pending.rawValue
             createAction.updatedAt = Date()
             createAction.lastErrorMessage = nil
+
             try modelContext.save()
             return
         }
@@ -334,12 +374,13 @@ final class PendingActionQueue {
         modelContext: ModelContext
     ) throws -> PendingAction? {
         let completedRaw = PendingActionStatus.completed.rawValue
-        let cleanedUserId = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedUserId = userId.trimmed
+        let cleanedDedupeKey = dedupeKey.trimmed
 
         let descriptor = FetchDescriptor<PendingAction>(
             predicate: #Predicate { action in
                 action.userId == cleanedUserId &&
-                action.dedupeKey == dedupeKey &&
+                action.dedupeKey == cleanedDedupeKey &&
                 action.statusRaw != completedRaw
             }
         )
