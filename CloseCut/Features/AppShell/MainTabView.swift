@@ -10,6 +10,7 @@ import SwiftData
 
 private enum MainTab: String {
     case personal
+    case discover
     case circle
     case battle
     case settings
@@ -18,6 +19,8 @@ private enum MainTab: String {
         switch self {
         case .personal:
             return "Personal"
+        case .discover:
+            return "Discover"
         case .circle:
             return "Circle"
         case .battle:
@@ -31,6 +34,8 @@ private enum MainTab: String {
         switch self {
         case .personal:
             return "film.stack"
+        case .discover:
+            return "sparkles"
         case .circle:
             return "person.2.fill"
         case .battle:
@@ -65,34 +70,72 @@ struct MainTabView: View {
     var body: some View {
         TabView(selection: selectedTab) {
             NavigationStack {
-                HomeView(user: user, profile: profile)
+                HomeView(
+                    user: user,
+                    profile: profile
+                )
             }
             .tabItem {
-                Label(MainTab.personal.title, systemImage: MainTab.personal.systemImage)
+                Label(
+                    MainTab.personal.title,
+                    systemImage: MainTab.personal.systemImage
+                )
             }
             .tag(MainTab.personal)
 
             NavigationStack {
-                CircleView(user: user, profile: profile)
+                DiscoverView(
+                    user: user,
+                    profile: profile
+                )
             }
             .tabItem {
-                Label(MainTab.circle.title, systemImage: MainTab.circle.systemImage)
+                Label(
+                    MainTab.discover.title,
+                    systemImage: MainTab.discover.systemImage
+                )
+            }
+            .tag(MainTab.discover)
+
+            NavigationStack {
+                CircleView(
+                    user: user,
+                    profile: profile
+                )
+            }
+            .tabItem {
+                Label(
+                    MainTab.circle.title,
+                    systemImage: MainTab.circle.systemImage
+                )
             }
             .tag(MainTab.circle)
 
             NavigationStack {
-                BattleView(user: user, profile: profile)
+                BattleView(
+                    user: user,
+                    profile: profile
+                )
             }
             .tabItem {
-                Label(MainTab.battle.title, systemImage: MainTab.battle.systemImage)
+                Label(
+                    MainTab.battle.title,
+                    systemImage: MainTab.battle.systemImage
+                )
             }
             .tag(MainTab.battle)
 
             NavigationStack {
-                SettingsView(user: user, profile: profile)
+                SettingsView(
+                    user: user,
+                    profile: profile
+                )
             }
             .tabItem {
-                Label(MainTab.settings.title, systemImage: MainTab.settings.systemImage)
+                Label(
+                    MainTab.settings.title,
+                    systemImage: MainTab.settings.systemImage
+                )
             }
             .tag(MainTab.settings)
         }

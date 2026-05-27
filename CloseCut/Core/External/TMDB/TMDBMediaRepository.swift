@@ -5,19 +5,22 @@
 
 import Foundation
 
+@MainActor
 final class TMDBMediaRepository {
     private let client: TMDBClient
 
-    init(client: TMDBClient = TMDBClient()) {
-        self.client = client
+    init(client: TMDBClient? = nil) {
+        self.client = client ?? TMDBClient()
     }
+
+    // MARK: - Search
 
     func searchMedia(
         query: String,
         page: Int = 1,
         language: String = "en-US"
     ) async throws -> [TMDBMediaSearchResult] {
-        let cleanedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedQuery = query.trimmed
 
         guard cleanedQuery.count >= TMDBConfiguration.minimumSearchQueryLength else {
             return []
@@ -36,7 +39,10 @@ final class TMDBMediaRepository {
         return response.results
             .compactMap { TMDBMediaSearchResult(dto: $0) }
             .sorted(by: sortSearchResults)
+            .prefixArray(TMDBConfiguration.maximumSearchResults)
     }
+
+    // MARK: - Discover
 
     func discoverMovies(
         genreIds: [Int],
@@ -146,8 +152,68 @@ final class TMDBMediaRepository {
 
             let combined = try await movies + tv
 
-            return combined.sorted(by: sortDiscoveryResults)
+            return combined
+                .uniqued(by: \.id)
+                .sorted(by: sortDiscoveryResults)
         }
+    }
+
+    // MARK: - Trending / Popular
+
+    func trending(
+        timeWindow: TMDBTrendingTimeWindow = .week,
+        page: Int = 1,
+        language: String = "en-US"
+    ) async throws -> [TMDBMediaSearchResult] {
+        let safePage = max(page, 1)
+
+        let response: TMDBSearchResponse = try await client.send(
+            .trending(
+                timeWindow: timeWindow,
+                page: safePage,
+                language: language
+            )
+        )
+
+        return response.results
+            .compactMap { TMDBMediaSearchResult(dto: $0) }
+            .sorted(by: sortSearchResults)
+    }
+
+    func popularMovies(
+        page: Int = 1,
+        language: String = "en-US"
+    ) async throws -> [TMDBMediaSearchResult] {
+        let safePage = max(page, 1)
+
+        let response: TMDBDiscoverMovieResponse = try await client.send(
+            .popularMovies(
+                page: safePage,
+                language: language
+            )
+        )
+
+        return response.results
+            .compactMap { TMDBMediaSearchResult(movieDTO: $0) }
+            .sorted(by: sortSearchResults)
+    }
+
+    func popularTV(
+        page: Int = 1,
+        language: String = "en-US"
+    ) async throws -> [TMDBMediaSearchResult] {
+        let safePage = max(page, 1)
+
+        let response: TMDBDiscoverTVResponse = try await client.send(
+            .popularTV(
+                page: safePage,
+                language: language
+            )
+        )
+
+        return response.results
+            .compactMap { TMDBMediaSearchResult(tvDTO: $0) }
+            .sorted(by: sortSearchResults)
     }
 
     // MARK: - Sorting
@@ -192,5 +258,15 @@ final class TMDBMediaRepository {
         }
 
         return (first.releaseYear ?? 0) > (second.releaseYear ?? 0)
+    }
+}
+
+private extension Array {
+    func prefixArray(_ maxCount: Int) -> [Element] {
+        guard maxCount > 0 else {
+            return []
+        }
+
+        return Array(prefix(maxCount))
     }
 }
