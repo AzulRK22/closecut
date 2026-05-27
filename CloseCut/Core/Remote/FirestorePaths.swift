@@ -2,8 +2,6 @@
 //  FirestorePaths.swift
 //  CloseCut
 //
-//  Created by Azul Ramirez Kuri on 25/04/26.
-//
 
 import Foundation
 import FirebaseFirestore
@@ -11,6 +9,7 @@ import FirebaseFirestore
 enum FirestorePaths {
     static let users = "users"
     static let entries = "entries"
+    static let watchlistItems = "watchlistItems"
     static let circles = "circles"
     static let members = "members"
     static let activity = "activity"
@@ -62,6 +61,19 @@ enum FirestorePaths {
     ) -> DocumentReference {
         entryComments(entryId)
             .document(commentId)
+    }
+
+    // MARK: - Watchlist
+
+    static func watchlistItem(_ itemId: String) -> DocumentReference {
+        Firestore.firestore()
+            .collection(watchlistItems)
+            .document(itemId)
+    }
+
+    static func watchlistItemsCollection() -> CollectionReference {
+        Firestore.firestore()
+            .collection(watchlistItems)
     }
 
     // MARK: - Circles

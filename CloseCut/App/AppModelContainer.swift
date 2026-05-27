@@ -13,6 +13,7 @@ enum AppModelContainer {
         LocalUserProfile.self,
         LocalUserState.self,
         PendingAction.self,
-        LocalBattleResult.self
+        LocalBattleResult.self,
+        LocalWatchlistItem.self
     ]
 }
