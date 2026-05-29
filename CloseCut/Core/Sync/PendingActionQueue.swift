@@ -94,6 +94,52 @@ final class PendingActionQueue {
                 payloadData: payloadData,
                 modelContext: modelContext
             )
+
+        case .createWatchlistItem, .updateWatchlistItem, .deleteWatchlistItem:
+            throw PendingActionQueueError.invalidActionFamily
+        }
+    }
+
+    func enqueueWatchlistItemAction(
+        userId: String,
+        itemId: String,
+        actionType: PendingActionType,
+        payloadData: Data?,
+        modelContext: ModelContext
+    ) throws {
+        let cleanedItemId = itemId.trimmed
+
+        guard cleanedItemId.isEmpty == false else {
+            throw PendingActionQueueError.missingWatchlistItemId
+        }
+
+        switch actionType {
+        case .createWatchlistItem:
+            try enqueueCreateWatchlistItemAction(
+                userId: userId,
+                itemId: cleanedItemId,
+                payloadData: payloadData,
+                modelContext: modelContext
+            )
+
+        case .updateWatchlistItem:
+            try enqueueUpdateWatchlistItemAction(
+                userId: userId,
+                itemId: cleanedItemId,
+                payloadData: payloadData,
+                modelContext: modelContext
+            )
+
+        case .deleteWatchlistItem:
+            try enqueueDeleteWatchlistItemAction(
+                userId: userId,
+                itemId: cleanedItemId,
+                payloadData: payloadData,
+                modelContext: modelContext
+            )
+
+        case .createEntry, .updateEntry, .deleteEntry, .updateVisibility:
+            throw PendingActionQueueError.invalidActionFamily
         }
     }
 
@@ -366,6 +412,81 @@ final class PendingActionQueue {
         )
     }
 
+    // MARK: - Watchlist Action Strategy
+
+    private func enqueueCreateWatchlistItemAction(
+        userId: String,
+        itemId: String,
+        payloadData: Data?,
+        modelContext: ModelContext
+    ) throws {
+        try enqueue(
+            userId: userId,
+            actionType: .createWatchlistItem,
+            payloadData: payloadData,
+            dedupeKey: watchlistCreateKey(itemId),
+            modelContext: modelContext
+        )
+    }
+
+    private func enqueueUpdateWatchlistItemAction(
+        userId: String,
+        itemId: String,
+        payloadData: Data?,
+        modelContext: ModelContext
+    ) throws {
+        if let createAction = try fetchActionByDedupeKey(
+            userId: userId,
+            dedupeKey: watchlistCreateKey(itemId),
+            modelContext: modelContext
+        ) {
+            createAction.payloadData = payloadData
+            createAction.statusRaw = PendingActionStatus.pending.rawValue
+            createAction.updatedAt = Date()
+            createAction.lastErrorMessage = nil
+
+            try modelContext.save()
+            return
+        }
+
+        if try fetchActionByDedupeKey(
+            userId: userId,
+            dedupeKey: watchlistDeleteKey(itemId),
+            modelContext: modelContext
+        ) != nil {
+            return
+        }
+
+        try enqueue(
+            userId: userId,
+            actionType: .updateWatchlistItem,
+            payloadData: payloadData,
+            dedupeKey: watchlistUpdateKey(itemId),
+            modelContext: modelContext
+        )
+    }
+
+    private func enqueueDeleteWatchlistItemAction(
+        userId: String,
+        itemId: String,
+        payloadData: Data?,
+        modelContext: ModelContext
+    ) throws {
+        try deleteActionIfExists(
+            userId: userId,
+            dedupeKey: watchlistUpdateKey(itemId),
+            modelContext: modelContext
+        )
+
+        try enqueue(
+            userId: userId,
+            actionType: .deleteWatchlistItem,
+            payloadData: payloadData,
+            dedupeKey: watchlistDeleteKey(itemId),
+            modelContext: modelContext
+        )
+    }
+
     // MARK: - Private Fetch Helpers
 
     private func fetchActionByDedupeKey(
@@ -420,11 +541,25 @@ final class PendingActionQueue {
     private func entryVisibilityKey(_ entryId: String) -> String {
         "entry:visibility:\(entryId)"
     }
+
+    private func watchlistCreateKey(_ itemId: String) -> String {
+        "watchlist:create:\(itemId)"
+    }
+
+    private func watchlistUpdateKey(_ itemId: String) -> String {
+        "watchlist:update:\(itemId)"
+    }
+
+    private func watchlistDeleteKey(_ itemId: String) -> String {
+        "watchlist:delete:\(itemId)"
+    }
 }
 
 enum PendingActionQueueError: LocalizedError {
     case missingUserId
     case missingEntryId
+    case missingWatchlistItemId
+    case invalidActionFamily
 
     var errorDescription: String? {
         switch self {
@@ -432,6 +567,10 @@ enum PendingActionQueueError: LocalizedError {
             return "A valid user is required to enqueue this sync action."
         case .missingEntryId:
             return "A valid entry is required to enqueue this sync action."
+        case .missingWatchlistItemId:
+            return "A valid Watchlist item is required to enqueue this sync action."
+        case .invalidActionFamily:
+            return "This sync action does not belong to the requested action family."
         }
     }
 }

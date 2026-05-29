@@ -56,9 +56,12 @@ final class EntryRepository {
             externalMetadata: externalMetadata,
             modelContext: modelContext
         ) {
-            return duplicate
+            return try enrichDuplicateIfNeeded(
+                duplicate: duplicate,
+                metadata: externalMetadata,
+                modelContext: modelContext
+            )
         }
-
         let now = Date()
         let cleanedSharedCircleIds = cleanCircleIds(sharedCircleIds)
         let resolvedVisibility = resolveVisibility(
@@ -127,7 +130,11 @@ final class EntryRepository {
             draft: draft,
             modelContext: modelContext
         ) {
-            return duplicate
+            return try enrichDuplicateIfNeeded(
+                duplicate: duplicate,
+                metadata: draft.externalMetadata,
+                modelContext: modelContext
+            )
         }
 
         let approxDate = draft.watchedDateApprox ?? .unknown
@@ -579,6 +586,131 @@ final class EntryRepository {
         modelContext.delete(localEntry)
         try modelContext.save()
     }
+    // MARK: - Metadata Enrichment
+
+    @discardableResult
+    func enrichLocalEntryMetadata(
+        entryId: String,
+        metadata: EntryExternalMetadata,
+        modelContext: ModelContext,
+        shouldEnqueueSync: Bool = true
+    ) throws -> Entry {
+        guard metadata.hasUsefulMetadata else {
+            throw EntryRepositoryError.emptyMetadata
+        }
+
+        guard let localEntry = try fetchLocalEntryModel(
+            id: entryId,
+            modelContext: modelContext
+        ) else {
+            throw EntryRepositoryError.entryNotFound
+        }
+
+        let currentEntry = localEntry.domain
+
+        guard shouldApplyMetadata(
+            currentEntry: currentEntry,
+            metadata: metadata
+        ) else {
+            return currentEntry
+        }
+
+        localEntry.externalSourceRaw = metadata.source.rawValue
+        localEntry.tmdbId = metadata.tmdbId
+        localEntry.tmdbMediaTypeRaw = metadata.tmdbMediaTypeRaw
+        localEntry.posterPath = metadata.posterPath
+        localEntry.backdropPath = metadata.backdropPath
+        localEntry.overview = metadata.overview
+        localEntry.tmdbRating = metadata.tmdbRating
+        localEntry.tmdbPopularity = metadata.tmdbPopularity
+        localEntry.tmdbGenreIds = metadata.tmdbGenreIds
+        localEntry.updatedAt = Date()
+
+        if shouldEnqueueSync {
+            localEntry.syncStatusRaw = SyncStatus.pending.rawValue
+        }
+
+        try modelContext.save()
+
+        let enrichedEntry = localEntry.domain
+
+        if shouldEnqueueSync {
+            try enqueueEntryAction(
+                userId: enrichedEntry.ownerId,
+                actionType: .updateEntry,
+                entry: enrichedEntry,
+                modelContext: modelContext
+            )
+        }
+
+        return enrichedEntry
+    }
+
+    func enrichDuplicateIfNeeded(
+        duplicate: Entry,
+        metadata: EntryExternalMetadata?,
+        modelContext: ModelContext
+    ) throws -> Entry {
+        guard let metadata,
+              metadata.hasUsefulMetadata else {
+            return duplicate
+        }
+
+        guard shouldApplyMetadata(
+            currentEntry: duplicate,
+            metadata: metadata
+        ) else {
+            return duplicate
+        }
+
+        return try enrichLocalEntryMetadata(
+            entryId: duplicate.id,
+            metadata: metadata,
+            modelContext: modelContext,
+            shouldEnqueueSync: true
+        )
+    }
+
+    private func shouldApplyMetadata(
+        currentEntry: Entry,
+        metadata: EntryExternalMetadata
+    ) -> Bool {
+        if currentEntry.hasTMDBMetadata == false {
+            return true
+        }
+
+        if currentEntry.posterPath?.trimmed.isEmpty != false,
+           metadata.posterPath?.trimmed.isEmpty == false {
+            return true
+        }
+
+        if currentEntry.backdropPath?.trimmed.isEmpty != false,
+           metadata.backdropPath?.trimmed.isEmpty == false {
+            return true
+        }
+
+        if currentEntry.overview?.trimmed.isEmpty != false,
+           metadata.overview?.trimmed.isEmpty == false {
+            return true
+        }
+
+        if currentEntry.tmdbRating == nil,
+           metadata.tmdbRating != nil {
+            return true
+        }
+
+        if currentEntry.tmdbPopularity == nil,
+           metadata.tmdbPopularity != nil {
+            return true
+        }
+
+        if currentEntry.tmdbGenreIds.isEmpty,
+           metadata.tmdbGenreIds.isEmpty == false {
+            return true
+        }
+
+        return false
+    }
 
     // MARK: - Pending Actions
 
@@ -687,6 +819,7 @@ enum EntryRepositoryError: LocalizedError {
     case entryNotFound
     case missingOwnerId
     case emptyTitle
+    case emptyMetadata
 
     var errorDescription: String? {
         switch self {
@@ -696,6 +829,8 @@ enum EntryRepositoryError: LocalizedError {
             return "A valid owner is required."
         case .emptyTitle:
             return "Title is required."
+        case .emptyMetadata:
+            return "No useful metadata was provided."
         }
     }
 }

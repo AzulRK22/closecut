@@ -17,11 +17,13 @@ struct DiscoverView: View {
     @State private var actionMessage: String?
     @State private var actionBannerStyle: SyncResultBannerStyle = .neutral
     @State private var isSavingWatched = false
+    @State private var isSavingWatchlist = false
 
     let user: AuthUser
     let profile: UserProfile
 
     private let entryRepository = EntryRepository()
+    private let watchlistRepository = WatchlistRepository()
 
     private var currentUserEntries: [Entry] {
         localEntries
@@ -66,13 +68,16 @@ struct DiscoverView: View {
             DiscoverMediaDetailSheet(
                 media: media,
                 isSavingWatched: isSavingWatched,
+                isSavingWatchlist: isSavingWatchlist,
                 onAddWatched: {
                     Task {
                         await addWatched(media)
                     }
                 },
                 onSaveForLater: {
-                    showComingSoon("Want to Watch is coming next.")
+                    Task {
+                        await saveForLater(media)
+                    }
                 },
                 onStartBattle: {
                     showComingSoon("Battle integration is coming after Watchlist.")
@@ -120,8 +125,8 @@ struct DiscoverView: View {
                 )
 
                 DiscoverSignalPill(
-                    icon: "plus.circle.fill",
-                    text: "Add fast"
+                    icon: "bookmark.fill",
+                    text: "Want to Watch"
                 )
             }
         }
@@ -230,6 +235,31 @@ struct DiscoverView: View {
 
             actionBannerStyle = .success
             actionMessage = "\(entry.displayTitle) was added to your history."
+            viewModel.clearSelection()
+        } catch {
+            actionBannerStyle = .warning
+            actionMessage = error.localizedDescription
+        }
+    }
+
+    private func saveForLater(_ media: TMDBMediaSearchResult) async {
+        guard isSavingWatchlist == false else {
+            return
+        }
+
+        isSavingWatchlist = true
+        defer { isSavingWatchlist = false }
+
+        do {
+            let item = try watchlistRepository.createLocalWatchlistItem(
+                ownerId: user.id,
+                media: media,
+                source: .discover,
+                modelContext: modelContext
+            )
+
+            actionBannerStyle = .success
+            actionMessage = "\(item.displayTitle) was saved to Want to Watch."
             viewModel.clearSelection()
         } catch {
             actionBannerStyle = .warning

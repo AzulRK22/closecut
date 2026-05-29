@@ -2,14 +2,13 @@
 //  WatchlistRepository.swift
 //  CloseCut
 //
-//  Created by Azul Ramirez Kuri on 26/05/26.
-//
 
 import Foundation
 import SwiftData
 
 @MainActor
 final class WatchlistRepository {
+    private let pendingActionQueue = PendingActionQueue()
 
     // MARK: - Create
 
@@ -36,10 +35,19 @@ final class WatchlistRepository {
             modelContext: modelContext
         ) {
             if duplicate.status == .dismissed || duplicate.deletedAt != nil {
-                return try reactivateLocalWatchlistItem(
+                let item = try reactivateLocalWatchlistItem(
                     itemId: duplicate.id,
                     modelContext: modelContext
                 )
+
+                try enqueueWatchlistAction(
+                    userId: cleanedOwnerId,
+                    actionType: .updateWatchlistItem,
+                    item: item,
+                    modelContext: modelContext
+                )
+
+                return item
             }
 
             return duplicate
@@ -65,7 +73,16 @@ final class WatchlistRepository {
         modelContext.insert(localItem)
         try modelContext.save()
 
-        return localItem.domain
+        let item = localItem.domain
+
+        try enqueueWatchlistAction(
+            userId: cleanedOwnerId,
+            actionType: .createWatchlistItem,
+            item: item,
+            modelContext: modelContext
+        )
+
+        return item
     }
 
     // MARK: - Read
@@ -222,7 +239,16 @@ final class WatchlistRepository {
 
         try modelContext.save()
 
-        return localItem.domain
+        let item = localItem.domain
+
+        try enqueueWatchlistAction(
+            userId: item.ownerId,
+            actionType: .updateWatchlistItem,
+            item: item,
+            modelContext: modelContext
+        )
+
+        return item
     }
 
     func reactivateLocalWatchlistItem(
@@ -295,7 +321,43 @@ final class WatchlistRepository {
 
         try modelContext.save()
 
-        return localItem.domain
+        let item = localItem.domain
+
+        try enqueueWatchlistAction(
+            userId: item.ownerId,
+            actionType: .deleteWatchlistItem,
+            item: item,
+            modelContext: modelContext
+        )
+
+        return item
+    }
+
+    // MARK: - Pending Actions
+
+    private func enqueueWatchlistAction(
+        userId: String,
+        actionType: PendingActionType,
+        item: WatchlistItem,
+        modelContext: ModelContext
+    ) throws {
+        let payload = PendingWatchlistItemPayload(
+            itemId: item.id,
+            ownerId: item.ownerId,
+            title: item.title,
+            status: item.status.rawValue,
+            updatedAt: item.updatedAt
+        )
+
+        let payloadData = try CodableHelpers.encode(payload)
+
+        try pendingActionQueue.enqueueWatchlistItemAction(
+            userId: userId,
+            itemId: item.id,
+            actionType: actionType,
+            payloadData: payloadData,
+            modelContext: modelContext
+        )
     }
 
     // MARK: - Helpers

@@ -1,36 +1,36 @@
 //
-//  EntrySyncService.swift
+//  WatchlistSyncService.swift
 //  CloseCut
 //
-//  Created by Azul Ramirez Kuri on 29/04/26.
+//  Created by Azul Ramirez Kuri on 26/05/26.
 //
 
 import Foundation
 import SwiftData
 
 @MainActor
-final class EntrySyncService {
+final class WatchlistSyncService {
     private let queue = PendingActionQueue()
-    private let repository = EntryRepository()
-    private let remote = EntryRemoteDataSource()
+    private let repository = WatchlistRepository()
+    private let remote = WatchlistRemoteDataSource()
 
     // MARK: - Push Local Pending Changes
 
-    func syncPendingEntries(
+    func syncPendingWatchlistItems(
         userId: String,
         modelContext: ModelContext
-    ) async -> EntrySyncSummary {
+    ) async -> WatchlistSyncSummary {
         let cleanedUserId = userId.trimmed
 
         guard cleanedUserId.isEmpty == false else {
-            return EntrySyncSummary(
+            return WatchlistSyncSummary(
                 syncedCount: 0,
                 failedCount: 1,
                 pulledCount: 0
             )
         }
 
-        var syncedEntryIds = Set<String>()
+        var syncedItemIds = Set<String>()
         var syncedCount = 0
         var failedCount = 0
 
@@ -40,17 +40,17 @@ final class EntrySyncService {
                 modelContext: modelContext
             )
 
-            for action in actions where action.actionType.isEntryAction {
+            for action in actions where action.actionType.isWatchlistAction {
                 do {
                     action.markSyncing()
                     try modelContext.save()
 
-                    let syncedEntryId = try await sync(
+                    let syncedItemId = try await sync(
                         action: action,
                         modelContext: modelContext
                     )
 
-                    syncedEntryIds.insert(syncedEntryId)
+                    syncedItemIds.insert(syncedItemId)
 
                     action.markCompleted()
                     try modelContext.save()
@@ -64,36 +64,26 @@ final class EntrySyncService {
                 }
             }
 
-            let orphanSummary = await syncOrphanPendingEntries(
+            let orphanSummary = await syncOrphanPendingWatchlistItems(
                 userId: cleanedUserId,
-                excludingEntryIds: syncedEntryIds,
+                excludingItemIds: syncedItemIds,
                 modelContext: modelContext
             )
 
             syncedCount += orphanSummary.syncedCount
             failedCount += orphanSummary.failedCount
 
-            do {
-                _ = try queue.cleanupCompletedActions(
-                    modelContext: modelContext
-                )
-            } catch {
-                #if DEBUG
-                print("⚠️ Completed action cleanup failed:", error.localizedDescription)
-                #endif
-            }
-
-            return EntrySyncSummary(
+            return WatchlistSyncSummary(
                 syncedCount: syncedCount,
                 failedCount: failedCount,
                 pulledCount: 0
             )
         } catch {
             #if DEBUG
-            print("⚠️ Failed to fetch syncable actions:", error.localizedDescription)
+            print("⚠️ Failed to fetch watchlist sync actions:", error.localizedDescription)
             #endif
 
-            return EntrySyncSummary(
+            return WatchlistSyncSummary(
                 syncedCount: syncedCount,
                 failedCount: failedCount + 1,
                 pulledCount: 0
@@ -101,16 +91,16 @@ final class EntrySyncService {
         }
     }
 
-    // MARK: - Pull Remote Personal Entries
+    // MARK: - Pull Remote Watchlist
 
-    func pullRemoteEntries(
+    func pullRemoteWatchlistItems(
         userId: String,
         modelContext: ModelContext
-    ) async -> EntrySyncSummary {
+    ) async -> WatchlistSyncSummary {
         let cleanedUserId = userId.trimmed
 
         guard cleanedUserId.isEmpty == false else {
-            return EntrySyncSummary(
+            return WatchlistSyncSummary(
                 syncedCount: 0,
                 failedCount: 1,
                 pulledCount: 0
@@ -118,32 +108,32 @@ final class EntrySyncService {
         }
 
         do {
-            let remoteEntries = try await remote.fetchEntries(
+            let remoteItems = try await remote.fetchWatchlistItems(
                 ownerId: cleanedUserId
             )
 
             var pulledCount = 0
 
-            for remoteEntry in remoteEntries {
-                _ = try repository.upsertRemoteEntry(
-                    remoteEntry,
+            for remoteItem in remoteItems {
+                _ = try repository.upsertRemoteWatchlistItem(
+                    remoteItem,
                     modelContext: modelContext
                 )
 
                 pulledCount += 1
             }
 
-            return EntrySyncSummary(
+            return WatchlistSyncSummary(
                 syncedCount: 0,
                 failedCount: 0,
                 pulledCount: pulledCount
             )
         } catch {
             #if DEBUG
-            print("⚠️ Failed to pull remote entries:", error.localizedDescription)
+            print("⚠️ Failed to pull remote watchlist:", error.localizedDescription)
             #endif
 
-            return EntrySyncSummary(
+            return WatchlistSyncSummary(
                 syncedCount: 0,
                 failedCount: 1,
                 pulledCount: 0
@@ -157,82 +147,82 @@ final class EntrySyncService {
         action: PendingAction,
         modelContext: ModelContext
     ) async throws -> String {
-        guard action.actionType.isEntryAction else {
-            throw EntrySyncError.unsupportedAction(action.actionType.rawValue)
+        guard action.actionType.isWatchlistAction else {
+            throw WatchlistSyncError.unsupportedAction(action.actionType.rawValue)
         }
 
         guard let payloadData = action.payloadData else {
-            throw EntrySyncError.missingPayload
+            throw WatchlistSyncError.missingPayload
         }
 
         let payload = try CodableHelpers.decode(
-            PendingEntryPayload.self,
+            PendingWatchlistItemPayload.self,
             from: payloadData
         )
 
-        guard let entry = try repository.fetchLocalEntry(
-            id: payload.entryId,
+        guard let item = try repository.fetchLocalWatchlistItem(
+            id: payload.itemId,
             modelContext: modelContext
         ) else {
-            throw EntrySyncError.entryNotFound
+            throw WatchlistSyncError.itemNotFound
         }
 
         switch action.actionType {
-        case .createEntry, .updateEntry, .updateVisibility:
-            try await remote.upsertEntry(entry)
+        case .createWatchlistItem, .updateWatchlistItem:
+            try await remote.upsertWatchlistItem(item)
 
-            try repository.markLocalEntrySynced(
-                entryId: entry.id,
+            try repository.markLocalWatchlistItemSynced(
+                itemId: item.id,
                 modelContext: modelContext
             )
 
-        case .deleteEntry:
-            try await remote.softDeleteEntry(entry)
+        case .deleteWatchlistItem:
+            try await remote.softDeleteWatchlistItem(item)
 
-            try repository.markLocalEntrySynced(
-                entryId: entry.id,
+            try repository.markLocalWatchlistItemSynced(
+                itemId: item.id,
                 modelContext: modelContext
             )
 
-        case .createWatchlistItem, .updateWatchlistItem, .deleteWatchlistItem:
-            throw EntrySyncError.unsupportedAction(action.actionType.rawValue)
+        case .createEntry, .updateEntry, .deleteEntry, .updateVisibility:
+            throw WatchlistSyncError.unsupportedAction(action.actionType.rawValue)
         }
 
-        return entry.id
+        return item.id
     }
 
-    private func syncOrphanPendingEntries(
+    private func syncOrphanPendingWatchlistItems(
         userId: String,
-        excludingEntryIds: Set<String>,
+        excludingItemIds: Set<String>,
         modelContext: ModelContext
-    ) async -> EntrySyncSummary {
+    ) async -> WatchlistSyncSummary {
         do {
-            let pendingEntries = try fetchLocalPendingEntries(
+            let pendingItems = try fetchLocalPendingWatchlistItems(
                 userId: userId,
-                excludingEntryIds: excludingEntryIds,
+                excludingItemIds: excludingItemIds,
                 modelContext: modelContext
             )
 
             var syncedCount = 0
             var failedCount = 0
 
-            for entry in pendingEntries {
+            for item in pendingItems {
                 do {
-                    if entry.deletedAt != nil {
-                        try await remote.softDeleteEntry(entry)
+                    if item.deletedAt != nil {
+                        try await remote.softDeleteWatchlistItem(item)
                     } else {
-                        try await remote.upsertEntry(entry)
+                        try await remote.upsertWatchlistItem(item)
                     }
 
-                    try repository.markLocalEntrySynced(
-                        entryId: entry.id,
+                    try repository.markLocalWatchlistItemSynced(
+                        itemId: item.id,
                         modelContext: modelContext
                     )
 
                     syncedCount += 1
                 } catch {
-                    try? repository.markLocalEntryFailed(
-                        entryId: entry.id,
+                    try? repository.markLocalWatchlistItemFailed(
+                        itemId: item.id,
                         modelContext: modelContext
                     )
 
@@ -240,17 +230,17 @@ final class EntrySyncService {
                 }
             }
 
-            return EntrySyncSummary(
+            return WatchlistSyncSummary(
                 syncedCount: syncedCount,
                 failedCount: failedCount,
                 pulledCount: 0
             )
         } catch {
             #if DEBUG
-            print("⚠️ Failed to sync orphan pending entries:", error.localizedDescription)
+            print("⚠️ Failed to sync orphan watchlist items:", error.localizedDescription)
             #endif
 
-            return EntrySyncSummary(
+            return WatchlistSyncSummary(
                 syncedCount: 0,
                 failedCount: 1,
                 pulledCount: 0
@@ -258,44 +248,34 @@ final class EntrySyncService {
         }
     }
 
-    private func fetchLocalPendingEntries(
+    private func fetchLocalPendingWatchlistItems(
         userId: String,
-        excludingEntryIds: Set<String>,
+        excludingItemIds: Set<String>,
         modelContext: ModelContext
-    ) throws -> [Entry] {
+    ) throws -> [WatchlistItem] {
         let pendingRaw = SyncStatus.pending.rawValue
         let cleanedUserId = userId.trimmed
 
-        let descriptor = FetchDescriptor<LocalEntry>(
-            predicate: #Predicate { entry in
-                entry.ownerId == cleanedUserId &&
-                entry.syncStatusRaw == pendingRaw
+        let descriptor = FetchDescriptor<LocalWatchlistItem>(
+            predicate: #Predicate { item in
+                item.ownerId == cleanedUserId &&
+                item.syncStatusRaw == pendingRaw
             },
             sortBy: [
-                SortDescriptor(\LocalEntry.updatedAt, order: .forward)
+                SortDescriptor(\LocalWatchlistItem.updatedAt, order: .forward)
             ]
         )
 
         return try modelContext.fetch(descriptor)
             .map { $0.domain }
-            .filter { excludingEntryIds.contains($0.id) == false }
+            .filter { excludingItemIds.contains($0.id) == false }
     }
 }
 
-struct EntrySyncSummary: Equatable {
+struct WatchlistSyncSummary: Equatable {
     let syncedCount: Int
     let failedCount: Int
     let pulledCount: Int
-
-    init(
-        syncedCount: Int,
-        failedCount: Int,
-        pulledCount: Int = 0
-    ) {
-        self.syncedCount = syncedCount
-        self.failedCount = failedCount
-        self.pulledCount = pulledCount
-    }
 
     var hasFailures: Bool {
         failedCount > 0
@@ -306,21 +286,19 @@ struct EntrySyncSummary: Equatable {
     }
 }
 
-enum EntrySyncError: LocalizedError {
+enum WatchlistSyncError: LocalizedError {
     case missingPayload
-    case entryNotFound
+    case itemNotFound
     case unsupportedAction(String)
 
     var errorDescription: String? {
         switch self {
         case .missingPayload:
-            return "Missing sync payload."
-
-        case .entryNotFound:
-            return "Entry was not found locally."
-
+            return "Missing Watchlist sync payload."
+        case .itemNotFound:
+            return "Watchlist item was not found locally."
         case .unsupportedAction(let action):
-            return "Unsupported entry sync action: \(action)."
+            return "Unsupported Watchlist sync action: \(action)."
         }
     }
 }

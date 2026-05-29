@@ -7,11 +7,17 @@
 
 import SwiftUI
 
+enum EntryPosterContentMode {
+    case fill
+    case fit
+}
+
 struct EntryPosterThumbnailView: View {
     let entry: Entry
     var width: CGFloat = 66
     var height: CGFloat = 96
     var cornerRadius: CGFloat = 14
+    var contentMode: EntryPosterContentMode = .fill
 
     private var posterURL: URL? {
         TMDBImageURLBuilder.imageURL(
@@ -48,9 +54,7 @@ struct EntryPosterThumbnailView: View {
                         loadingPoster
 
                     case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
+                        posterImage(image)
 
                     case .failure:
                         fallbackContent
@@ -73,9 +77,29 @@ struct EntryPosterThumbnailView: View {
         .accessibilityHidden(true)
     }
 
+    @ViewBuilder
+    private func posterImage(_ image: Image) -> some View {
+        switch contentMode {
+        case .fill:
+            image
+                .resizable()
+                .scaledToFill()
+                .frame(width: width, height: height)
+                .clipped()
+
+        case .fit:
+            image
+                .resizable()
+                .scaledToFit()
+                .frame(width: width, height: height)
+                .background(CloseCutColors.input)
+        }
+    }
+
     private var loadingPoster: some View {
         ProgressView()
             .scaleEffect(0.7)
+            .tint(CloseCutColors.accentLight)
     }
 
     private var fallbackContent: some View {

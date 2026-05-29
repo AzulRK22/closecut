@@ -15,6 +15,8 @@ final class SessionSyncViewModel: ObservableObject {
     @Published private(set) var lastInitialCloudRefreshError: String?
 
     private let entrySyncService = EntrySyncService()
+    private let watchlistSyncService = WatchlistSyncService()
+
     private var refreshedUserIds: Set<String> = []
 
     // MARK: - Initial Session Refresh
@@ -60,15 +62,23 @@ final class SessionSyncViewModel: ObservableObject {
     func forceRefreshCloudSession(
         userId: String,
         modelContext: ModelContext
-    ) async -> EntrySyncSummary {
+    ) async -> CloudRefreshSummary {
         let cleanedUserId = userId.trimmed
 
         guard cleanedUserId.isEmpty == false else {
             lastInitialCloudRefreshError = "Missing user."
 
-            return EntrySyncSummary(
+            return CloudRefreshSummary(
                 syncedCount: 0,
                 failedCount: 1,
+                pulledCount: 0
+            )
+        }
+
+        guard isInitialCloudRefreshRunning == false else {
+            return CloudRefreshSummary(
+                syncedCount: 0,
+                failedCount: 0,
                 pulledCount: 0
             )
         }
@@ -105,21 +115,50 @@ final class SessionSyncViewModel: ObservableObject {
     private func refreshCloudSession(
         userId: String,
         modelContext: ModelContext
-    ) async -> EntrySyncSummary {
-        let pushSummary = await entrySyncService.syncPendingEntries(
+    ) async -> CloudRefreshSummary {
+        let entryPushSummary = await entrySyncService.syncPendingEntries(
             userId: userId,
             modelContext: modelContext
         )
 
-        let pullSummary = await entrySyncService.pullRemoteEntries(
+        let watchlistPushSummary = await watchlistSyncService.syncPendingWatchlistItems(
             userId: userId,
             modelContext: modelContext
         )
 
-        return EntrySyncSummary(
-            syncedCount: pushSummary.syncedCount,
-            failedCount: pushSummary.failedCount + pullSummary.failedCount,
-            pulledCount: pullSummary.pulledCount
+        let entryPullSummary = await entrySyncService.pullRemoteEntries(
+            userId: userId,
+            modelContext: modelContext
         )
+
+        let watchlistPullSummary = await watchlistSyncService.pullRemoteWatchlistItems(
+            userId: userId,
+            modelContext: modelContext
+        )
+
+        return CloudRefreshSummary(
+            syncedCount: entryPushSummary.syncedCount + watchlistPushSummary.syncedCount,
+            failedCount: entryPushSummary.failedCount +
+                watchlistPushSummary.failedCount +
+                entryPullSummary.failedCount +
+                watchlistPullSummary.failedCount,
+            pulledCount: entryPullSummary.pulledCount + watchlistPullSummary.pulledCount
+        )
+    }
+}
+
+// MARK: - Cloud Refresh Summary
+
+struct CloudRefreshSummary: Equatable {
+    let syncedCount: Int
+    let failedCount: Int
+    let pulledCount: Int
+
+    var hasFailures: Bool {
+        failedCount > 0
+    }
+
+    var didSyncAnything: Bool {
+        syncedCount > 0 || pulledCount > 0
     }
 }

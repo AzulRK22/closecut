@@ -13,10 +13,27 @@ enum PendingActionType: String, Codable, CaseIterable {
     case deleteEntry
     case updateVisibility
 
+    case createWatchlistItem
+    case updateWatchlistItem
+    case deleteWatchlistItem
+
     var isEntryAction: Bool {
         switch self {
         case .createEntry, .updateEntry, .deleteEntry, .updateVisibility:
             return true
+
+        case .createWatchlistItem, .updateWatchlistItem, .deleteWatchlistItem:
+            return false
+        }
+    }
+
+    var isWatchlistAction: Bool {
+        switch self {
+        case .createWatchlistItem, .updateWatchlistItem, .deleteWatchlistItem:
+            return true
+
+        case .createEntry, .updateEntry, .deleteEntry, .updateVisibility:
+            return false
         }
     }
 }
@@ -33,6 +50,14 @@ struct PendingEntryPayload: Codable, Equatable {
     let ownerId: String
     let title: String
     let sourceType: String
+    let updatedAt: Date
+}
+
+struct PendingWatchlistItemPayload: Codable, Equatable {
+    let itemId: String
+    let ownerId: String
+    let title: String
+    let status: String
     let updatedAt: Date
 }
 

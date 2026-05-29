@@ -80,7 +80,7 @@ struct EntryDetailView: View {
                 .ignoresSafeArea()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                LazyVStack(alignment: .leading, spacing: 14) {
                     EntryDetailHeroView(
                         entry: entry,
                         profile: profile,
@@ -131,6 +131,7 @@ struct EntryDetailView: View {
 
                     Spacer(minLength: 32)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
             }
