@@ -14,6 +14,7 @@ enum EntryPosterContentMode {
 
 struct EntryPosterThumbnailView: View {
     let entry: Entry
+
     var width: CGFloat = 66
     var height: CGFloat = 96
     var cornerRadius: CGFloat = 14
@@ -22,7 +23,7 @@ struct EntryPosterThumbnailView: View {
     private var posterURL: URL? {
         TMDBImageURLBuilder.imageURL(
             path: entry.posterPath,
-            size: .posterMedium
+            size: .posterLarge
         )
     }
 
@@ -63,6 +64,7 @@ struct EntryPosterThumbnailView: View {
                         fallbackContent
                     }
                 }
+                .id(posterURL.absoluteString)
             } else {
                 fallbackContent
             }

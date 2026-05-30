@@ -9,6 +9,9 @@ import SwiftUI
 import SwiftData
 
 struct HomeView: View {
+    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var sessionSyncViewModel: SessionSyncViewModel
+
     @Query(sort: \LocalEntry.watchedAt, order: .reverse)
     private var localEntries: [LocalEntry]
 
@@ -22,8 +25,13 @@ struct HomeView: View {
     @State private var isShowingQuickAdd = false
     @State private var isShowingQuickPick = false
     @State private var isShowingLibrarySearch = false
+
     @State private var initialQuickPickState: QuickPickState?
     @State private var externalQuickPickState: QuickPickState?
+
+    @State private var refreshMessage: String?
+    @State private var refreshBannerStyle: SyncResultBannerStyle = .neutral
+    @State private var isRefreshingLibrary = false
 
     private var entries: [Entry] {
         localEntries
@@ -51,6 +59,16 @@ struct HomeView: View {
                 VStack(spacing: 0) {
                     homeHeader
 
+                    if let refreshMessage {
+                        SyncResultBanner(
+                            message: refreshMessage,
+                            style: refreshBannerStyle
+                        )
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 8)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+
                     PersonalLibraryView(
                         entries: entries,
                         user: user,
@@ -70,6 +88,9 @@ struct HomeView: View {
                         onQuickPickStateChange: { newState in
                             initialQuickPickState = newState
                             externalQuickPickState = newState
+                        },
+                        onRefreshMetadata: {
+                            await refreshPersonalLibrary()
                         }
                     )
                 }
@@ -164,7 +185,7 @@ struct HomeView: View {
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
 
-                Text("Your private taste library, picks, and memories.")
+                Text(isRefreshingLibrary ? "Refreshing your library…" : "Your private taste library, picks, and memories.")
                     .font(.subheadline)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .lineLimit(2)
@@ -173,16 +194,80 @@ struct HomeView: View {
 
             Spacer()
 
-            Image(systemName: "rectangle.stack.fill")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(CloseCutColors.accentLight)
-                .frame(width: 36, height: 36)
-                .background(CloseCutColors.input)
-                .clipShape(SwiftUI.Circle())
+            ZStack {
+                Image(systemName: "rectangle.stack.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.accentLight)
+                    .frame(width: 36, height: 36)
+                    .background(CloseCutColors.input)
+                    .clipShape(SwiftUI.Circle())
+
+                if isRefreshingLibrary {
+                    ProgressView()
+                        .scaleEffect(0.72)
+                        .tint(CloseCutColors.accentLight)
+                        .frame(width: 36, height: 36)
+                        .background(CloseCutColors.input.opacity(0.96))
+                        .clipShape(SwiftUI.Circle())
+                }
+            }
         }
         .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 6)
+    }
+
+    private func refreshPersonalLibrary() async {
+        guard isRefreshingLibrary == false else {
+            return
+        }
+
+        isRefreshingLibrary = true
+
+        await MainActor.run {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                refreshMessage = nil
+            }
+        }
+
+        defer {
+            isRefreshingLibrary = false
+        }
+
+        let syncSummary = await sessionSyncViewModel.forceRefreshCloudSession(
+            userId: user.id,
+            modelContext: modelContext
+        )
+
+        let currentEntries = localEntries
+            .filter { $0.ownerId == user.id }
+            .filter { $0.deletedAt == nil }
+            .map { $0.domain }
+
+        let enrichmentService = EntryMetadataEnrichmentService()
+
+        let enrichmentSummary = await enrichmentService.enrichMissingMetadata(
+            entries: currentEntries,
+            modelContext: modelContext
+        )
+
+        await MainActor.run {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                if syncSummary.hasFailures || enrichmentSummary.hasFailures {
+                    refreshBannerStyle = .warning
+                    refreshMessage = "Some items could not refresh, but your library is still safe."
+                } else if enrichmentSummary.enrichedCount > 0 {
+                    refreshBannerStyle = .success
+                    refreshMessage = "Updated \(enrichmentSummary.enrichedCount) \(enrichmentSummary.enrichedCount == 1 ? "memory" : "memories") with posters and metadata."
+                } else if syncSummary.didSyncAnything {
+                    refreshBannerStyle = .success
+                    refreshMessage = "Your library synced successfully."
+                } else {
+                    refreshBannerStyle = .neutral
+                    refreshMessage = "Your library is up to date."
+                }
+            }
+        }
     }
 }
 
@@ -207,6 +292,7 @@ struct HomeView: View {
             syncStatus: .synced
         )
     )
+    .environmentObject(SessionSyncViewModel())
     .modelContainer(for: [
         LocalEntry.self,
         LocalCircle.self,

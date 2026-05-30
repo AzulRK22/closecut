@@ -40,82 +40,75 @@ struct DiscoverMediaDetailSheet: View {
     }
 
     var body: some View {
-        ZStack {
-            CloseCutColors.backgroundPrimary
-                .ignoresSafeArea()
+        GeometryReader { proxy in
+            ZStack {
+                CloseCutColors.backgroundPrimary
+                    .ignoresSafeArea()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    heroCard
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        heroCard(containerWidth: proxy.size.width)
 
-                    metadata
+                        metadataSection
 
-                    if let overview = media.overview?.trimmed,
-                       overview.isEmpty == false {
-                        overviewSection(overview)
+                        if let overview = media.overview?.trimmed,
+                           overview.isEmpty == false {
+                            overviewSection(overview)
+                        }
+
+                        actionSection
+
+                        privacyNote
+
+                        Spacer(minLength: 28)
                     }
-
-                    actionSection
-
-                    privacyNote
-
-                    Spacer(minLength: 28)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .padding(.bottom, 36)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.top, 18)
-                .padding(.bottom, 36)
             }
         }
         .preferredColorScheme(.dark)
     }
 
     // MARK: - Hero
-    private var heroCard: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            backdropHero
 
-            HStack(alignment: .bottom, spacing: 14) {
+    private func heroCard(containerWidth: CGFloat) -> some View {
+        let availableWidth = max(containerWidth - 40, 280)
+        let backdropHeight = min(max(availableWidth * 0.46, 150), 190)
+
+        return VStack(alignment: .leading, spacing: 0) {
+            backdropSection(height: backdropHeight)
+
+            HStack(alignment: .center, spacing: 14) {
                 poster
 
-                VStack(alignment: .leading, spacing: 7) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text(media.title)
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
                         .lineLimit(3)
-                        .minimumScaleFactor(0.82)
+                        .minimumScaleFactor(0.8)
                         .fixedSize(horizontal: false, vertical: true)
 
                     Text(media.subtitle)
                         .font(.subheadline)
                         .foregroundStyle(CloseCutColors.textSecondary)
                         .lineLimit(2)
+                        .minimumScaleFactor(0.86)
                         .fixedSize(horizontal: false, vertical: true)
 
                     Text(genresText)
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textTertiary)
                         .lineLimit(2)
+                        .minimumScaleFactor(0.86)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.bottom, 4)
             }
             .padding(16)
-        }
-        .background(CloseCutColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(CloseCutColors.separator, lineWidth: 0.5)
-        }
-    }
-
-    private var hero: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            backdropHero
-
-            titleBlock
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(CloseCutColors.card)
@@ -124,31 +117,45 @@ struct DiscoverMediaDetailSheet: View {
             RoundedRectangle(cornerRadius: 28, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
-        .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 12)
     }
 
-    private var backdropHero: some View {
+    private func backdropSection(height: CGFloat) -> some View {
         ZStack(alignment: .bottomLeading) {
-            backdropImage
+            backdropImage(height: height)
 
             LinearGradient(
                 colors: [
                     .clear,
-                    CloseCutColors.card.opacity(0.68),
+                    CloseCutColors.card.opacity(0.62),
                     CloseCutColors.card
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
+
+            HStack(spacing: 8) {
+                compactPill(
+                    icon: media.entryType == .movie ? "film.fill" : "tv.fill",
+                    text: media.entryType.displayName
+                )
+
+                if let releaseYear = media.releaseYear {
+                    compactPill(
+                        icon: "calendar",
+                        text: "\(releaseYear)"
+                    )
+                }
+            }
+            .padding(14)
         }
-        .frame(height: 230)
+        .frame(height: height)
         .frame(maxWidth: .infinity)
         .clipped()
     }
 
-    private var backdropImage: some View {
+    private func backdropImage(height: CGFloat) -> some View {
         ZStack {
-            CloseCutColors.card
+            fallbackBackdrop
 
             if let backdropURL {
                 AsyncImage(url: backdropURL) { phase in
@@ -162,7 +169,7 @@ struct DiscoverMediaDetailSheet: View {
                             .resizable()
                             .scaledToFill()
                             .frame(maxWidth: .infinity)
-                            .frame(height: 230)
+                            .frame(height: height)
                             .clipped()
 
                     case .failure:
@@ -172,10 +179,10 @@ struct DiscoverMediaDetailSheet: View {
                         fallbackBackdrop
                     }
                 }
-            } else {
-                fallbackBackdrop
             }
         }
+        .frame(maxWidth: .infinity)
+        .frame(height: height)
     }
 
     private var fallbackBackdrop: some View {
@@ -191,40 +198,8 @@ struct DiscoverMediaDetailSheet: View {
         .overlay {
             Image(systemName: "sparkles")
                 .font(.largeTitle)
-                .foregroundStyle(CloseCutColors.textTertiary)
+                .foregroundStyle(CloseCutColors.textTertiary.opacity(0.45))
         }
-    }
-
-    // MARK: - Title
-
-    private var titleBlock: some View {
-        HStack(alignment: .top, spacing: 14) {
-            poster
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text(media.title)
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textPrimary)
-                    .lineLimit(3)
-                    .minimumScaleFactor(0.82)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text(media.subtitle)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textSecondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text(genresText)
-                    .font(.caption)
-                    .foregroundStyle(CloseCutColors.textTertiary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var poster: some View {
@@ -243,9 +218,7 @@ struct DiscoverMediaDetailSheet: View {
                     case .success(let image):
                         image
                             .resizable()
-                            .scaledToFit()
-                            .frame(width: 92, height: 138)
-                            .background(CloseCutColors.input)
+                            .scaledToFill()
 
                     case .failure:
                         fallbackPoster
@@ -258,12 +231,13 @@ struct DiscoverMediaDetailSheet: View {
                 fallbackPoster
             }
         }
-        .frame(width: 92, height: 138)
+        .frame(width: 88, height: 132)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
+        .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 6)
     }
 
     private var fallbackPoster: some View {
@@ -281,31 +255,40 @@ struct DiscoverMediaDetailSheet: View {
 
     // MARK: - Metadata
 
-    private var metadata: some View {
-        VStack(alignment: .leading, spacing: 10) {
+    private var metadataSection: some View {
+        ViewThatFits(in: .horizontal) {
             HStack(spacing: 10) {
-                metadataPill(
-                    icon: media.entryType == .movie ? "film.fill" : "tv.fill",
-                    text: media.entryType.displayName
-                )
-
-                if let releaseYear = media.releaseYear {
-                    metadataPill(
-                        icon: "calendar",
-                        text: "\(releaseYear)"
-                    )
-                }
+                metadataContent
             }
 
-            if let rating = media.voteAverage,
-               rating > 0 {
-                metadataPill(
-                    icon: "star.fill",
-                    text: String(format: "%.1f TMDB", rating)
-                )
+            VStack(alignment: .leading, spacing: 8) {
+                metadataContent
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var metadataContent: some View {
+        metadataPill(
+            icon: media.entryType == .movie ? "film.fill" : "tv.fill",
+            text: media.entryType.displayName
+        )
+
+        if let releaseYear = media.releaseYear {
+            metadataPill(
+                icon: "calendar",
+                text: "\(releaseYear)"
+            )
+        }
+
+        if let rating = media.voteAverage,
+           rating > 0 {
+            metadataPill(
+                icon: "star.fill",
+                text: String(format: "%.1f TMDB", rating)
+            )
+        }
     }
 
     private func metadataPill(
@@ -325,6 +308,25 @@ struct DiscoverMediaDetailSheet: View {
         .padding(.horizontal, 10)
         .frame(height: 32)
         .background(CloseCutColors.input)
+        .clipShape(Capsule())
+    }
+
+    private func compactPill(
+        icon: String,
+        text: String
+    ) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.caption2.weight(.semibold))
+
+            Text(text)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(CloseCutColors.textSecondary)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(CloseCutColors.input.opacity(0.9))
         .clipShape(Capsule())
     }
 
@@ -367,7 +369,7 @@ struct DiscoverMediaDetailSheet: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 52)
+                .frame(height: 50)
                 .background(CloseCutColors.accent)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
@@ -425,7 +427,7 @@ struct DiscoverMediaDetailSheet: View {
         }
         .foregroundStyle(CloseCutColors.textSecondary)
         .frame(maxWidth: .infinity)
-        .frame(height: 46)
+        .frame(height: 44)
         .background(CloseCutColors.input)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
@@ -446,6 +448,5 @@ struct DiscoverMediaDetailSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 2)
     }
 }

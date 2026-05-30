@@ -11,11 +11,14 @@ struct PersonalLibraryView: View {
     let entries: [Entry]
     let user: AuthUser
     let profile: UserProfile
+
     var externalQuickPickState: QuickPickState? = nil
+
     let onQuickAdd: () -> Void
     let onCreateEntry: () -> Void
     let onOpenQuickPick: (QuickPickState) -> Void
     let onQuickPickStateChange: (QuickPickState) -> Void
+    let onRefreshMetadata: () async -> Void
 
     @StateObject private var quickPickViewModel = HomeQuickPickViewModel()
 
@@ -24,7 +27,7 @@ struct PersonalLibraryView: View {
     private var activeEntries: [Entry] {
         entries
             .filter { $0.deletedAt == nil }
-            .filter { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+            .filter { $0.title.trimmed.isEmpty == false }
             .sorted { first, second in
                 first.watchedAt > second.watchedAt
             }
@@ -39,8 +42,8 @@ struct PersonalLibraryView: View {
             .filter { entry in
                 entry.sourceType == .quickAdd &&
                 (
-                    entry.mood.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                    entry.takeaway.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                    entry.mood.trimmed.isEmpty ||
+                    entry.takeaway.trimmed.isEmpty ||
                     entry.tags.isEmpty
                 )
             }
@@ -94,7 +97,7 @@ struct PersonalLibraryView: View {
 
     private var homeRefreshKey: String {
         activeEntries
-            .map { "\($0.id)-\($0.updatedAt.timeIntervalSince1970)" }
+            .map { "\($0.id)-\($0.updatedAt.timeIntervalSince1970)-\($0.posterPath ?? "")-\($0.backdropPath ?? "")" }
             .joined(separator: "|")
     }
 
@@ -112,6 +115,9 @@ struct PersonalLibraryView: View {
             .padding(.vertical, 16)
         }
         .background(CloseCutColors.backgroundPrimary)
+        .refreshable {
+            await onRefreshMetadata()
+        }
         .task(id: homeRefreshKey) {
             if let externalQuickPickState {
                 quickPickViewModel.adoptState(
@@ -312,6 +318,7 @@ struct PersonalLibraryView: View {
         onQuickAdd: {},
         onCreateEntry: {},
         onOpenQuickPick: { _ in },
-        onQuickPickStateChange: { _ in }
+        onQuickPickStateChange: { _ in },
+        onRefreshMetadata: {}
     )
 }
