@@ -7,7 +7,7 @@
 - [ ] Loading auth state renders cleanly
 - [ ] Loading profile state renders cleanly
 - [ ] Root session gate routes correctly
-- [ ] Home, Circle, Battle, and Settings match the dark visual system
+- [ ] Personal, Discover, Circle, Battle, and Settings match the dark visual system
 - [ ] No debug-only UI leaks into the happy path
 - [ ] Console does not show critical app startup errors
 
@@ -67,17 +67,52 @@
 
 - [ ] Media Search opens from Quick Add
 - [ ] Media Search opens from Entry Editor metadata section
+- [ ] Media Search opens from Battle candidate selection when relevant
 - [ ] Search requires at least 2 characters
 - [ ] Debounced search works
 - [ ] Immediate submit search works
 - [ ] Loading state appears
 - [ ] Empty result state appears
 - [ ] Error state appears when API fails
+- [ ] Missing TMDB token state is recoverable and user-readable
 - [ ] Clear search works
 - [ ] Poster thumbnails render when available
 - [ ] Fallback poster renders when poster is unavailable
 - [ ] Selecting a result returns metadata to the caller
 - [ ] Selected metadata appears in Entry Editor
+
+## 6A. Discover
+
+- [ ] Discover tab opens
+- [ ] Trending this week rail loads with a valid TMDB token
+- [ ] Popular movies rail loads with a valid TMDB token
+- [ ] Popular series rail loads with a valid TMDB token
+- [ ] Because of your taste rail appears when local genre signals exist
+- [ ] Low-history personal rail state is clear when genre signals do not exist
+- [ ] Missing TMDB token state appears without crashing
+- [ ] Pull-to-refresh or refresh action reloads rails
+- [ ] Media detail sheet opens from a poster/card
+- [ ] Media detail shows title, type, year, overview, rating, genres, and poster when available
+- [ ] Poster fallback renders when artwork is unavailable
+- [ ] Save to Want to Watch creates or reuses a watchlist item
+- [ ] Duplicate save does not create duplicate watchlist items
+- [ ] Discover can hand off to Want to Watch
+
+## 6B. Want to Watch
+
+- [ ] Want to Watch opens from Discover or the configured navigation entry point
+- [ ] Saved items appear after saving from Discover
+- [ ] Saved, Watched, and Dismissed filters work
+- [ ] Counts for saved, watched, and sync states are accurate
+- [ ] Mark watched updates item state
+- [ ] Add to history creates a Quick Add entry
+- [ ] Added-to-history item appears in Personal timeline/library
+- [ ] Dismiss removes the item from the active saved list
+- [ ] Duplicate media save reactivates or reuses the existing item as expected
+- [ ] Watchlist refresh pushes pending local changes
+- [ ] Watchlist refresh pulls remote watchlist items
+- [ ] Pending/failed watchlist sync state is visible
+- [ ] Offline watchlist action remains local and retryable
 
 ## 7. Entry Creation and Editing
 
@@ -183,10 +218,13 @@
 ## 13. Battle
 
 - [ ] Battle tab opens
-- [ ] Empty/low-history state appears when fewer than 2 eligible entries exist
-- [ ] Random pick flow opens option selector
+- [ ] Empty/low-history guidance appears when fewer than 2 eligible archive entries exist
+- [ ] Pick for Tonight flow opens option selector
 - [ ] User can select at least 2 entries
 - [ ] User cannot confirm with fewer than 2 entries
+- [ ] User can add TMDB candidates when configured
+- [ ] User can add manual candidates
+- [ ] Candidate deduping works across archive, TMDB, and manual options
 - [ ] Random pick result appears
 - [ ] Pick again avoids immediate repeat when possible
 - [ ] Random pick result is saved locally
@@ -195,9 +233,17 @@
 - [ ] User cannot battle the same entry against itself
 - [ ] Winner selection works
 - [ ] Head-to-head result is saved locally
+- [ ] Friend Battle sheet opens
+- [ ] Friend Battle can select candidates
+- [ ] Friend Battle winner selection works
+- [ ] Friend Battle result is saved locally when archive-backed
+- [ ] Circle Battle sheet opens
+- [ ] Circle Battle can select candidates
+- [ ] Circle Battle winner selection works
+- [ ] Circle Battle result is saved locally when archive-backed
 - [ ] Recent Battle results appear
 - [ ] Clear Battle results works
-- [ ] Friend Battle and Circle Battle appear as future-facing/unavailable modes
+- [ ] Battle results do not appear as synced Circle activity
 
 ## 14. Circle Creation and Join
 
@@ -332,7 +378,20 @@
 - [ ] Sign out confirmation appears
 - [ ] Sign out works
 
-## 23. Firestore Push Sync
+## 23. Watchlist Sync
+
+- [ ] New watchlist item syncs to Firestore
+- [ ] Watchlist status update syncs to Firestore
+- [ ] Watchlist dismiss/delete syncs deleted state to Firestore
+- [ ] Watchlist ownerId matches Firebase Auth UID
+- [ ] Watchlist TMDB media ID persists correctly
+- [ ] Watchlist external metadata persists correctly
+- [ ] Local pending watchlist item becomes synced after successful push
+- [ ] Failed watchlist sync remains retryable
+- [ ] Remote watchlist items pull into local storage
+- [ ] Local pending watchlist items are not overwritten by pull
+
+## 24. Firestore Push Sync
 
 - [ ] New full entry syncs to Firestore
 - [ ] Quick Add entry syncs to Firestore
@@ -345,7 +404,7 @@
 - [ ] Shared Circle IDs persist correctly when present
 - [ ] Success or warning feedback appears in Settings after sync
 
-## 24. Firestore Pull Sync
+## 25. Firestore Pull Sync
 
 - [ ] Initial session refresh pulls entries when appropriate
 - [ ] Manual refresh from Settings pulls entries
@@ -356,10 +415,11 @@
 - [ ] Pulled TMDB metadata is preserved
 - [ ] Pulled shared Circle IDs are preserved
 
-## 25. Firestore Rules and Indexes
+## 26. Firestore Rules and Indexes
 
 - [ ] User can read/write only their own user document
 - [ ] User can create/read/update/delete own entries according to rules
+- [ ] User can create/read/update/delete own watchlist items according to rules
 - [ ] Circle members can read shared Circle entries
 - [ ] Non-members cannot read private Circle data
 - [ ] Reactions require valid membership and shared entry access
@@ -369,20 +429,22 @@
 - [ ] Required Circle shared entry query index exists if applicable
 - [ ] Permission failures are handled without app crash
 
-## 26. Offline-First Behavior
+## 27. Offline-First Behavior
 
 - [ ] App opens offline
 - [ ] User can create entries offline
 - [ ] User can use Quick Add offline with local fallback/manual title
 - [ ] User can edit offline
 - [ ] User can delete offline
+- [ ] User can update Want to Watch offline
+- [ ] User can use Battle with local/manual candidates offline
 - [ ] Pending sync state is visible offline
 - [ ] No local data loss after relaunch
 - [ ] Reconnect plus Sync Now pushes pending changes
 - [ ] Refresh from cloud handles offline failure gracefully
 - [ ] Circle network-dependent features show recoverable failures
 
-## 27. Conflict and Queue Behavior
+## 28. Conflict and Queue Behavior
 
 - [ ] Pending action queue tracks syncable work
 - [ ] Completed actions can be cleaned up
@@ -392,11 +454,15 @@
 - [ ] Pull respects local conflict policy assumptions
 - [ ] Local pending work is not overwritten by newer remote data
 - [ ] Local failed work remains retryable
+- [ ] Watchlist pending work is included in syncable queue handling
+- [ ] Watchlist orphan pending items sync even if a queue action is missing
 
-## 28. Automated Test Baseline
+## 29. Automated Test Baseline
 
 - [ ] `DuplicateDetectorTests` pass
 - [ ] `EntryValidationTests` pass
+- [ ] `EntrySearchFilterTests` pass
+- [ ] `LibrarySearchPipelineTests` pass
 - [ ] `QuickPickEngineTests` pass
 - [ ] `PendingActionQueueTests` pass
 - [ ] `EntryConflictPolicyTests` pass
@@ -404,7 +470,7 @@
 - [ ] Tests compile with current `Entry` initializer
 - [ ] Tests run with current Swift concurrency annotations
 
-## 29. Release Readiness
+## 30. Release Readiness
 
 - [ ] Bundle ID is correct
 - [ ] Version is correct
@@ -414,11 +480,13 @@
 - [ ] Required Firestore rules are deployed
 - [ ] Required Firestore indexes are deployed
 - [ ] TMDB configuration is available for builds that need metadata search
+- [ ] `Secrets.xcconfig` is not committed
 - [ ] Archive succeeds
 - [ ] Normal happy path does not produce obvious critical console noise
 - [ ] App does not crash on auth/session/onboarding/main transitions
 - [ ] Main tabs are reachable:
   - [ ] Personal
+  - [ ] Discover
   - [ ] Circle
   - [ ] Battle
   - [ ] Settings
