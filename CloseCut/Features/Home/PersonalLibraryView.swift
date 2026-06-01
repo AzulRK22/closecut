@@ -9,6 +9,7 @@ import SwiftUI
 
 struct PersonalLibraryView: View {
     let entries: [Entry]
+    let watchlistItems: [WatchlistItem]
     let user: AuthUser
     let profile: UserProfile
 
@@ -19,6 +20,8 @@ struct PersonalLibraryView: View {
     let onOpenQuickPick: (QuickPickState) -> Void
     let onQuickPickStateChange: (QuickPickState) -> Void
     let onRefreshMetadata: () async -> Void
+    let onMarkWatchlistItemWatched: (WatchlistItem) async -> Void
+    let onDismissWatchlistItem: (WatchlistItem) async -> Void
 
     @StateObject private var quickPickViewModel = HomeQuickPickViewModel()
 
@@ -35,6 +38,14 @@ struct PersonalLibraryView: View {
 
     private var recentlyWatched: [Entry] {
         Array(activeEntries.prefix(12))
+    }
+
+    private var savedWatchlistItems: [WatchlistItem] {
+        watchlistItems
+            .filter { $0.status == .saved && $0.deletedAt == nil }
+            .sorted { first, second in
+                first.updatedAt > second.updatedAt
+            }
     }
 
     private var quickAddsToComplete: [Entry] {
@@ -96,15 +107,21 @@ struct PersonalLibraryView: View {
     }
 
     private var homeRefreshKey: String {
-        activeEntries
+        let entryKey = activeEntries
             .map { "\($0.id)-\($0.updatedAt.timeIntervalSince1970)-\($0.posterPath ?? "")-\($0.backdropPath ?? "")" }
             .joined(separator: "|")
+
+        let watchlistKey = savedWatchlistItems
+            .map { "\($0.id)-\($0.updatedAt.timeIntervalSince1970)-\($0.posterPath ?? "")-\($0.status.rawValue)" }
+            .joined(separator: "|")
+
+        return "\(entryKey)::\(watchlistKey)"
     }
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 24) {
-                if activeEntries.isEmpty {
+                if activeEntries.isEmpty && savedWatchlistItems.isEmpty {
                     emptyLibraryState
                 } else {
                     libraryContent
@@ -148,50 +165,70 @@ struct PersonalLibraryView: View {
 
     private var libraryContent: some View {
         Group {
-            VStack(spacing: 16) {
-                HomeHeroQuickPickCard(
-                    state: quickPickViewModel.state,
-                    onQuickAdd: onQuickAdd,
-                    onOpenQuickPick: {
-                        onOpenQuickPick(
-                            quickPickViewModel.state
-                        )
-                    },
-                    onRefresh: {
-                        Task {
-                            let newState = await quickPickViewModel.showAnotherAndReturnState(
-                                history: activeEntries
-                            )
-
-                            onQuickPickStateChange(
-                                newState
-                            )
-                        }
-                    }
-                )
-
-                if shouldShowHistoryProgress {
-                    HistoryProgressModule(
-                        currentCount: activeEntries.count,
-                        targetCount: quickPickTargetCount,
+            if activeEntries.isEmpty == false {
+                VStack(spacing: 16) {
+                    HomeHeroQuickPickCard(
+                        state: quickPickViewModel.state,
                         onQuickAdd: onQuickAdd,
                         onOpenQuickPick: {
                             onOpenQuickPick(
                                 quickPickViewModel.state
                             )
+                        },
+                        onRefresh: {
+                            Task {
+                                let newState = await quickPickViewModel.showAnotherAndReturnState(
+                                    history: activeEntries
+                                )
+
+                                onQuickPickStateChange(
+                                    newState
+                                )
+                            }
                         }
                     )
-                }
-            }
-            .padding(.horizontal, 20)
 
-            PosterRailView(
-                title: "Recently watched",
-                subtitle: "Your latest memories and logged watches.",
-                entries: recentlyWatched,
-                user: user,
-                profile: profile
-            )
+                    if shouldShowHistoryProgress {
+                        HistoryProgressModule(
+                            currentCount: activeEntries.count,
+                            targetCount: quickPickTargetCount,
+                            onQuickAdd: onQuickAdd,
+                            onOpenQuickPick: {
+                                onOpenQuickPick(
+                                    quickPickViewModel.state
+                                )
+                            }
+                        )
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+
+            if recentlyWatched.isEmpty == false {
+                PosterRailView(
+                    title: "Recently watched",
+                    subtitle: "Your latest memories and logged watches.",
+                    entries: recentlyWatched,
+                    user: user,
+                    profile: profile
+                )
+            }
+
+            if savedWatchlistItems.isEmpty == false {
+                WatchlistRailView(
+                    title: "Up Next",
+                    subtitle: "Saved titles waiting for the right moment.",
+                    items: Array(savedWatchlistItems.prefix(12)),
+                    user: user,
+                    profile: profile,
+                    onMarkWatched: { item in
+                        await onMarkWatchlistItemWatched(item)
+                    },
+                    onDismiss: { item in
+                        await onDismissWatchlistItem(item)
+                    }
+                )
+            }
 
             if quickAddsToComplete.isEmpty == false {
                 PosterRailView(
@@ -275,7 +312,7 @@ struct PersonalLibraryView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
 
-                Text("Use the search icon above to browse your full library by title, year, mood, tags, shared entries, or Quick Adds.")
+                Text("Use the search icon above to browse your full library by title, year, mood, tags, shared entries, Quick Adds, or saved titles.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -291,34 +328,4 @@ struct PersonalLibraryView: View {
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
     }
-}
-
-#Preview {
-    PersonalLibraryView(
-        entries: [],
-        user: AuthUser(
-            id: "preview-user",
-            email: "preview@closecut.dev",
-            displayName: "Preview",
-            photoURL: nil
-        ),
-        profile: UserProfile(
-            id: "preview-user",
-            displayName: "Preview",
-            email: "preview@closecut.dev",
-            photoURL: nil,
-            circleId: nil,
-            circleIds: [],
-            defaultVisibility: .privateOnly,
-            createdAt: Date(),
-            updatedAt: Date(),
-            syncStatus: .synced
-        ),
-        externalQuickPickState: nil,
-        onQuickAdd: {},
-        onCreateEntry: {},
-        onOpenQuickPick: { _ in },
-        onQuickPickStateChange: { _ in },
-        onRefreshMetadata: {}
-    )
 }

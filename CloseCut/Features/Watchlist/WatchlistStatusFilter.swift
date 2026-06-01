@@ -2,16 +2,13 @@
 //  WatchlistStatusFilter.swift
 //  CloseCut
 //
-//  Created by Azul Ramirez Kuri on 31/05/26.
-//
 
-import SwiftUI
+import Foundation
 
 enum WatchlistStatusFilter: String, CaseIterable, Identifiable {
     case saved
     case watched
     case dismissed
-    case all
 
     var id: String {
         rawValue
@@ -20,26 +17,22 @@ enum WatchlistStatusFilter: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .saved:
-            return "Want"
+            return "Saved"
         case .watched:
             return "Watched"
         case .dismissed:
             return "Dismissed"
-        case .all:
-            return "All"
         }
     }
 
-    var status: WatchlistStatus? {
+    var systemImage: String {
         switch self {
         case .saved:
-            return .saved
+            return "bookmark.fill"
         case .watched:
-            return .watched
+            return "checkmark.circle.fill"
         case .dismissed:
-            return .dismissed
-        case .all:
-            return nil
+            return "xmark.circle.fill"
         }
     }
 }

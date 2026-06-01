@@ -2,8 +2,6 @@
 //  WatchlistView.swift
 //  CloseCut
 //
-//  Created by Azul Ramirez Kuri on 31/05/26.
-//
 
 import SwiftUI
 import SwiftData
@@ -13,23 +11,22 @@ struct WatchlistView: View {
     @Environment(\.dismiss) private var dismiss
 
     @Query(sort: \LocalWatchlistItem.updatedAt, order: .reverse)
-    private var localItems: [LocalWatchlistItem]
+    private var localWatchlistItems: [LocalWatchlistItem]
 
     let user: AuthUser
     let profile: UserProfile
-    var onOpenDiscover: (() -> Void)? = nil
 
     @State private var selectedFilter: WatchlistStatusFilter = .saved
+    @State private var selectedItem: WatchlistItem?
     @State private var actionMessage: String?
     @State private var actionBannerStyle: SyncResultBannerStyle = .neutral
-    @State private var isRefreshing = false
+    @State private var activeActionItemId: String?
 
-    private let watchlistRepository = WatchlistRepository()
-    private let watchlistSyncService = WatchlistSyncService()
     private let entryRepository = EntryRepository()
+    private let watchlistRepository = WatchlistRepository()
 
-    private var userItems: [WatchlistItem] {
-        localItems
+    private var allItems: [WatchlistItem] {
+        localWatchlistItems
             .filter { $0.ownerId == user.id }
             .map { $0.domain }
             .sorted { first, second in
@@ -37,113 +34,103 @@ struct WatchlistView: View {
             }
     }
 
-    private var visibleItems: [WatchlistItem] {
-        userItems.filter { item in
-            if let status = selectedFilter.status {
-                return item.status == status
+    private var filteredItems: [WatchlistItem] {
+        allItems.filter { item in
+            switch selectedFilter {
+            case .saved:
+                return item.status == .saved && item.deletedAt == nil
+            case .watched:
+                return item.status == .watched && item.deletedAt == nil
+            case .dismissed:
+                return item.status == .dismissed || item.deletedAt != nil
             }
-
-            return true
         }
     }
 
     private var savedCount: Int {
-        userItems.filter { $0.status == .saved && $0.deletedAt == nil }.count
+        allItems.filter { $0.status == .saved && $0.deletedAt == nil }.count
     }
 
     private var watchedCount: Int {
-        userItems.filter { $0.status == .watched }.count
+        allItems.filter { $0.status == .watched && $0.deletedAt == nil }.count
     }
 
-    private var pendingCount: Int {
-        userItems.filter { $0.syncStatus == .pending || $0.syncStatus == .failed }.count
+    private var dismissedCount: Int {
+        allItems.filter { $0.status == .dismissed || $0.deletedAt != nil }.count
     }
 
     var body: some View {
-        ZStack {
-            CloseCutColors.backgroundPrimary
-                .ignoresSafeArea()
+        NavigationStack {
+            ZStack {
+                CloseCutColors.backgroundPrimary
+                    .ignoresSafeArea()
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 18) {
-                    header
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 18) {
+                        header
 
-                    if let actionMessage {
-                        SyncResultBanner(
-                            message: actionMessage,
-                            style: actionBannerStyle
-                        )
-                    }
+                        filterPicker
 
-                    filterBar
-
-                    if visibleItems.isEmpty {
-                        WatchlistEmptyStateView(
-                            filter: selectedFilter,
-                            onOpenDiscover: {
-                                dismiss()
-                                onOpenDiscover?()
-                            }
-                        )
-                    } else {
-                        ForEach(visibleItems) { item in
-                            WatchlistItemCardView(
-                                item: item,
-                                onMarkWatched: {
-                                    markWatched(item)
-                                },
-                                onAddToHistory: {
-                                    addToHistory(item)
-                                },
-                                onDismiss: {
-                                    dismissItem(item)
-                                }
+                        if let actionMessage {
+                            SyncResultBanner(
+                                message: actionMessage,
+                                style: actionBannerStyle
                             )
                         }
-                    }
 
-                    Spacer(minLength: 28)
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 16)
-            }
-            .refreshable {
-                await refreshFromCloud()
-            }
-        }
-        .navigationTitle("Want to Watch")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Task {
-                        await refreshFromCloud()
+                        content
+
+                        Spacer(minLength: 28)
                     }
-                } label: {
-                    if isRefreshing {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    } else {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 15, weight: .semibold))
-                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 16)
                 }
-                .disabled(isRefreshing)
-                .accessibilityLabel("Refresh Watchlist")
             }
+            .navigationTitle("Want to Watch")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                    }
+                    .accessibilityLabel("Close Want to Watch")
+                }
+            }
+            .sheet(item: $selectedItem) { item in
+                WatchlistItemDetailSheet(
+                    item: item,
+                    isProcessing: activeActionItemId == item.id,
+                    onMarkWatched: {
+                        Task {
+                            await markAsWatched(item)
+                        }
+                    },
+                    onDismiss: {
+                        Task {
+                            await dismissItem(item)
+                        }
+                    }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
+            .preferredColorScheme(.dark)
         }
-        .preferredColorScheme(.dark)
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Want to Watch")
                         .font(.largeTitle.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
 
-                    Text("A private queue for titles you may want to turn into memories later.")
+                    Text("Your private queue of titles waiting for the right moment.")
                         .font(.subheadline)
                         .foregroundStyle(CloseCutColors.textSecondary)
                         .lineSpacing(3)
@@ -161,43 +148,91 @@ struct WatchlistView: View {
             }
 
             HStack(spacing: 10) {
-                statPill(
+                watchlistStat(
                     value: "\(savedCount)",
-                    label: "saved",
-                    icon: "bookmark.fill"
+                    label: "saved"
                 )
 
-                statPill(
+                watchlistStat(
                     value: "\(watchedCount)",
-                    label: "watched",
-                    icon: "checkmark.circle.fill"
+                    label: "watched"
                 )
 
-                statPill(
-                    value: "\(pendingCount)",
-                    label: "sync",
-                    icon: "clock.fill"
+                watchlistStat(
+                    value: "\(dismissedCount)",
+                    label: "dismissed"
                 )
             }
         }
     }
 
-    private var filterBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(WatchlistStatusFilter.allCases) { filter in
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.18)) {
-                            selectedFilter = filter
-                        }
-                    } label: {
+    private func watchlistStat(
+        value: String,
+        label: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(value)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textPrimary)
+
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textTertiary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(CloseCutColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(CloseCutColors.separator, lineWidth: 0.5)
+        }
+    }
+
+    private var filterPicker: some View {
+        HStack(spacing: 8) {
+            ForEach(WatchlistStatusFilter.allCases) { filter in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        selectedFilter = filter
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: filter.systemImage)
+                            .font(.caption2.weight(.semibold))
+
                         Text(filter.title)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(selectedFilter == filter ? .white : CloseCutColors.textSecondary)
-                            .padding(.horizontal, 12)
-                            .frame(height: 32)
-                            .background(selectedFilter == filter ? CloseCutColors.accent : CloseCutColors.input)
-                            .clipShape(Capsule())
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(selectedFilter == filter ? .white : CloseCutColors.textSecondary)
+                    .padding(.horizontal, 10)
+                    .frame(height: 32)
+                    .background(selectedFilter == filter ? CloseCutColors.accent : CloseCutColors.input)
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if filteredItems.isEmpty {
+            WatchlistEmptyStateView(filter: selectedFilter)
+        } else {
+            LazyVStack(spacing: 14) {
+                ForEach(filteredItems) { item in
+                    Button {
+                        selectedItem = item
+                    } label: {
+                        WatchlistItemCardView(
+                            item: item,
+                            isProcessing: activeActionItemId == item.id
+                        )
                     }
                     .buttonStyle(.plain)
                 }
@@ -205,63 +240,24 @@ struct WatchlistView: View {
         }
     }
 
-    private func statPill(
-        value: String,
-        label: String,
-        icon: String
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textTertiary)
-
-                Text(label)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textTertiary)
-                    .lineLimit(1)
-            }
-
-            Text(value)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(CloseCutColors.textPrimary)
+    private func markAsWatched(_ item: WatchlistItem) async {
+        guard activeActionItemId == nil else {
+            return
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(CloseCutColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .stroke(CloseCutColors.separator, lineWidth: 0.5)
-        }
-    }
 
-    private func markWatched(_ item: WatchlistItem) {
+        activeActionItemId = item.id
+        defer { activeActionItemId = nil }
+
+        let draft = QuickAddDraft(
+            title: item.displayTitle,
+            type: item.type,
+            releaseYear: item.releaseYear,
+            quickSentiment: nil,
+            watchedDateApprox: .unknown,
+            externalMetadata: item.externalMetadata
+        )
+
         do {
-            let updatedItem = try watchlistRepository.markLocalWatchlistItemWatched(
-                itemId: item.id,
-                modelContext: modelContext
-            )
-
-            actionBannerStyle = .success
-            actionMessage = "\(updatedItem.displayTitle) was marked as watched."
-        } catch {
-            actionBannerStyle = .warning
-            actionMessage = error.localizedDescription
-        }
-    }
-
-    private func addToHistory(_ item: WatchlistItem) {
-        do {
-            let draft = QuickAddDraft(
-                title: item.displayTitle,
-                type: item.type,
-                releaseYear: item.releaseYear,
-                quickSentiment: nil,
-                watchedDateApprox: .unknown,
-                externalMetadata: item.externalMetadata
-            )
-
             let entry = try entryRepository.createQuickAddEntry(
                 ownerId: user.id,
                 draft: draft,
@@ -275,58 +271,38 @@ struct WatchlistView: View {
             )
 
             actionBannerStyle = .success
-            actionMessage = "\(entry.displayTitle) was added to your history."
+            actionMessage = "\(entry.displayTitle) moved to Personal."
+            selectedItem = nil
+
+            withAnimation(.easeInOut(duration: 0.18)) {
+                selectedFilter = .saved
+            }
         } catch {
             actionBannerStyle = .warning
             actionMessage = error.localizedDescription
         }
     }
 
-    private func dismissItem(_ item: WatchlistItem) {
+    private func dismissItem(_ item: WatchlistItem) async {
+        guard activeActionItemId == nil else {
+            return
+        }
+
+        activeActionItemId = item.id
+        defer { activeActionItemId = nil }
+
         do {
-            let updatedItem = try watchlistRepository.softDeleteLocalWatchlistItem(
+            _ = try watchlistRepository.softDeleteLocalWatchlistItem(
                 itemId: item.id,
                 modelContext: modelContext
             )
 
             actionBannerStyle = .success
-            actionMessage = "\(updatedItem.displayTitle) was removed from Want to Watch."
+            actionMessage = "\(item.displayTitle) was removed from Want to Watch."
+            selectedItem = nil
         } catch {
             actionBannerStyle = .warning
             actionMessage = error.localizedDescription
-        }
-    }
-
-    private func refreshFromCloud() async {
-        guard isRefreshing == false else {
-            return
-        }
-
-        isRefreshing = true
-        defer { isRefreshing = false }
-
-        let pushSummary = await watchlistSyncService.syncPendingWatchlistItems(
-            userId: user.id,
-            modelContext: modelContext
-        )
-
-        let pullSummary = await watchlistSyncService.pullRemoteWatchlistItems(
-            userId: user.id,
-            modelContext: modelContext
-        )
-
-        let failedCount = pushSummary.failedCount + pullSummary.failedCount
-        let changedCount = pushSummary.syncedCount + pullSummary.pulledCount
-
-        if failedCount > 0 {
-            actionBannerStyle = .warning
-            actionMessage = "Watchlist refresh partially failed. \(failedCount) item(s) need retry."
-        } else if changedCount > 0 {
-            actionBannerStyle = .success
-            actionMessage = "Watchlist refreshed."
-        } else {
-            actionBannerStyle = .neutral
-            actionMessage = "Watchlist is already up to date."
         }
     }
 }

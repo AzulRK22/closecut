@@ -2,17 +2,14 @@
 //  WatchlistPosterView.swift
 //  CloseCut
 //
-//  Created by Azul Ramirez Kuri on 31/05/26.
-//
 
 import SwiftUI
 
 struct WatchlistPosterView: View {
     let item: WatchlistItem
-
-    var width: CGFloat = 74
-    var height: CGFloat = 110
-    var cornerRadius: CGFloat = 14
+    var width: CGFloat = 82
+    var height: CGFloat = 122
+    var cornerRadius: CGFloat = 16
 
     private var posterURL: URL? {
         TMDBImageURLBuilder.imageURL(
@@ -74,7 +71,7 @@ struct WatchlistPosterView: View {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
-        .shadow(color: .black.opacity(0.14), radius: 8, x: 0, y: 5)
+        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 5)
         .accessibilityHidden(true)
     }
 
