@@ -18,6 +18,7 @@ struct DiscoverView: View {
     @State private var actionBannerStyle: SyncResultBannerStyle = .neutral
     @State private var isSavingWatched = false
     @State private var isSavingWatchlist = false
+    @State private var isShowingWatchlist = false
 
     let user: AuthUser
     let profile: UserProfile
@@ -28,6 +29,7 @@ struct DiscoverView: View {
     private var currentUserEntries: [Entry] {
         localEntries
             .filter { $0.ownerId == user.id }
+            .filter { $0.deletedAt == nil }
             .map { $0.domain }
     }
 
@@ -61,6 +63,18 @@ struct DiscoverView: View {
         .navigationTitle("Discover")
         .navigationBarTitleDisplayMode(.inline)
         .preferredColorScheme(.dark)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    isShowingWatchlist = true
+                } label: {
+                    Image(systemName: "bookmark.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Open Want to Watch")
+            }
+        }
         .task(id: user.id) {
             await viewModel.loadIfNeeded(entries: currentUserEntries)
         }
@@ -84,6 +98,17 @@ struct DiscoverView: View {
                 }
             )
             .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $isShowingWatchlist) {
+            NavigationStack {
+                WatchlistView(
+                    user: user,
+                    profile: profile,
+                    onOpenDiscover: nil
+                )
+            }
+            .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
     }

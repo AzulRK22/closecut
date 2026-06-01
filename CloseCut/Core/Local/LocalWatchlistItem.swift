@@ -13,6 +13,7 @@ final class LocalWatchlistItem {
     @Attribute(.unique) var id: String
 
     var ownerId: String
+    var mediaId: String
 
     var title: String
     var normalizedTitle: String
@@ -41,6 +42,7 @@ final class LocalWatchlistItem {
     init(
         id: String = UUID().uuidString,
         ownerId: String,
+        mediaId: String? = nil,
         title: String,
         normalizedTitle: String? = nil,
         type: EntryType,
@@ -55,6 +57,18 @@ final class LocalWatchlistItem {
     ) {
         self.id = id
         self.ownerId = ownerId.trimmed
+
+        let resolvedMediaId: String
+
+        if let mediaId = mediaId?.trimmed.nilIfBlank {
+            resolvedMediaId = mediaId
+        } else if let tmdbId = externalMetadata?.tmdbId {
+            resolvedMediaId = "\(externalMetadata?.tmdbMediaTypeRaw ?? type.rawValue)-\(tmdbId)"
+        } else {
+            resolvedMediaId = "\(type.rawValue)-\(title.normalizedTitleKey)"
+        }
+
+        self.mediaId = resolvedMediaId
 
         self.title = title.trimmed
         self.normalizedTitle = normalizedTitle ?? title.normalizedTitleKey
@@ -106,6 +120,7 @@ extension LocalWatchlistItem {
         WatchlistItem(
             id: id,
             ownerId: ownerId,
+            mediaId: mediaId,
             title: title,
             normalizedTitle: normalizedTitle.isEmpty ? title.normalizedTitleKey : normalizedTitle,
             type: EntryType(rawValue: typeRaw) ?? .movie,
@@ -130,6 +145,7 @@ extension LocalWatchlistItem {
 
     func update(from item: WatchlistItem) {
         ownerId = item.ownerId
+        mediaId = item.mediaId
 
         title = item.title
         normalizedTitle = item.normalizedTitle

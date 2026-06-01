@@ -5,6 +5,7 @@
 //  Created by Azul Ramirez Kuri on 26/05/26.
 //
 
+
 import Foundation
 import FirebaseFirestore
 
@@ -27,6 +28,7 @@ final class WatchlistRemoteDataSource {
         _ item: WatchlistItem
     ) async throws {
         var deletedItem = item
+        deletedItem.status = .dismissed
         deletedItem.deletedAt = item.deletedAt ?? Date()
         deletedItem.updatedAt = Date()
 

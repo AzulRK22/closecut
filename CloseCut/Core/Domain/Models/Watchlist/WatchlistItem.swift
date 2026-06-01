@@ -55,6 +55,8 @@ struct WatchlistItem: Identifiable, Codable, Equatable {
     let id: String
     var ownerId: String
 
+    var mediaId: String
+
     var title: String
     var normalizedTitle: String
     var type: EntryType
@@ -128,8 +130,11 @@ struct WatchlistItem: Identifiable, Codable, Equatable {
     }
 
     func matchesTMDBMedia(_ media: TMDBMediaSearchResult) -> Bool {
-        tmdbId == media.tmdbId &&
-        tmdbMediaTypeRaw == media.mediaType.rawValue
+        mediaId == media.watchlistMediaId ||
+        (
+            tmdbId == media.tmdbId &&
+            tmdbMediaTypeRaw == media.mediaType.rawValue
+        )
     }
 }
 
@@ -146,6 +151,8 @@ extension WatchlistItem {
 
         self.id = UUID().uuidString
         self.ownerId = ownerId.trimmed
+
+        self.mediaId = media.watchlistMediaId
 
         self.title = cleanedTitle
         self.normalizedTitle = cleanedTitle.normalizedTitleKey
@@ -170,5 +177,11 @@ extension WatchlistItem {
         self.deletedAt = nil
 
         self.syncStatus = syncStatus
+    }
+}
+
+extension TMDBMediaSearchResult {
+    var watchlistMediaId: String {
+        "\(mediaType.rawValue)-\(tmdbId)"
     }
 }

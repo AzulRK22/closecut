@@ -10,6 +10,7 @@ import FirebaseFirestore
 
 struct FirestoreWatchlistItemDTO: Codable {
     var ownerId: String
+    var mediaId: String
 
     var title: String
     var normalizedTitle: String
@@ -37,6 +38,7 @@ struct FirestoreWatchlistItemDTO: Codable {
 extension FirestoreWatchlistItemDTO {
     init(item: WatchlistItem) {
         self.ownerId = item.ownerId
+        self.mediaId = item.mediaId
 
         self.title = item.title
         self.normalizedTitle = item.normalizedTitle
@@ -70,6 +72,7 @@ extension FirestoreWatchlistItemDTO {
         WatchlistItem(
             id: id,
             ownerId: ownerId,
+            mediaId: mediaId,
             title: title,
             normalizedTitle: normalizedTitle.isEmpty ? title.normalizedTitleKey : normalizedTitle,
             type: EntryType(rawValue: type) ?? .movie,

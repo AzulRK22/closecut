@@ -32,6 +32,9 @@ struct SettingsView: View {
     @Query(sort: \LocalEntry.updatedAt, order: .reverse)
     private var localEntries: [LocalEntry]
 
+    @Query(sort: \LocalWatchlistItem.updatedAt, order: .reverse)
+    private var localWatchlistItems: [LocalWatchlistItem]
+
     @Query(sort: \LocalCircle.updatedAt, order: .reverse)
     private var localCircles: [LocalCircle]
 
@@ -42,7 +45,10 @@ struct SettingsView: View {
     let profile: UserProfile
 
     private let entrySyncService = EntrySyncService()
+    private let watchlistSyncService = WatchlistSyncService()
     private let pendingActionQueue = PendingActionQueue()
+
+    // MARK: - Local Domain State
 
     private var currentUserEntries: [Entry] {
         localEntries
@@ -50,6 +56,34 @@ struct SettingsView: View {
             .filter { $0.deletedAt == nil }
             .map { $0.domain }
     }
+
+    private var allCurrentUserWatchlistItems: [WatchlistItem] {
+        localWatchlistItems
+            .filter { $0.ownerId == user.id }
+            .map { $0.domain }
+    }
+
+    private var currentUserWatchlistItems: [WatchlistItem] {
+        allCurrentUserWatchlistItems
+            .filter { $0.deletedAt == nil }
+    }
+
+    private var currentUserSavedWatchlistItems: [WatchlistItem] {
+        currentUserWatchlistItems
+            .filter { $0.status == .saved }
+    }
+
+    private var currentUserWatchedWatchlistItems: [WatchlistItem] {
+        currentUserWatchlistItems
+            .filter { $0.status == .watched }
+    }
+
+    private var currentUserDismissedWatchlistItems: [WatchlistItem] {
+        allCurrentUserWatchlistItems
+            .filter { $0.status == .dismissed || $0.deletedAt != nil }
+    }
+
+    // MARK: - Pending / Failed Work
 
     private var currentUserPendingActions: [PendingAction] {
         pendingActions.filter {
@@ -86,17 +120,69 @@ struct SettingsView: View {
         }
     }
 
+    private var currentUserPendingWatchlistItems: [LocalWatchlistItem] {
+        localWatchlistItems.filter {
+            $0.ownerId == user.id &&
+            $0.syncStatusRaw == SyncStatus.pending.rawValue
+        }
+    }
+
+    private var currentUserFailedWatchlistItems: [LocalWatchlistItem] {
+        localWatchlistItems.filter {
+            $0.ownerId == user.id &&
+            $0.syncStatusRaw == SyncStatus.failed.rawValue
+        }
+    }
+
+    private var currentUserPendingWatchlistActions: [PendingAction] {
+        currentUserPendingActions.filter {
+            $0.actionType.isWatchlistAction
+        }
+    }
+
+    private var currentUserPendingEntryActions: [PendingAction] {
+        currentUserPendingActions.filter {
+            $0.actionType.isEntryAction
+        }
+    }
+
+    private var currentUserFailedWatchlistActions: [PendingAction] {
+        currentUserFailedActions.filter {
+            $0.actionType.isWatchlistAction
+        }
+    }
+
+    private var currentUserFailedEntryActions: [PendingAction] {
+        currentUserFailedActions.filter {
+            $0.actionType.isEntryAction
+        }
+    }
+
     private var visiblePendingCount: Int {
-        max(currentUserPendingActions.count, currentUserPendingEntries.count)
+        let actionBackedCount = currentUserPendingActions.count
+        let orphanCount = currentUserPendingEntries.count + currentUserPendingWatchlistItems.count
+
+        return max(
+            actionBackedCount,
+            orphanCount
+        )
     }
 
     private var visibleFailedCount: Int {
-        max(currentUserFailedActions.count, currentUserFailedEntries.count)
+        let actionBackedCount = currentUserFailedActions.count
+        let orphanCount = currentUserFailedEntries.count + currentUserFailedWatchlistItems.count
+
+        return max(
+            actionBackedCount,
+            orphanCount
+        )
     }
 
     private var hasPendingOrFailedWork: Bool {
         visiblePendingCount > 0 || visibleFailedCount > 0
     }
+
+    // MARK: - Circle / Privacy Counts
 
     private var currentUserCircleCount: Int {
         let activeMembershipCircleIds = Set(
@@ -124,19 +210,21 @@ struct SettingsView: View {
         max(currentUserEntries.count - currentUserSharedEntryCount, 0)
     }
 
+    // MARK: - Profile Display
+
     private var effectiveDisplayName: String {
         if let localDisplayNameOverride,
-           localDisplayNameOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+           localDisplayNameOverride.trimmed.isEmpty == false {
             return localDisplayNameOverride
         }
 
-        let profileName = profile.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let profileName = profile.displayName.trimmed
 
         if profileName.isEmpty == false {
             return profileName
         }
 
-        if let userDisplayName = user.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
+        if let userDisplayName = user.displayName?.trimmed,
            userDisplayName.isEmpty == false {
             return userDisplayName
         }
@@ -207,6 +295,8 @@ struct SettingsView: View {
 
                         privacySection
 
+                        watchlistSection
+
                         localDataSection
 
                         accountSection
@@ -233,7 +323,7 @@ struct SettingsView: View {
 
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("You can sign back in later. Your synced entries remain in your private cloud database.")
+                Text("You can sign back in later. Your synced entries and saved titles remain in your private cloud database.")
             }
             .sheet(isPresented: $showEditProfileSheet) {
                 EditProfileSheet(
@@ -254,15 +344,17 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Sync Section
+
     private var syncSection: some View {
         SettingsSectionCard(
             title: "Sync",
-            subtitle: "Control cloud refresh, retries, and local-first changes."
+            subtitle: "Control cloud refresh, retries, entries, and Want to Watch changes."
         ) {
             VStack(alignment: .leading, spacing: 12) {
                 if sessionSyncViewModel.isInitialCloudRefreshRunning {
                     SyncResultBanner(
-                        message: "Refreshing your cloud entries…",
+                        message: "Refreshing your cloud data…",
                         style: .neutral
                     )
                 }
@@ -280,6 +372,8 @@ struct SettingsView: View {
                     isSyncing: isSyncing
                 )
 
+                syncDebugBreakdown
+
                 if hasPendingOrFailedWork {
                     Button {
                         Task {
@@ -291,7 +385,11 @@ struct SettingsView: View {
                                 ProgressView()
                                     .tint(.white)
                             } else {
-                                Image(systemName: visibleFailedCount == 0 ? "arrow.triangle.2.circlepath" : "exclamationmark.arrow.triangle.2.circlepath")
+                                Image(
+                                    systemName: visibleFailedCount == 0
+                                        ? "arrow.triangle.2.circlepath"
+                                        : "exclamationmark.arrow.triangle.2.circlepath"
+                                )
                             }
 
                             Text(syncButtonTitle)
@@ -341,6 +439,51 @@ struct SettingsView: View {
             }
         }
     }
+
+    private var syncDebugBreakdown: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SettingsRow(
+                icon: "film.stack",
+                title: "Pending entry actions",
+                value: "\(currentUserPendingEntryActions.count)"
+            )
+
+            SettingsRow(
+                icon: "bookmark.fill",
+                title: "Pending Watchlist actions",
+                value: "\(currentUserPendingWatchlistActions.count)"
+            )
+
+            SettingsRow(
+                icon: "exclamationmark.triangle.fill",
+                title: "Failed entry actions",
+                value: "\(currentUserFailedEntryActions.count)"
+            )
+
+            SettingsRow(
+                icon: "bookmark.slash.fill",
+                title: "Failed Watchlist actions",
+                value: "\(currentUserFailedWatchlistActions.count)"
+            )
+
+            SettingsRow(
+                icon: "clock.fill",
+                title: "Pending local entries",
+                value: "\(currentUserPendingEntries.count)"
+            )
+
+            SettingsRow(
+                icon: "clock.badge.questionmark.fill",
+                title: "Pending local Watchlist",
+                value: "\(currentUserPendingWatchlistItems.count)"
+            )
+        }
+        .padding(12)
+        .background(CloseCutColors.input.opacity(0.58))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    // MARK: - Privacy Section
 
     private var privacySection: some View {
         SettingsSectionCard(
@@ -396,6 +539,54 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Watchlist Section
+
+    private var watchlistSection: some View {
+        SettingsSectionCard(
+            title: "Want to Watch",
+            subtitle: "Saved titles from Discover, Search, Battle, or Circle recommendations."
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                SettingsRow(
+                    icon: "bookmark.fill",
+                    title: "Saved titles",
+                    value: "\(currentUserSavedWatchlistItems.count)"
+                )
+
+                SettingsRow(
+                    icon: "checkmark.circle.fill",
+                    title: "Marked watched",
+                    value: "\(currentUserWatchedWatchlistItems.count)"
+                )
+
+                SettingsRow(
+                    icon: "xmark.circle.fill",
+                    title: "Dismissed",
+                    value: "\(currentUserDismissedWatchlistItems.count)"
+                )
+
+                SettingsRow(
+                    icon: "clock.fill",
+                    title: "Pending Watchlist sync",
+                    value: "\(currentUserPendingWatchlistItems.count)"
+                )
+
+                SettingsRow(
+                    icon: "exclamationmark.triangle.fill",
+                    title: "Failed Watchlist sync",
+                    value: "\(currentUserFailedWatchlistItems.count)"
+                )
+
+                Text("Want to Watch is private by default. Saving a title from Discover creates a local Watchlist item first, then syncs it to Firestore when cloud sync runs.")
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    // MARK: - Local Data Section
+
     private var localDataSection: some View {
         SettingsSectionCard(
             title: "Local data",
@@ -415,9 +606,21 @@ struct SettingsView: View {
                 )
 
                 SettingsRow(
+                    icon: "bookmark.fill",
+                    title: "Local Want to Watch",
+                    value: "\(currentUserWatchlistItems.count)"
+                )
+
+                SettingsRow(
                     icon: "clock.fill",
                     title: "Pending local entries",
                     value: "\(currentUserPendingEntries.count)"
+                )
+
+                SettingsRow(
+                    icon: "bookmark.circle.fill",
+                    title: "Pending Watchlist items",
+                    value: "\(currentUserPendingWatchlistItems.count)"
                 )
 
                 SettingsRow(
@@ -432,7 +635,7 @@ struct SettingsView: View {
                     value: "\(currentUserCompletedActions.count)"
                 )
 
-                Text("You can add, edit, and delete memories offline. CloseCut keeps local changes queued until you sync them with the cloud.")
+                Text("You can add, edit, delete memories, and save titles offline. CloseCut keeps local changes queued until you sync them with the cloud.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -454,6 +657,8 @@ struct SettingsView: View {
             }
         }
     }
+
+    // MARK: - Account Section
 
     private var accountSection: some View {
         SettingsSectionCard(
@@ -496,6 +701,8 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - App Info Section
+
     private var appInfoSection: some View {
         SettingsSectionCard(
             title: "App info",
@@ -522,6 +729,8 @@ struct SettingsView: View {
             }
         }
     }
+
+    // MARK: - UI Helpers
 
     private var syncButtonTitle: String {
         if isSyncing {
@@ -563,11 +772,13 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Profile
+
     private func saveProfileLocallyForNow(
         displayName: String,
         avatarPreset: AvatarPreset
     ) {
-        let cleanedDisplayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedDisplayName = displayName.trimmed
 
         guard cleanedDisplayName.isEmpty == false else {
             profileActionBannerStyle = .warning
@@ -600,6 +811,8 @@ struct SettingsView: View {
         #endif
     }
 
+    // MARK: - Sync Actions
+
     private func syncNow() async {
         guard isSyncing == false else {
             return
@@ -609,20 +822,62 @@ struct SettingsView: View {
         lastSyncMessage = nil
         defer { isSyncing = false }
 
-        let summary = await entrySyncService.syncPendingEntries(
+        let entrySummary = await entrySyncService.syncPendingEntries(
             userId: user.id,
             modelContext: modelContext
         )
 
-        if summary.failedCount > 0 {
+        let watchlistSummary = await watchlistSyncService.syncPendingWatchlistItems(
+            userId: user.id,
+            modelContext: modelContext
+        )
+
+        let syncedCount = entrySummary.syncedCount + watchlistSummary.syncedCount
+        let failedCount = entrySummary.failedCount + watchlistSummary.failedCount
+
+        if failedCount > 0 {
             lastSyncBannerStyle = .warning
-            lastSyncMessage = "Synced \(summary.syncedCount) changes. \(summary.failedCount) still need retry."
-        } else if summary.syncedCount > 0 {
+            lastSyncMessage = "Synced \(syncedCount) changes. \(failedCount) still need retry."
+        } else if syncedCount > 0 {
             lastSyncBannerStyle = .success
-            lastSyncMessage = "Synced \(summary.syncedCount) local changes."
+            lastSyncMessage = "Synced \(syncedCount) local changes."
         } else {
             lastSyncBannerStyle = .neutral
             lastSyncMessage = "Nothing new to sync."
+        }
+    }
+
+    private func pullFromCloud() async {
+        guard isPullingFromCloud == false else {
+            return
+        }
+
+        isPullingFromCloud = true
+        lastSyncMessage = nil
+        defer { isPullingFromCloud = false }
+
+        let entrySummary = await entrySyncService.pullRemoteEntries(
+            userId: user.id,
+            modelContext: modelContext
+        )
+
+        let watchlistSummary = await watchlistSyncService.pullRemoteWatchlistItems(
+            userId: user.id,
+            modelContext: modelContext
+        )
+
+        let pulledCount = entrySummary.pulledCount + watchlistSummary.pulledCount
+        let failedCount = entrySummary.failedCount + watchlistSummary.failedCount
+
+        if failedCount > 0 {
+            lastSyncBannerStyle = .warning
+            lastSyncMessage = "Couldn’t fully refresh from cloud. Check your connection and Firestore rules."
+        } else if pulledCount > 0 {
+            lastSyncBannerStyle = .success
+            lastSyncMessage = "Refreshed \(pulledCount) cloud items."
+        } else {
+            lastSyncBannerStyle = .neutral
+            lastSyncMessage = "No cloud updates found yet."
         }
     }
 
@@ -642,32 +897,6 @@ struct SettingsView: View {
             #if DEBUG
             print("⚠️ Failed to clear completed sync history:", error.localizedDescription)
             #endif
-        }
-    }
-
-    private func pullFromCloud() async {
-        guard isPullingFromCloud == false else {
-            return
-        }
-
-        isPullingFromCloud = true
-        lastSyncMessage = nil
-        defer { isPullingFromCloud = false }
-
-        let summary = await entrySyncService.pullRemoteEntries(
-            userId: user.id,
-            modelContext: modelContext
-        )
-
-        if summary.failedCount > 0 {
-            lastSyncBannerStyle = .warning
-            lastSyncMessage = "Couldn’t refresh from cloud. Check your connection and Firestore rules."
-        } else if summary.pulledCount > 0 {
-            lastSyncBannerStyle = .success
-            lastSyncMessage = "Refreshed \(summary.pulledCount) entries from cloud."
-        } else {
-            lastSyncBannerStyle = .neutral
-            lastSyncMessage = "No cloud entries found yet."
         }
     }
 }
@@ -702,6 +931,7 @@ struct SettingsView: View {
         LocalUserProfile.self,
         LocalUserState.self,
         PendingAction.self,
-        LocalBattleResult.self
+        LocalBattleResult.self,
+        LocalWatchlistItem.self
     ], inMemory: true)
 }

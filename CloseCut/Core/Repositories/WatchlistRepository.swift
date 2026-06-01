@@ -57,6 +57,7 @@ final class WatchlistRepository {
 
         let localItem = LocalWatchlistItem(
             ownerId: cleanedOwnerId,
+            mediaId: media.watchlistMediaId,
             title: cleanedTitle,
             normalizedTitle: cleanedTitle.normalizedTitleKey,
             type: media.entryType,
@@ -201,6 +202,7 @@ final class WatchlistRepository {
         let localItem = LocalWatchlistItem(
             id: remoteItem.id,
             ownerId: remoteItem.ownerId,
+            mediaId: remoteItem.mediaId,
             title: remoteItem.title,
             normalizedTitle: remoteItem.normalizedTitle,
             type: remoteItem.type,
@@ -315,6 +317,7 @@ final class WatchlistRepository {
             throw WatchlistRepositoryError.itemNotFound
         }
 
+        localItem.statusRaw = WatchlistStatus.dismissed.rawValue
         localItem.deletedAt = Date()
         localItem.updatedAt = Date()
         localItem.syncStatusRaw = SyncStatus.pending.rawValue
