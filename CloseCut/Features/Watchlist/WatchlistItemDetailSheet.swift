@@ -266,7 +266,7 @@ struct WatchlistItemDetailSheet: View {
                     .buttonStyle(.plain)
                     .disabled(isProcessing)
 
-                    Text("Marking as watched moves this title into Personal as a Quick Add. You can complete mood, tags, and notes later.")
+                    Text("Marking as watched moves this title into Personal as a Quick Add. You can complete mood, tags, and memory details later.")
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textTertiary)
                         .lineSpacing(3)
@@ -276,7 +276,7 @@ struct WatchlistItemDetailSheet: View {
                 stateMessage(
                     icon: "checkmark.circle.fill",
                     title: "Already added to Personal",
-                    message: "This title has been moved into your watch history."
+                    message: "This title has been moved into Personal."
                 )
             } else {
                 stateMessage(

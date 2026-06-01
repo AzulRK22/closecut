@@ -83,7 +83,7 @@ struct WatchlistItemCardView: View {
         HStack(spacing: 8) {
             statusChip
 
-            Text("Saved from \(item.source.displayName)")
+            Text("Tap to preview next step")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(CloseCutColors.textSecondary)
                 .lineLimit(1)

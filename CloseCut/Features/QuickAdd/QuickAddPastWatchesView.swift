@@ -45,7 +45,7 @@ struct QuickAddPastWatchesView: View {
                             }
 
                             if viewModel.shouldShowManualAddButton {
-                                manualAddButton
+                                manualAddSection
                             }
 
                             sessionAddedSection
@@ -150,7 +150,7 @@ struct QuickAddPastWatchesView: View {
     private var statusMessages: some View {
         if let lastAdded = viewModel.lastAddedEntry {
             QuickAddStatusBanner(
-                message: "Added to your history: \(lastAdded.title)",
+                message: "Added to Personal: \(lastAdded.title)",
                 systemImage: "checkmark.circle.fill",
                 foregroundColor: CloseCutColors.synced
             )
@@ -158,7 +158,7 @@ struct QuickAddPastWatchesView: View {
 
         if let duplicate = viewModel.lastDuplicateEntry {
             QuickAddStatusBanner(
-                message: "Already in your history: \(duplicate.title)",
+                message: "Already in Personal: \(duplicate.title)",
                 systemImage: "checkmark.circle",
                 foregroundColor: CloseCutColors.textSecondary
             )
@@ -249,17 +249,12 @@ struct QuickAddPastWatchesView: View {
             if viewModel.filteredSuggestions.isEmpty {
                 EmptyStateView(
                     title: "Add it manually",
-                    message: "Your history can include it even without poster or metadata.",
+                    message: "Your Personal library can include it even without poster or metadata.",
                     systemImage: "plus.circle",
-                    actionTitle: "Add manual title",
-                    action: {
-                        viewModel.addManualTitle(
-                            ownerId: user.id,
-                            modelContext: modelContext
-                        )
-                    }
+                    actionTitle: nil,
+                    action: nil
                 )
-                .frame(minHeight: 220)
+                .frame(minHeight: 180)
             } else {
                 VStack(spacing: 10) {
                     ForEach(viewModel.filteredSuggestions) { suggestion in
@@ -281,27 +276,41 @@ struct QuickAddPastWatchesView: View {
         }
     }
 
-    private var manualAddButton: some View {
-        Button {
-            viewModel.addManualTitle(
-                ownerId: user.id,
-                modelContext: modelContext
-            )
-        } label: {
-            HStack {
-                Image(systemName: "plus")
-                Text("Can’t find it? Add “\(viewModel.cleanedQuery)” manually")
-                    .lineLimit(1)
+    private var manualAddSection: some View {
+        QuickAddSectionCard(
+            title: "Add manually",
+            subtitle: "Choose the type so your Personal library stays accurate."
+        ) {
+            VStack(alignment: .leading, spacing: 14) {
+                TypeSelector(
+                    selectedType: $viewModel.manualEntryType
+                )
+
+                Button {
+                    viewModel.addManualTitle(
+                        ownerId: user.id,
+                        modelContext: modelContext
+                    )
+                } label: {
+                    HStack {
+                        Image(systemName: "plus")
+                            .font(.caption.weight(.bold))
+
+                        Text("Add “\(viewModel.cleanedQuery)” to Personal")
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(CloseCutColors.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add \(viewModel.cleanedQuery) to Personal")
             }
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .frame(height: 48)
-            .background(CloseCutColors.accent)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Add \(viewModel.cleanedQuery) manually")
     }
 
     private var sessionAddedSection: some View {

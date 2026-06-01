@@ -216,8 +216,8 @@ struct PersonalLibraryView: View {
 
             if savedWatchlistItems.isEmpty == false {
                 WatchlistRailView(
-                    title: "Up Next",
-                    subtitle: "Saved titles waiting for the right moment.",
+                    title: "Saved for Later",
+                    subtitle: "Titles waiting for the right moment.",
                     items: Array(savedWatchlistItems.prefix(12)),
                     user: user,
                     profile: profile,
@@ -312,7 +312,7 @@ struct PersonalLibraryView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
 
-                Text("Use the search icon above to browse your full library by title, year, mood, tags, shared entries, Quick Adds, or saved titles.")
+                Text("Use the search icon above to browse your full Personal library by title, year, mood, tags, shared entries, or Quick Adds.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)

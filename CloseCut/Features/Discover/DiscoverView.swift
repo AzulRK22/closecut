@@ -106,9 +106,6 @@ struct DiscoverView: View {
                     Task {
                         await saveForLater(media)
                     }
-                },
-                onStartBattle: {
-                    showComingSoon("Battle integration is coming after Watchlist.")
                 }
             )
             .presentationDetents([.medium, .large])
@@ -126,7 +123,7 @@ struct DiscoverView: View {
                         .font(.largeTitle.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
 
-                    Text("Find what could become part of your taste history next.")
+                    Text("Find what could become part of your Personal library next.")
                         .font(.subheadline)
                         .foregroundStyle(CloseCutColors.textSecondary)
                         .lineSpacing(3)
@@ -192,7 +189,7 @@ struct DiscoverView: View {
             .submitLabel(.search)
             .onSubmit {
                 Task {
-                    await searchNow()
+                    await searchNow(query: trimmedSearchText)
                 }
             }
 
@@ -201,6 +198,7 @@ struct DiscoverView: View {
                     searchText = ""
                     searchResults = []
                     searchErrorMessage = nil
+                    isSearching = false
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.subheadline.weight(.semibold))
@@ -259,14 +257,14 @@ struct DiscoverView: View {
                 actionTitle: "Try again",
                 action: {
                     Task {
-                        await searchNow()
+                        await searchNow(query: trimmedSearchText)
                     }
                 }
             )
         } else if searchResults.isEmpty {
             EmptyStateView(
                 title: "Search Discover",
-                message: "Look up a movie or series, then add it to your history or save it to Want to Watch.",
+                message: "Look up a movie or series, then add it to Personal or save it to Want to Watch.",
                 systemImage: "magnifyingglass",
                 actionTitle: nil,
                 action: nil
@@ -357,34 +355,38 @@ struct DiscoverView: View {
 
     private func refreshCurrentMode() async {
         if isSearchMode {
-            await searchNow()
+            await searchNow(query: trimmedSearchText)
         } else {
             await viewModel.refresh(entries: currentUserEntries)
         }
     }
 
     private func runSearchIfNeeded() async {
-        guard trimmedSearchText.count >= TMDBConfiguration.minimumSearchQueryLength else {
-            searchResults = []
-            searchErrorMessage = nil
-            return
-        }
-
-        try? await Task.sleep(nanoseconds: 450_000_000)
-
-        guard trimmedSearchText.count >= TMDBConfiguration.minimumSearchQueryLength else {
-            return
-        }
-
-        await searchNow()
-    }
-
-    private func searchNow() async {
         let query = trimmedSearchText
 
         guard query.count >= TMDBConfiguration.minimumSearchQueryLength else {
             searchResults = []
             searchErrorMessage = nil
+            isSearching = false
+            return
+        }
+
+        try? await Task.sleep(nanoseconds: 450_000_000)
+
+        guard query == trimmedSearchText else {
+            return
+        }
+
+        await searchNow(query: query)
+    }
+
+    private func searchNow(query: String) async {
+        let cleanedQuery = query.trimmed
+
+        guard cleanedQuery.count >= TMDBConfiguration.minimumSearchQueryLength else {
+            searchResults = []
+            searchErrorMessage = nil
+            isSearching = false
             return
         }
 
@@ -392,12 +394,26 @@ struct DiscoverView: View {
         searchErrorMessage = nil
 
         do {
-            searchResults = try await tmdbRepository.searchMedia(
-                query: query
+            let results = try await tmdbRepository.searchMedia(
+                query: cleanedQuery
             )
+
+            guard cleanedQuery == trimmedSearchText else {
+                return
+            }
+
+            searchResults = results
         } catch {
+            guard cleanedQuery == trimmedSearchText else {
+                return
+            }
+
             searchResults = []
             searchErrorMessage = error.localizedDescription
+        }
+
+        guard cleanedQuery == trimmedSearchText else {
+            return
         }
 
         isSearching = false
@@ -429,7 +445,7 @@ struct DiscoverView: View {
             )
 
             actionBannerStyle = .success
-            actionMessage = "\(entry.displayTitle) was added to your history."
+            actionMessage = "\(entry.displayTitle) was added to Personal."
             viewModel.clearSelection()
         } catch {
             actionBannerStyle = .warning
@@ -460,12 +476,6 @@ struct DiscoverView: View {
             actionBannerStyle = .warning
             actionMessage = error.localizedDescription
         }
-    }
-
-    private func showComingSoon(_ message: String) {
-        actionBannerStyle = .neutral
-        actionMessage = message
-        viewModel.clearSelection()
     }
 }
 

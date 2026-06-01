@@ -13,7 +13,6 @@ struct DiscoverMediaDetailSheet: View {
     let isSavingWatchlist: Bool
     let onAddWatched: () -> Void
     let onSaveForLater: () -> Void
-    let onStartBattle: () -> Void
 
     private var posterURL: URL? {
         TMDBImageURLBuilder.imageURL(
@@ -362,7 +361,7 @@ struct DiscoverMediaDetailSheet: View {
                         Image(systemName: "checkmark.circle.fill")
                     }
 
-                    Text(isSavingWatched ? "Adding..." : "Add to History")
+                    Text(isSavingWatched ? "Adding..." : "Add to Personal")
                         .lineLimit(1)
                         .minimumScaleFactor(0.86)
                 }
@@ -384,18 +383,6 @@ struct DiscoverMediaDetailSheet: View {
                         icon: isSavingWatchlist ? nil : "bookmark.fill",
                         text: isSavingWatchlist ? "Saving..." : "Want to Watch",
                         showsProgress: isSavingWatchlist
-                    )
-                }
-                .buttonStyle(.plain)
-                .disabled(isSavingWatched || isSavingWatchlist)
-
-                Button {
-                    onStartBattle()
-                } label: {
-                    actionButtonLabel(
-                        icon: "bolt.fill",
-                        text: "Battle",
-                        showsProgress: false
                     )
                 }
                 .buttonStyle(.plain)

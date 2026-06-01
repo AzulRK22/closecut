@@ -63,9 +63,7 @@ struct QuickAddPreviewSheet: View {
                     .padding(.bottom, 112)
                 }
 
-                QuickAddPreviewAddBar(
-                    title: "Add"
-                ) {
+                QuickAddPreviewAddBar(title: "Add to Personal") {
                     onAdd()
                     dismiss()
                 }

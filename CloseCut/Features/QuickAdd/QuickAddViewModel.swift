@@ -14,6 +14,7 @@ final class QuickAddViewModel: ObservableObject {
     @Published var query: String = ""
     @Published var selectedSentiment: QuickSentiment? = .stayedWithMe
     @Published var selectedApproxDate: WatchedDateApprox = .recently
+    @Published var manualEntryType: EntryType = .movie
 
     @Published private(set) var tmdbResults: [TMDBMediaSearchResult] = []
     @Published private(set) var isSearchingTMDB = false
@@ -143,6 +144,7 @@ final class QuickAddViewModel: ObservableObject {
         tmdbResults = []
         isSearchingTMDB = false
         searchErrorMessage = nil
+        manualEntryType = .movie
     }
 
     func addSuggestion(
@@ -195,7 +197,7 @@ final class QuickAddViewModel: ObservableObject {
 
         let draft = QuickAddDraft(
             title: cleanedQuery,
-            type: .movie,
+            type: manualEntryType,
             releaseYear: nil,
             quickSentiment: selectedSentiment,
             watchedDateApprox: selectedApproxDate
@@ -238,6 +240,10 @@ final class QuickAddViewModel: ObservableObject {
     }
 
     private func searchTMDB(query: String) async {
+        guard query == cleanedQuery else {
+            return
+        }
+
         isSearchingTMDB = true
         searchErrorMessage = nil
 
@@ -248,10 +254,18 @@ final class QuickAddViewModel: ObservableObject {
                 return
             }
 
+            guard query == cleanedQuery else {
+                return
+            }
+
             tmdbResults = Array(results.prefix(8))
             isSearchingTMDB = false
         } catch {
             guard Task.isCancelled == false else {
+                return
+            }
+
+            guard query == cleanedQuery else {
                 return
             }
 
