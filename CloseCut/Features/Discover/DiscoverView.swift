@@ -20,17 +20,30 @@ struct DiscoverView: View {
     @State private var isSavingWatchlist = false
     @State private var isShowingWatchlist = false
 
+    @State private var searchText = ""
+    @State private var searchResults: [TMDBMediaSearchResult] = []
+    @State private var isSearching = false
+    @State private var searchErrorMessage: String?
+
     let user: AuthUser
     let profile: UserProfile
 
     private let entryRepository = EntryRepository()
     private let watchlistRepository = WatchlistRepository()
+    private let tmdbRepository = TMDBMediaRepository()
 
     private var currentUserEntries: [Entry] {
         localEntries
             .filter { $0.ownerId == user.id }
-            .filter { $0.deletedAt == nil }
             .map { $0.domain }
+    }
+
+    private var trimmedSearchText: String {
+        searchText.trimmed
+    }
+
+    private var isSearchMode: Bool {
+        trimmedSearchText.isEmpty == false
     }
 
     var body: some View {
@@ -41,6 +54,8 @@ struct DiscoverView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     header
+
+                    searchBar
 
                     if let actionMessage {
                         SyncResultBanner(
@@ -57,26 +72,25 @@ struct DiscoverView: View {
                 .padding(.vertical, 16)
             }
             .refreshable {
-                await viewModel.refresh(entries: currentUserEntries)
+                await refreshCurrentMode()
             }
         }
         .navigationTitle("Discover")
         .navigationBarTitleDisplayMode(.inline)
         .preferredColorScheme(.dark)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    isShowingWatchlist = true
-                } label: {
-                    Image(systemName: "bookmark.fill")
-                        .font(.system(size: 15, weight: .semibold))
-                        .frame(width: 44, height: 44)
-                }
-                .accessibilityLabel("Open Want to Watch")
-            }
-        }
         .task(id: user.id) {
             await viewModel.loadIfNeeded(entries: currentUserEntries)
+        }
+        .task(id: trimmedSearchText) {
+            await runSearchIfNeeded()
+        }
+        .sheet(isPresented: $isShowingWatchlist) {
+            WatchlistView(
+                user: user,
+                profile: profile
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
         .sheet(item: $viewModel.selectedMedia) { media in
             DiscoverMediaDetailSheet(
@@ -100,18 +114,9 @@ struct DiscoverView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $isShowingWatchlist) {
-            NavigationStack {
-                WatchlistView(
-                    user: user,
-                    profile: profile,
-                    onOpenDiscover: nil
-                )
-            }
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
-        }
     }
+
+    // MARK: - Header
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -130,12 +135,18 @@ struct DiscoverView: View {
 
                 Spacer()
 
-                Image(systemName: "sparkles")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.accentLight)
-                    .frame(width: 42, height: 42)
-                    .background(CloseCutColors.input)
-                    .clipShape(SwiftUI.Circle())
+                Button {
+                    isShowingWatchlist = true
+                } label: {
+                    Image(systemName: "bookmark.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.accentLight)
+                        .frame(width: 42, height: 42)
+                        .background(CloseCutColors.input)
+                        .clipShape(SwiftUI.Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open Want to Watch")
             }
 
             HStack(spacing: 8) {
@@ -149,17 +160,73 @@ struct DiscoverView: View {
                     text: "Taste-based"
                 )
 
-                DiscoverSignalPill(
-                    icon: "bookmark.fill",
-                    text: "Want to Watch"
-                )
+                Button {
+                    isShowingWatchlist = true
+                } label: {
+                    DiscoverSignalPill(
+                        icon: "bookmark.fill",
+                        text: "Want to Watch"
+                    )
+                }
+                .buttonStyle(.plain)
             }
         }
     }
 
+    // MARK: - Search
+
+    private var searchBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textTertiary)
+
+            TextField(
+                "Search movies or series",
+                text: $searchText
+            )
+            .textInputAutocapitalization(.words)
+            .autocorrectionDisabled()
+            .font(.subheadline)
+            .foregroundStyle(CloseCutColors.textPrimary)
+            .submitLabel(.search)
+            .onSubmit {
+                Task {
+                    await searchNow()
+                }
+            }
+
+            if trimmedSearchText.isEmpty == false {
+                Button {
+                    searchText = ""
+                    searchResults = []
+                    searchErrorMessage = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 46)
+        .background(CloseCutColors.input)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(CloseCutColors.separator, lineWidth: 0.5)
+        }
+    }
+
+    // MARK: - Content
+
     @ViewBuilder
     private var content: some View {
-        if viewModel.isLoading {
+        if isSearchMode {
+            searchContent
+        } else if viewModel.isLoading {
             loadingView
         } else if let errorMessage = viewModel.errorMessage {
             errorView(errorMessage)
@@ -177,6 +244,42 @@ struct DiscoverView: View {
                     }
                 }
             )
+        }
+    }
+
+    @ViewBuilder
+    private var searchContent: some View {
+        if isSearching {
+            loadingSearchView
+        } else if let searchErrorMessage {
+            EmptyStateView(
+                title: "Search couldn't load",
+                message: searchErrorMessage,
+                systemImage: "wifi.exclamationmark",
+                actionTitle: "Try again",
+                action: {
+                    Task {
+                        await searchNow()
+                    }
+                }
+            )
+        } else if searchResults.isEmpty {
+            EmptyStateView(
+                title: "Search Discover",
+                message: "Look up a movie or series, then add it to your history or save it to Want to Watch.",
+                systemImage: "magnifyingglass",
+                actionTitle: nil,
+                action: nil
+            )
+        } else {
+            DiscoverMediaRail(
+                title: "Search results",
+                subtitle: "Choose a title to preview before saving.",
+                emptyMessage: "No matching titles found.",
+                items: searchResults
+            ) { media in
+                viewModel.select(media)
+            }
         }
     }
 
@@ -219,6 +322,23 @@ struct DiscoverView: View {
         .accessibilityLabel("Loading Discover")
     }
 
+    private var loadingSearchView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Searching…")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textPrimary)
+
+            HStack(spacing: 12) {
+                ForEach(0..<3, id: \.self) { _ in
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(CloseCutColors.card)
+                        .frame(width: 132, height: 230)
+                }
+            }
+        }
+        .redacted(reason: .placeholder)
+    }
+
     private func errorView(_ message: String) -> some View {
         EmptyStateView(
             title: "Discover couldn't load",
@@ -231,6 +351,56 @@ struct DiscoverView: View {
                 }
             }
         )
+    }
+
+    // MARK: - Actions
+
+    private func refreshCurrentMode() async {
+        if isSearchMode {
+            await searchNow()
+        } else {
+            await viewModel.refresh(entries: currentUserEntries)
+        }
+    }
+
+    private func runSearchIfNeeded() async {
+        guard trimmedSearchText.count >= TMDBConfiguration.minimumSearchQueryLength else {
+            searchResults = []
+            searchErrorMessage = nil
+            return
+        }
+
+        try? await Task.sleep(nanoseconds: 450_000_000)
+
+        guard trimmedSearchText.count >= TMDBConfiguration.minimumSearchQueryLength else {
+            return
+        }
+
+        await searchNow()
+    }
+
+    private func searchNow() async {
+        let query = trimmedSearchText
+
+        guard query.count >= TMDBConfiguration.minimumSearchQueryLength else {
+            searchResults = []
+            searchErrorMessage = nil
+            return
+        }
+
+        isSearching = true
+        searchErrorMessage = nil
+
+        do {
+            searchResults = try await tmdbRepository.searchMedia(
+                query: query
+            )
+        } catch {
+            searchResults = []
+            searchErrorMessage = error.localizedDescription
+        }
+
+        isSearching = false
     }
 
     private func addWatched(_ media: TMDBMediaSearchResult) async {

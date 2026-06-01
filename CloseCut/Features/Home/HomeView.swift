@@ -15,6 +15,9 @@ struct HomeView: View {
     @Query(sort: \LocalEntry.watchedAt, order: .reverse)
     private var localEntries: [LocalEntry]
 
+    @Query(sort: \LocalWatchlistItem.updatedAt, order: .reverse)
+    private var localWatchlistItems: [LocalWatchlistItem]
+
     @Query(sort: \LocalCircleMembership.updatedAt, order: .reverse)
     private var localMemberships: [LocalCircleMembership]
 
@@ -40,6 +43,19 @@ struct HomeView: View {
             .map { $0.domain }
             .sorted { first, second in
                 first.watchedAt > second.watchedAt
+            }
+    }
+
+    private var savedWatchlistItems: [WatchlistItem] {
+        localWatchlistItems
+            .filter { $0.ownerId == user.id }
+            .map { $0.domain }
+            .filter { item in
+                item.status == .saved &&
+                item.deletedAt == nil
+            }
+            .sorted { first, second in
+                first.updatedAt > second.updatedAt
             }
     }
 
@@ -71,6 +87,7 @@ struct HomeView: View {
 
                     PersonalLibraryView(
                         entries: entries,
+                        watchlistItems: savedWatchlistItems,
                         user: user,
                         profile: profile,
                         externalQuickPickState: externalQuickPickState,
@@ -300,6 +317,7 @@ struct HomeView: View {
         LocalUserProfile.self,
         LocalUserState.self,
         PendingAction.self,
-        LocalBattleResult.self
+        LocalBattleResult.self,
+        LocalWatchlistItem.self
     ], inMemory: true)
 }

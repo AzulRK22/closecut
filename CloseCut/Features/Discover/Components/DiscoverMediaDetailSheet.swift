@@ -362,7 +362,7 @@ struct DiscoverMediaDetailSheet: View {
                         Image(systemName: "checkmark.circle.fill")
                     }
 
-                    Text(isSavingWatched ? "Adding..." : "Add as watched")
+                    Text(isSavingWatched ? "Adding..." : "Add to History")
                         .lineLimit(1)
                         .minimumScaleFactor(0.86)
                 }
