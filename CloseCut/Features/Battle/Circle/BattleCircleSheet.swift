@@ -9,6 +9,7 @@ import SwiftUI
 
 struct BattleCircleSheet: View {
     let archiveEntries: [Entry]
+    let watchlistItems: [WatchlistItem]
     let initialSelection: [BattleCandidate]
     let onCancel: () -> Void
     let onWinnerSelected: (BattleCandidate, [BattleCandidate]) -> Void
@@ -68,6 +69,7 @@ struct BattleCircleSheet: View {
         .sheet(isPresented: $showPicker) {
             BattlePickTonightSheet(
                 archiveEntries: archiveEntries,
+                watchlistItems: watchlistItems,
                 initialSelection: selectedCandidates,
                 onCancel: {
                     showPicker = false

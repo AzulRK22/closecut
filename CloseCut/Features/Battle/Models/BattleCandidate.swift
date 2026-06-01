@@ -143,6 +143,8 @@ struct BattleCandidate: Identifiable, Equatable, Hashable {
         switch source {
         case .archive:
             return "From your Personal Timeline."
+        case .watchlist:
+            return "Saved in Want to Watch for a future night."
         case .tmdb:
             return "Added from TMDB for this decision."
         case .manual:
@@ -173,7 +175,7 @@ struct BattleCandidate: Identifiable, Equatable, Hashable {
     }
 
     var isExternal: Bool {
-        source == .tmdb || source == .manual
+        source == .watchlist || source == .tmdb || source == .manual
     }
 
     var canPersistAsBattleResult: Bool {
@@ -181,7 +183,7 @@ struct BattleCandidate: Identifiable, Equatable, Hashable {
     }
 
     var canBeSavedToTimeline: Bool {
-        source == .tmdb || source == .manual
+        source == .watchlist || source == .tmdb || source == .manual
     }
 
     var hasUsefulMetadata: Bool {

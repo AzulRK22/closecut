@@ -9,6 +9,7 @@ import SwiftUI
 
 struct BattlePickTonightSheet: View {
     let archiveEntries: [Entry]
+    let watchlistItems: [WatchlistItem]
     let initialSelection: [BattleCandidate]
     let onCancel: () -> Void
     let onConfirm: ([BattleCandidate]) -> Void
@@ -82,6 +83,8 @@ struct BattlePickTonightSheet: View {
                             header
 
                             shortlistCard
+                            
+                            watchlistSection
 
                             searchSection
 
@@ -172,8 +175,8 @@ struct BattlePickTonightSheet: View {
                 )
 
                 infoPill(
-                    icon: "sparkles.tv",
-                    text: "TMDB search"
+                    icon: "bookmark.fill",
+                    text: "\(watchlistCandidates.count) watchlist"
                 )
 
                 infoPill(
@@ -219,7 +222,50 @@ struct BattlePickTonightSheet: View {
         .background(CloseCutColors.input)
         .clipShape(Capsule())
     }
+    private var watchlistCandidates: [BattleCandidate] {
+        BattleCandidateMapper.candidates(from: watchlistItems)
+            .sorted { first, second in
+                first.displayTitle.localizedCaseInsensitiveCompare(second.displayTitle) == .orderedAscending
+            }
+    }
+    // MARK: - Watchlist
 
+    private var watchlistSection: some View {
+        BattleSectionCard(
+            title: "From Want to Watch",
+            subtitle: "Titles you already saved for the right moment."
+        ) {
+            if watchlistCandidates.isEmpty {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "bookmark")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .padding(.top, 2)
+
+                    Text("Save titles from Discover to use them here as Battle options.")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 0)
+                }
+                .padding(12)
+                .background(CloseCutColors.input)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(watchlistCandidates) { candidate in
+                        BattleCandidateRow(
+                            candidate: candidate,
+                            isSelected: isSelected(candidate)
+                        ) {
+                            toggleCandidate(candidate)
+                        }
+                    }
+                }
+            }
+        }
+    }
     // MARK: - Shortlist
 
     private var shortlistCard: some View {
@@ -598,6 +644,7 @@ struct BattlePickTonightSheet: View {
 
         isSearching = false
     }
+    
 
     private func addManualCandidate() {
         guard canAddManual else {

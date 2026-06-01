@@ -46,6 +46,42 @@ enum BattleCandidateMapper {
     }
 
     static func candidate(
+        from item: WatchlistItem
+    ) -> BattleCandidate {
+        BattleCandidate(
+            id: "watchlist-\(item.id)",
+            source: .watchlist,
+            title: item.displayTitle,
+            type: item.type,
+            releaseYear: item.releaseYear,
+            sourceEntryId: nil,
+            tmdbId: item.tmdbId,
+            tmdbMediaTypeRaw: item.tmdbMediaTypeRaw,
+            posterPath: item.posterPath,
+            backdropPath: item.backdropPath,
+            overview: item.overview,
+            tmdbRating: item.tmdbRating,
+            tmdbPopularity: item.tmdbPopularity,
+            tmdbGenreIds: item.tmdbGenreIds,
+            moodText: nil,
+            quickSentiment: nil,
+            takeaway: nil,
+            watchedAt: nil,
+            isShared: false,
+            isQuickAdd: false
+        )
+    }
+
+    static func candidates(
+        from watchlistItems: [WatchlistItem]
+    ) -> [BattleCandidate] {
+        watchlistItems
+            .filter { $0.status == .saved && $0.deletedAt == nil }
+            .filter { $0.displayTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+            .map { candidate(from: $0) }
+    }
+
+    static func candidate(
         from result: TMDBMediaSearchResult
     ) -> BattleCandidate {
         BattleCandidate(

@@ -9,13 +9,16 @@ import Foundation
 
 enum BattleCandidateSource: String, Codable, Equatable {
     case archive
+    case watchlist
     case tmdb
     case manual
 
     var displayName: String {
         switch self {
         case .archive:
-            return "From archive"
+            return "From Personal"
+        case .watchlist:
+            return "Want to Watch"
         case .tmdb:
             return "TMDB"
         case .manual:
@@ -26,7 +29,9 @@ enum BattleCandidateSource: String, Codable, Equatable {
     var shortDisplayName: String {
         switch self {
         case .archive:
-            return "Archive"
+            return "Personal"
+        case .watchlist:
+            return "Watchlist"
         case .tmdb:
             return "TMDB"
         case .manual:
@@ -38,6 +43,8 @@ enum BattleCandidateSource: String, Codable, Equatable {
         switch self {
         case .archive:
             return "film.stack"
+        case .watchlist:
+            return "bookmark.fill"
         case .tmdb:
             return "sparkles.tv"
         case .manual:

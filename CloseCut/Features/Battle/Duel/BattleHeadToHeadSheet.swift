@@ -9,6 +9,7 @@ import SwiftUI
 
 struct BattleHeadToHeadSheet: View {
     let archiveEntries: [Entry]
+    let watchlistItems: [WatchlistItem]
     let initialCandidates: [BattleCandidate]
     let onCancel: () -> Void
     let onWinnerSelected: (BattleCandidate, [BattleCandidate]) -> Void
@@ -43,6 +44,12 @@ struct BattleHeadToHeadSheet: View {
     private enum Field {
         case search
         case manual
+    }
+    private var watchlistCandidates: [BattleCandidate] {
+        BattleCandidateMapper.candidates(from: watchlistItems)
+            .sorted { first, second in
+                first.displayTitle.localizedCaseInsensitiveCompare(second.displayTitle) == .orderedAscending
+            }
     }
 
     private let rounds: [DuelRound] = [
@@ -154,6 +161,8 @@ struct BattleHeadToHeadSheet: View {
                         header
 
                         contenderSlotsSection
+                        
+                        watchlistSection
 
                         searchSection
 
@@ -413,6 +422,44 @@ struct BattleHeadToHeadSheet: View {
         .padding(12)
         .background(CloseCutColors.input.opacity(0.74))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+    // MARK: - Watchlist
+
+    private var watchlistSection: some View {
+        BattleSectionCard(
+            title: "From Want to Watch",
+            subtitle: "Tap a saved title to assign it to the next open challenger slot."
+        ) {
+            if watchlistCandidates.isEmpty {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "bookmark")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .padding(.top, 2)
+
+                    Text("No saved Want to Watch titles yet. Use TMDB search or your archive for this duel.")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 0)
+                }
+                .padding(12)
+                .background(CloseCutColors.input)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(watchlistCandidates) { candidate in
+                        BattleCandidateRow(
+                            candidate: candidate,
+                            isSelected: isSelected(candidate)
+                        ) {
+                            selectCandidate(candidate)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Search

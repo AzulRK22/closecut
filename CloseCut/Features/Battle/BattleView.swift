@@ -30,6 +30,9 @@ struct BattleView: View {
 
     @Query(sort: \LocalEntry.watchedAt, order: .reverse)
     private var localEntries: [LocalEntry]
+    
+    @Query(sort: \LocalWatchlistItem.updatedAt, order: .reverse)
+    private var localWatchlistItems: [LocalWatchlistItem]
 
     @Query(sort: \LocalBattleResult.createdAt, order: .reverse)
     private var localBattleResults: [LocalBattleResult]
@@ -51,6 +54,22 @@ struct BattleView: View {
             .sorted { first, second in
                 first.watchedAt > second.watchedAt
             }
+    }
+    private var savedWatchlistItems: [WatchlistItem] {
+        localWatchlistItems
+            .filter { $0.ownerId == user.id }
+            .map { $0.domain }
+            .filter { item in
+                item.status == .saved &&
+                item.deletedAt == nil
+            }
+            .sorted { first, second in
+                first.updatedAt > second.updatedAt
+            }
+    }
+
+    private var watchlistCandidates: [BattleCandidate] {
+        BattleCandidateMapper.candidates(from: savedWatchlistItems)
     }
 
     private var canUseArchiveModes: Bool {
@@ -139,6 +158,7 @@ struct BattleView: View {
         .sheet(isPresented: $showPickTonightSheet) {
             BattlePickTonightSheet(
                 archiveEntries: eligibleEntries,
+                watchlistItems: savedWatchlistItems,
                 initialSelection: selectedCandidates,
                 onCancel: {
                     showPickTonightSheet = false
@@ -158,6 +178,7 @@ struct BattleView: View {
         .sheet(isPresented: $showHeadToHeadBattle) {
             BattleHeadToHeadSheet(
                 archiveEntries: eligibleEntries,
+                watchlistItems: savedWatchlistItems,
                 initialCandidates: selectedCandidates,
                 onCancel: {
                     showHeadToHeadBattle = false
@@ -176,6 +197,7 @@ struct BattleView: View {
         .sheet(isPresented: $showFriendBattle) {
             BattleFriendSheet(
                 archiveEntries: eligibleEntries,
+                watchlistItems: savedWatchlistItems,
                 initialSelection: selectedCandidates,
                 onCancel: {
                     showFriendBattle = false
@@ -194,6 +216,7 @@ struct BattleView: View {
         .sheet(isPresented: $showCircleBattle) {
             BattleCircleSheet(
                 archiveEntries: eligibleEntries,
+                watchlistItems: savedWatchlistItems,
                 initialSelection: selectedCandidates,
                 onCancel: {
                     showCircleBattle = false
@@ -264,9 +287,9 @@ struct BattleView: View {
                 )
 
                 battleStatPill(
-                    value: "\(selectedCandidates.count)",
-                    label: "shortlist",
-                    icon: "checkmark.circle.fill"
+                    value: "\(savedWatchlistItems.count)",
+                    label: "watchlist",
+                    icon: "bookmark.fill"
                 )
 
                 battleStatPill(
@@ -763,6 +786,7 @@ struct BattleView: View {
         LocalUserProfile.self,
         LocalUserState.self,
         PendingAction.self,
-        LocalBattleResult.self
+        LocalBattleResult.self,
+        LocalWatchlistItem.self
     ], inMemory: true)
 }
