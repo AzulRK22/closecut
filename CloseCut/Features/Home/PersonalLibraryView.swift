@@ -20,6 +20,8 @@ struct PersonalLibraryView: View {
     let onOpenQuickPick: (QuickPickState) -> Void
     let onQuickPickStateChange: (QuickPickState) -> Void
     let onRefreshMetadata: () async -> Void
+    let onMarkWatchlistItemWatched: (WatchlistItem) async -> Void
+    let onDismissWatchlistItem: (WatchlistItem) async -> Void
 
     @StateObject private var quickPickViewModel = HomeQuickPickViewModel()
 
@@ -110,7 +112,7 @@ struct PersonalLibraryView: View {
             .joined(separator: "|")
 
         let watchlistKey = savedWatchlistItems
-            .map { "\($0.id)-\($0.updatedAt.timeIntervalSince1970)-\($0.posterPath ?? "")" }
+            .map { "\($0.id)-\($0.updatedAt.timeIntervalSince1970)-\($0.posterPath ?? "")-\($0.status.rawValue)" }
             .joined(separator: "|")
 
         return "\(entryKey)::\(watchlistKey)"
@@ -218,7 +220,13 @@ struct PersonalLibraryView: View {
                     subtitle: "Saved titles waiting for the right moment.",
                     items: Array(savedWatchlistItems.prefix(12)),
                     user: user,
-                    profile: profile
+                    profile: profile,
+                    onMarkWatched: { item in
+                        await onMarkWatchlistItemWatched(item)
+                    },
+                    onDismiss: { item in
+                        await onDismissWatchlistItem(item)
+                    }
                 )
             }
 
@@ -304,7 +312,7 @@ struct PersonalLibraryView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
 
-                Text("Use the search icon above to browse your full library by title, year, mood, tags, shared entries, or Quick Adds.")
+                Text("Use the search icon above to browse your full library by title, year, mood, tags, shared entries, Quick Adds, or saved titles.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)

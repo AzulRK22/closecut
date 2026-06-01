@@ -36,6 +36,9 @@ struct HomeView: View {
     @State private var refreshBannerStyle: SyncResultBannerStyle = .neutral
     @State private var isRefreshingLibrary = false
 
+    private let entryRepository = EntryRepository()
+    private let watchlistRepository = WatchlistRepository()
+
     private var entries: [Entry] {
         localEntries
             .filter { $0.ownerId == user.id }
@@ -108,6 +111,12 @@ struct HomeView: View {
                         },
                         onRefreshMetadata: {
                             await refreshPersonalLibrary()
+                        },
+                        onMarkWatchlistItemWatched: { item in
+                            await markWatchlistItemAsWatched(item)
+                        },
+                        onDismissWatchlistItem: { item in
+                            await dismissWatchlistItem(item)
                         }
                     )
                 }
@@ -232,6 +241,68 @@ struct HomeView: View {
         .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 6)
+    }
+
+    private func markWatchlistItemAsWatched(_ item: WatchlistItem) async {
+        let draft = QuickAddDraft(
+            title: item.displayTitle,
+            type: item.type,
+            releaseYear: item.releaseYear,
+            quickSentiment: nil,
+            watchedDateApprox: .unknown,
+            externalMetadata: item.externalMetadata
+        )
+
+        do {
+            let entry = try entryRepository.createQuickAddEntry(
+                ownerId: user.id,
+                draft: draft,
+                visibility: .privateOnly,
+                modelContext: modelContext
+            )
+
+            _ = try watchlistRepository.markLocalWatchlistItemWatched(
+                itemId: item.id,
+                modelContext: modelContext
+            )
+
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    refreshBannerStyle = .success
+                    refreshMessage = "\(entry.displayTitle) moved to Personal."
+                }
+            }
+        } catch {
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    refreshBannerStyle = .warning
+                    refreshMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func dismissWatchlistItem(_ item: WatchlistItem) async {
+        do {
+            _ = try watchlistRepository.softDeleteLocalWatchlistItem(
+                itemId: item.id,
+                modelContext: modelContext
+            )
+
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    refreshBannerStyle = .success
+                    refreshMessage = "\(item.displayTitle) was dismissed."
+                }
+            }
+        } catch {
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    refreshBannerStyle = .warning
+                    refreshMessage = error.localizedDescription
+                }
+            }
+        }
     }
 
     private func refreshPersonalLibrary() async {

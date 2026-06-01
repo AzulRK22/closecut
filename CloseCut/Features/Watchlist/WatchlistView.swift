@@ -17,6 +17,7 @@ struct WatchlistView: View {
     let profile: UserProfile
 
     @State private var selectedFilter: WatchlistStatusFilter = .saved
+    @State private var selectedItem: WatchlistItem?
     @State private var actionMessage: String?
     @State private var actionBannerStyle: SyncResultBannerStyle = .neutral
     @State private var activeActionItemId: String?
@@ -99,11 +100,27 @@ struct WatchlistView: View {
                     .accessibilityLabel("Close Want to Watch")
                 }
             }
+            .sheet(item: $selectedItem) { item in
+                WatchlistItemDetailSheet(
+                    item: item,
+                    isProcessing: activeActionItemId == item.id,
+                    onMarkWatched: {
+                        Task {
+                            await markAsWatched(item)
+                        }
+                    },
+                    onDismiss: {
+                        Task {
+                            await dismissItem(item)
+                        }
+                    }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
             .preferredColorScheme(.dark)
         }
     }
-
-    // MARK: - Header
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -173,8 +190,6 @@ struct WatchlistView: View {
         }
     }
 
-    // MARK: - Filter
-
     private var filterPicker: some View {
         HStack(spacing: 8) {
             ForEach(WatchlistStatusFilter.allCases) { filter in
@@ -204,8 +219,6 @@ struct WatchlistView: View {
         }
     }
 
-    // MARK: - Content
-
     @ViewBuilder
     private var content: some View {
         if filteredItems.isEmpty {
@@ -213,26 +226,19 @@ struct WatchlistView: View {
         } else {
             LazyVStack(spacing: 14) {
                 ForEach(filteredItems) { item in
-                    WatchlistItemCardView(
-                        item: item,
-                        isProcessing: activeActionItemId == item.id,
-                        onMarkWatched: {
-                            Task {
-                                await markAsWatched(item)
-                            }
-                        },
-                        onDismiss: {
-                            Task {
-                                await dismissItem(item)
-                            }
-                        }
-                    )
+                    Button {
+                        selectedItem = item
+                    } label: {
+                        WatchlistItemCardView(
+                            item: item,
+                            isProcessing: activeActionItemId == item.id
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
     }
-
-    // MARK: - Actions
 
     private func markAsWatched(_ item: WatchlistItem) async {
         guard activeActionItemId == nil else {
@@ -265,7 +271,8 @@ struct WatchlistView: View {
             )
 
             actionBannerStyle = .success
-            actionMessage = "\(entry.displayTitle) was added to Personal. You can complete the memory later."
+            actionMessage = "\(entry.displayTitle) moved to Personal."
+            selectedItem = nil
 
             withAnimation(.easeInOut(duration: 0.18)) {
                 selectedFilter = .saved
@@ -292,6 +299,7 @@ struct WatchlistView: View {
 
             actionBannerStyle = .success
             actionMessage = "\(item.displayTitle) was removed from Want to Watch."
+            selectedItem = nil
         } catch {
             actionBannerStyle = .warning
             actionMessage = error.localizedDescription

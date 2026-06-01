@@ -7,54 +7,66 @@ import SwiftUI
 
 struct WatchlistItemCardView: View {
     let item: WatchlistItem
-    let isProcessing: Bool
-    let onMarkWatched: () -> Void
-    let onDismiss: () -> Void
+    var isProcessing: Bool = false
 
-    private var canMarkWatched: Bool {
-        item.status == .saved && item.deletedAt == nil
-    }
+    private var overviewText: String? {
+        guard let overview = item.overview?.trimmed,
+              overview.isEmpty == false else {
+            return nil
+        }
 
-    private var canDismiss: Bool {
-        item.status == .saved && item.deletedAt == nil
+        return overview
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 14) {
-                WatchlistPosterView(
-                    item: item,
-                    width: 82,
-                    height: 122,
-                    cornerRadius: 16
-                )
+        HStack(alignment: .top, spacing: 14) {
+            WatchlistPosterView(
+                item: item,
+                width: 78,
+                height: 116,
+                cornerRadius: 16
+            )
 
-                VStack(alignment: .leading, spacing: 8) {
-                    header
-
-                    Text(item.metadataText)
-                        .font(.caption)
-                        .foregroundStyle(CloseCutColors.textTertiary)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(item.displayTitle)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    sourceRow
+                    Spacer(minLength: 8)
 
-                    if let overview = item.overview?.trimmed,
-                       overview.isEmpty == false {
-                        Text(overview)
-                            .font(.caption)
-                            .foregroundStyle(CloseCutColors.textSecondary)
-                            .lineLimit(3)
-                            .lineSpacing(3)
-                            .fixedSize(horizontal: false, vertical: true)
+                    if isProcessing {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .tint(CloseCutColors.accentLight)
+                    } else {
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                            .padding(.top, 3)
                     }
                 }
 
-                Spacer(minLength: 0)
+                Text(item.metadataText)
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .lineLimit(1)
+
+                if let overviewText {
+                    Text(overviewText)
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .lineLimit(2)
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                footer
             }
 
-            actionArea
+            Spacer(minLength: 0)
         }
         .padding(14)
         .background(CloseCutColors.card)
@@ -67,41 +79,9 @@ struct WatchlistItemCardView: View {
         .accessibilityLabel("\(item.displayTitle), \(item.metadataText), \(item.status.displayName)")
     }
 
-    private var header: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text(item.displayTitle)
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(CloseCutColors.textPrimary)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer(minLength: 0)
-
+    private var footer: some View {
+        HStack(spacing: 8) {
             statusChip
-        }
-    }
-
-    private var statusChip: some View {
-        HStack(spacing: 5) {
-            Image(systemName: statusIcon)
-                .font(.caption2.weight(.semibold))
-
-            Text(item.status.displayName)
-                .font(.caption2.weight(.semibold))
-                .lineLimit(1)
-        }
-        .foregroundStyle(statusForeground)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(CloseCutColors.input)
-        .clipShape(Capsule())
-    }
-
-    private var sourceRow: some View {
-        HStack(spacing: 7) {
-            Image(systemName: "sparkles")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(CloseCutColors.accentLight)
 
             Text("Saved from \(item.source.displayName)")
                 .font(.caption2.weight(.semibold))
@@ -112,82 +92,20 @@ struct WatchlistItemCardView: View {
         }
     }
 
-    @ViewBuilder
-    private var actionArea: some View {
-        if canMarkWatched {
-            VStack(spacing: 10) {
-                Button {
-                    onMarkWatched()
-                } label: {
-                    HStack(spacing: 8) {
-                        if isProcessing {
-                            ProgressView()
-                                .tint(.white)
-                        } else {
-                            Image(systemName: "checkmark.circle.fill")
-                        }
+    private var statusChip: some View {
+        HStack(spacing: 5) {
+            Image(systemName: statusIcon)
+                .font(.caption2.weight(.semibold))
 
-                        Text(isProcessing ? "Adding to Personal..." : "Mark as Watched")
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.86)
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 46)
-                    .background(CloseCutColors.accent)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .disabled(isProcessing)
-
-                if canDismiss {
-                    Button {
-                        onDismiss()
-                    } label: {
-                        Text("Dismiss")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(CloseCutColors.textSecondary)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 38)
-                            .background(CloseCutColors.input)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isProcessing)
-                }
-            }
-        } else if item.status == .watched {
-            HStack(spacing: 8) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.synced)
-
-                Text("Added to Personal")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textSecondary)
-
-                Spacer()
-            }
-            .padding(10)
-            .background(CloseCutColors.input)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        } else {
-            HStack(spacing: 8) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textTertiary)
-
-                Text("Dismissed")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textSecondary)
-
-                Spacer()
-            }
-            .padding(10)
-            .background(CloseCutColors.input)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            Text(statusText)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(1)
         }
+        .foregroundStyle(statusColor)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(CloseCutColors.input)
+        .clipShape(Capsule())
     }
 
     private var statusIcon: String {
@@ -201,7 +119,18 @@ struct WatchlistItemCardView: View {
         }
     }
 
-    private var statusForeground: Color {
+    private var statusText: String {
+        switch item.status {
+        case .saved:
+            return "Saved"
+        case .watched:
+            return "Watched"
+        case .dismissed:
+            return "Dismissed"
+        }
+    }
+
+    private var statusColor: Color {
         switch item.status {
         case .saved:
             return CloseCutColors.accentLight
