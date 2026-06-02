@@ -16,11 +16,18 @@ final class LocalBattleResult {
     var modeRaw: String
     var title: String
 
+    // Legacy / Personal-backed result support.
     var optionEntryIds: [String]
-    var optionTitles: [String]
-
     var winnerEntryId: String
+
+    // Battle v2 candidate-backed result support.
+    var optionCandidateIds: [String]
+    var optionTitles: [String]
+    var optionSources: [String]
+
+    var winnerCandidateId: String
     var winnerTitle: String
+    var winnerSourceRaw: String
 
     var createdAt: Date
 
@@ -29,20 +36,32 @@ final class LocalBattleResult {
         ownerId: String,
         mode: BattleMode,
         title: String,
-        optionEntryIds: [String],
+        optionEntryIds: [String] = [],
+        optionCandidateIds: [String],
         optionTitles: [String],
-        winnerEntryId: String,
+        optionSources: [String],
+        winnerEntryId: String = "",
+        winnerCandidateId: String,
         winnerTitle: String,
+        winnerSourceRaw: String,
         createdAt: Date = Date()
     ) {
         self.id = id
         self.ownerId = ownerId
         self.modeRaw = mode.rawValue
         self.title = title
+
         self.optionEntryIds = optionEntryIds
-        self.optionTitles = optionTitles
         self.winnerEntryId = winnerEntryId
+
+        self.optionCandidateIds = optionCandidateIds
+        self.optionTitles = optionTitles
+        self.optionSources = optionSources
+
+        self.winnerCandidateId = winnerCandidateId
         self.winnerTitle = winnerTitle
+        self.winnerSourceRaw = winnerSourceRaw
+
         self.createdAt = createdAt
     }
 }
@@ -55,9 +74,13 @@ extension LocalBattleResult {
             mode: BattleMode(rawValue: modeRaw) ?? .randomPick,
             title: title,
             optionEntryIds: optionEntryIds,
-            optionTitles: optionTitles,
             winnerEntryId: winnerEntryId,
+            optionCandidateIds: optionCandidateIds,
+            optionTitles: optionTitles,
+            optionSources: optionSources,
+            winnerCandidateId: winnerCandidateId,
             winnerTitle: winnerTitle,
+            winnerSourceRaw: winnerSourceRaw,
             createdAt: createdAt
         )
     }

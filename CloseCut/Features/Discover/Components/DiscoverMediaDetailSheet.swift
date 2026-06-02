@@ -9,10 +9,15 @@ import SwiftUI
 
 struct DiscoverMediaDetailSheet: View {
     let media: TMDBMediaSearchResult
+
+    let isAlreadyInPersonal: Bool
+    let isSavedToWatchlist: Bool
     let isSavingWatched: Bool
     let isSavingWatchlist: Bool
+
     let onAddWatched: () -> Void
     let onSaveForLater: () -> Void
+    let onRemoveFromWatchlist: () -> Void
 
     private var posterURL: URL? {
         TMDBImageURLBuilder.imageURL(
@@ -36,6 +41,30 @@ struct DiscoverMediaDetailSheet: View {
         return names.isEmpty
             ? "No genres available"
             : names.prefix(3).joined(separator: " • ")
+    }
+
+    private var isProcessing: Bool {
+        isSavingWatched || isSavingWatchlist
+    }
+
+    private var watchlistButtonTitle: String {
+        if isSavingWatchlist {
+            return isSavedToWatchlist ? "Removing..." : "Saving..."
+        }
+
+        return isSavedToWatchlist ? "Saved to Want to Watch" : "Want to Watch"
+    }
+
+    private var watchlistButtonIcon: String {
+        isSavedToWatchlist ? "bookmark.fill" : "bookmark"
+    }
+
+    private var personalButtonTitle: String {
+        if isSavingWatched {
+            return "Adding..."
+        }
+
+        return isAlreadyInPersonal ? "Already in Personal" : "Add to Personal"
     }
 
     var body: some View {
@@ -142,6 +171,20 @@ struct DiscoverMediaDetailSheet: View {
                     compactPill(
                         icon: "calendar",
                         text: "\(releaseYear)"
+                    )
+                }
+
+                if isSavedToWatchlist {
+                    compactPill(
+                        icon: "bookmark.fill",
+                        text: "Saved"
+                    )
+                }
+
+                if isAlreadyInPersonal {
+                    compactPill(
+                        icon: "checkmark.circle.fill",
+                        text: "Personal"
                     )
                 }
             }
@@ -351,6 +394,10 @@ struct DiscoverMediaDetailSheet: View {
     private var actionSection: some View {
         VStack(spacing: 10) {
             Button {
+                guard isAlreadyInPersonal == false else {
+                    return
+                }
+
                 onAddWatched()
             } label: {
                 HStack(spacing: 8) {
@@ -361,33 +408,36 @@ struct DiscoverMediaDetailSheet: View {
                         Image(systemName: "checkmark.circle.fill")
                     }
 
-                    Text(isSavingWatched ? "Adding..." : "Add to Personal")
+                    Text(personalButtonTitle)
                         .lineLimit(1)
                         .minimumScaleFactor(0.86)
                 }
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(isAlreadyInPersonal ? CloseCutColors.textSecondary : .white)
                 .frame(maxWidth: .infinity)
                 .frame(height: 50)
-                .background(CloseCutColors.accent)
+                .background(isAlreadyInPersonal ? CloseCutColors.input : CloseCutColors.accent)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
             .buttonStyle(.plain)
-            .disabled(isSavingWatched || isSavingWatchlist)
+            .disabled(isProcessing || isAlreadyInPersonal)
 
-            HStack(spacing: 10) {
-                Button {
+            Button {
+                if isSavedToWatchlist {
+                    onRemoveFromWatchlist()
+                } else {
                     onSaveForLater()
-                } label: {
-                    actionButtonLabel(
-                        icon: isSavingWatchlist ? nil : "bookmark.fill",
-                        text: isSavingWatchlist ? "Saving..." : "Want to Watch",
-                        showsProgress: isSavingWatchlist
-                    )
                 }
-                .buttonStyle(.plain)
-                .disabled(isSavingWatched || isSavingWatchlist)
+            } label: {
+                actionButtonLabel(
+                    icon: isSavingWatchlist ? nil : watchlistButtonIcon,
+                    text: watchlistButtonTitle,
+                    showsProgress: isSavingWatchlist,
+                    isHighlighted: isSavedToWatchlist
+                )
             }
+            .buttonStyle(.plain)
+            .disabled(isProcessing || (isAlreadyInPersonal && isSavedToWatchlist == false))
         }
         .frame(maxWidth: .infinity)
     }
@@ -395,7 +445,8 @@ struct DiscoverMediaDetailSheet: View {
     private func actionButtonLabel(
         icon: String?,
         text: String,
-        showsProgress: Bool
+        showsProgress: Bool,
+        isHighlighted: Bool
     ) -> some View {
         HStack(spacing: 7) {
             if showsProgress {
@@ -412,11 +463,18 @@ struct DiscoverMediaDetailSheet: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.78)
         }
-        .foregroundStyle(CloseCutColors.textSecondary)
+        .foregroundStyle(isHighlighted ? CloseCutColors.accentLight : CloseCutColors.textSecondary)
         .frame(maxWidth: .infinity)
         .frame(height: 44)
         .background(CloseCutColors.input)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(
+                    isHighlighted ? CloseCutColors.accentLight.opacity(0.65) : CloseCutColors.separator,
+                    lineWidth: 0.5
+                )
+        }
     }
 
     // MARK: - Privacy

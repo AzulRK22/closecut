@@ -29,6 +29,14 @@ final class WatchlistRepository {
             throw WatchlistRepositoryError.emptyTitle
         }
 
+        if try mediaAlreadyExistsInPersonal(
+            ownerId: cleanedOwnerId,
+            media: media,
+            modelContext: modelContext
+        ) {
+            throw WatchlistRepositoryError.alreadyInPersonal
+        }
+
         if let duplicate = try findDuplicateLocalWatchlistItem(
             ownerId: cleanedOwnerId,
             media: media,
@@ -50,7 +58,7 @@ final class WatchlistRepository {
                 return item
             }
 
-            return duplicate
+            throw WatchlistRepositoryError.alreadySaved
         }
 
         let externalMetadata = EntryExternalMetadata(tmdbResult: media)
@@ -236,6 +244,7 @@ final class WatchlistRepository {
         }
 
         localItem.statusRaw = WatchlistStatus.watched.rawValue
+        localItem.deletedAt = nil
         localItem.updatedAt = Date()
         localItem.syncStatusRaw = SyncStatus.pending.rawValue
 
@@ -336,6 +345,36 @@ final class WatchlistRepository {
         return item
     }
 
+    // MARK: - Personal Duplicate Check
+
+    private func mediaAlreadyExistsInPersonal(
+        ownerId: String,
+        media: TMDBMediaSearchResult,
+        modelContext: ModelContext
+    ) throws -> Bool {
+        let descriptor = FetchDescriptor<LocalEntry>(
+            predicate: #Predicate { entry in
+                entry.ownerId == ownerId
+            }
+        )
+
+        let entries = try modelContext.fetch(descriptor)
+            .map { $0.domain }
+            .filter { $0.deletedAt == nil }
+
+        return entries.contains { entry in
+            if let tmdbId = entry.tmdbId,
+               let mediaTypeRaw = entry.tmdbMediaTypeRaw {
+                return tmdbId == media.tmdbId &&
+                    mediaTypeRaw == media.mediaType.rawValue
+            }
+
+            return entry.displayTitle.normalizedTitleKey == media.title.normalizedTitleKey &&
+                entry.type == media.entryType &&
+                yearsAreCompatible(entry.releaseYear, media.releaseYear)
+        }
+    }
+
     // MARK: - Pending Actions
 
     private func enqueueWatchlistAction(
@@ -381,6 +420,8 @@ enum WatchlistRepositoryError: LocalizedError {
     case missingOwnerId
     case emptyTitle
     case itemNotFound
+    case alreadySaved
+    case alreadyInPersonal
 
     var errorDescription: String? {
         switch self {
@@ -390,6 +431,10 @@ enum WatchlistRepositoryError: LocalizedError {
             return "Title is required."
         case .itemNotFound:
             return "Watchlist item was not found."
+        case .alreadySaved:
+            return "This title is already saved to Want to Watch."
+        case .alreadyInPersonal:
+            return "This title is already in Personal."
         }
     }
 }

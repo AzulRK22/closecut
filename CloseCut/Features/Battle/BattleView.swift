@@ -466,7 +466,7 @@ struct BattleView: View {
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
 
-                    Text("Saved local Battle decisions from Personal-backed results.")
+                    Text("Saved local Battle decisions from Personal, Want to Watch, TMDB, and manual contenders.")
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textSecondary)
                 }
@@ -646,56 +646,20 @@ struct BattleView: View {
         options: [BattleCandidate],
         mode: BattleMode
     ) {
-        guard let winnerEntry = BattleCandidateMapper.entry(
-            from: winner,
-            eligibleEntries: eligibleEntries
-        ) else {
-            return
-        }
+        let cleanedOptions = BattleCandidateMapper.dedupe(options)
 
-        let optionEntries = BattleCandidateMapper.entries(
-            from: options,
-            eligibleEntries: eligibleEntries
-        )
-
-        guard optionEntries.count >= 2 else {
+        guard cleanedOptions.count >= 2 else {
             return
         }
 
         do {
-            switch mode {
-            case .randomPick:
-                _ = try battleResultRepository.createRandomPickResult(
-                    ownerId: user.id,
-                    options: optionEntries,
-                    winner: winnerEntry,
-                    modelContext: modelContext
-                )
-
-            case .headToHead:
-                _ = try battleResultRepository.createHeadToHeadResult(
-                    ownerId: user.id,
-                    options: optionEntries,
-                    winner: winnerEntry,
-                    modelContext: modelContext
-                )
-
-            case .friend:
-                _ = try battleResultRepository.createFriendResult(
-                    ownerId: user.id,
-                    options: optionEntries,
-                    winner: winnerEntry,
-                    modelContext: modelContext
-                )
-
-            case .circle:
-                _ = try battleResultRepository.createCircleResult(
-                    ownerId: user.id,
-                    options: optionEntries,
-                    winner: winnerEntry,
-                    modelContext: modelContext
-                )
-            }
+            _ = try battleResultRepository.createCandidateResult(
+                ownerId: user.id,
+                mode: mode,
+                options: cleanedOptions,
+                winner: winner,
+                modelContext: modelContext
+            )
         } catch BattleResultRepositoryError.duplicateRecentResult {
             #if DEBUG
             print("ℹ️ Skipped duplicate Battle result.")

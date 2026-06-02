@@ -11,9 +11,11 @@ enum BattleResultDisplayHelper {
     static func subtitle(
         for result: BattleResult
     ) -> String {
+        let sourceText = result.sourceSummaryText
+
         switch result.mode {
         case .randomPick:
-            return "Picked from \(result.optionTitles.count) options"
+            return "Picked from \(result.optionTitles.count) options • \(sourceText)"
 
         case .headToHead:
             let opponents = result.optionTitles.filter {
@@ -21,16 +23,16 @@ enum BattleResultDisplayHelper {
             }
 
             if let opponent = opponents.first {
-                return "Won against \(opponent)"
+                return "Won against \(opponent) • \(sourceText)"
             }
 
-            return "Won a head-to-head Battle"
+            return "Won a head-to-head Battle • \(sourceText)"
 
         case .friend:
-            return "Won a Friend Battle"
+            return "Won a Friend Battle • \(sourceText)"
 
         case .circle:
-            return "Won a Circle Battle"
+            return "Won a Circle Battle • \(sourceText)"
         }
     }
 

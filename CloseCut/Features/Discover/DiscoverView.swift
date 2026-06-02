@@ -12,13 +12,18 @@ struct DiscoverView: View {
     @Query(sort: \LocalEntry.updatedAt, order: .reverse)
     private var localEntries: [LocalEntry]
 
+    @Query(sort: \LocalWatchlistItem.updatedAt, order: .reverse)
+    private var localWatchlistItems: [LocalWatchlistItem]
+
     @StateObject private var viewModel = DiscoverViewModel()
 
     @State private var actionMessage: String?
     @State private var actionBannerStyle: SyncResultBannerStyle = .neutral
+
     @State private var isSavingWatched = false
     @State private var isSavingWatchlist = false
     @State private var isShowingWatchlist = false
+    @State private var activeWatchlistRailActionItemId: String?
 
     @State private var searchText = ""
     @State private var searchResults: [TMDBMediaSearchResult] = []
@@ -36,6 +41,22 @@ struct DiscoverView: View {
         localEntries
             .filter { $0.ownerId == user.id }
             .map { $0.domain }
+            .filter { $0.deletedAt == nil }
+    }
+
+    private var currentUserWatchlistItems: [WatchlistItem] {
+        localWatchlistItems
+            .filter { $0.ownerId == user.id }
+            .map { $0.domain }
+            .sorted { first, second in
+                first.updatedAt > second.updatedAt
+            }
+    }
+
+    private var savedWatchlistItems: [WatchlistItem] {
+        currentUserWatchlistItems.filter { item in
+            item.status == .saved && item.deletedAt == nil
+        }
     }
 
     private var trimmedSearchText: String {
@@ -68,7 +89,6 @@ struct DiscoverView: View {
 
                     Spacer(minLength: 28)
                 }
-                .padding(.horizontal, 20)
                 .padding(.vertical, 16)
             }
             .refreshable {
@@ -95,6 +115,8 @@ struct DiscoverView: View {
         .sheet(item: $viewModel.selectedMedia) { media in
             DiscoverMediaDetailSheet(
                 media: media,
+                isAlreadyInPersonal: isMediaAlreadyInPersonal(media),
+                isSavedToWatchlist: isMediaSavedToWatchlist(media),
                 isSavingWatched: isSavingWatched,
                 isSavingWatchlist: isSavingWatchlist,
                 onAddWatched: {
@@ -105,6 +127,11 @@ struct DiscoverView: View {
                 onSaveForLater: {
                     Task {
                         await saveForLater(media)
+                    }
+                },
+                onRemoveFromWatchlist: {
+                    Task {
+                        await removeFromWatchlist(media)
                     }
                 }
             )
@@ -162,12 +189,13 @@ struct DiscoverView: View {
                 } label: {
                     DiscoverSignalPill(
                         icon: "bookmark.fill",
-                        text: "Want to Watch"
+                        text: "\(savedWatchlistItems.count) saved"
                     )
                 }
                 .buttonStyle(.plain)
             }
         }
+        .padding(.horizontal, 20)
     }
 
     // MARK: - Search
@@ -216,6 +244,7 @@ struct DiscoverView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
+        .padding(.horizontal, 20)
     }
 
     // MARK: - Content
@@ -224,10 +253,13 @@ struct DiscoverView: View {
     private var content: some View {
         if isSearchMode {
             searchContent
+                .padding(.horizontal, 20)
         } else if viewModel.isLoading {
             loadingView
+                .padding(.horizontal, 20)
         } else if let errorMessage = viewModel.errorMessage {
             errorView(errorMessage)
+                .padding(.horizontal, 20)
         } else if viewModel.hasContent {
             sectionsView
         } else {
@@ -242,6 +274,7 @@ struct DiscoverView: View {
                     }
                 }
             )
+            .padding(.horizontal, 20)
         }
     }
 
@@ -283,16 +316,33 @@ struct DiscoverView: View {
 
     private var sectionsView: some View {
         VStack(alignment: .leading, spacing: 24) {
-            ForEach(viewModel.sections) { section in
-                DiscoverMediaRail(
-                    title: section.id.title,
-                    subtitle: section.id.subtitle,
-                    emptyMessage: section.id.emptyMessage,
-                    items: section.items
-                ) { media in
-                    viewModel.select(media)
+            WatchlistRailView(
+                title: "Ready from Want to Watch",
+                subtitle: "Saved titles waiting for the right moment.",
+                items: savedWatchlistItems,
+                user: user,
+                profile: profile,
+                onMarkWatched: { item in
+                    await markWatchlistItemAsWatched(item)
+                },
+                onDismiss: { item in
+                    await dismissWatchlistItem(item)
+                }
+            )
+
+            VStack(alignment: .leading, spacing: 24) {
+                ForEach(viewModel.sections) { section in
+                    DiscoverMediaRail(
+                        title: section.id.title,
+                        subtitle: section.id.subtitle,
+                        emptyMessage: section.id.emptyMessage,
+                        items: section.items
+                    ) { media in
+                        viewModel.select(media)
+                    }
                 }
             }
+            .padding(.horizontal, 20)
         }
     }
 
@@ -351,7 +401,56 @@ struct DiscoverView: View {
         )
     }
 
-    // MARK: - Actions
+    // MARK: - State Checks
+
+    private func isMediaSavedToWatchlist(
+        _ media: TMDBMediaSearchResult
+    ) -> Bool {
+        currentUserWatchlistItems.contains { item in
+            item.status == .saved &&
+            item.deletedAt == nil &&
+            item.matchesTMDBMedia(media)
+        }
+    }
+
+    private func matchingSavedWatchlistItem(
+        for media: TMDBMediaSearchResult
+    ) -> WatchlistItem? {
+        currentUserWatchlistItems.first { item in
+            item.status == .saved &&
+            item.deletedAt == nil &&
+            item.matchesTMDBMedia(media)
+        }
+    }
+
+    private func isMediaAlreadyInPersonal(
+        _ media: TMDBMediaSearchResult
+    ) -> Bool {
+        currentUserEntries.contains { entry in
+            if let tmdbId = entry.tmdbId,
+               let mediaTypeRaw = entry.tmdbMediaTypeRaw {
+                return tmdbId == media.tmdbId &&
+                    mediaTypeRaw == media.mediaType.rawValue
+            }
+
+            return entry.displayTitle.normalizedTitleKey == media.title.normalizedTitleKey &&
+                entry.type == media.entryType &&
+                yearsAreCompatible(entry.releaseYear, media.releaseYear)
+        }
+    }
+
+    private func yearsAreCompatible(
+        _ first: Int?,
+        _ second: Int?
+    ) -> Bool {
+        if let first, let second {
+            return first == second
+        }
+
+        return first == nil || second == nil
+    }
+
+    // MARK: - Refresh / Search
 
     private func refreshCurrentMode() async {
         if isSearchMode {
@@ -419,8 +518,17 @@ struct DiscoverView: View {
         isSearching = false
     }
 
+    // MARK: - Discover Actions
+
     private func addWatched(_ media: TMDBMediaSearchResult) async {
         guard isSavingWatched == false else {
+            return
+        }
+
+        guard isMediaAlreadyInPersonal(media) == false else {
+            actionBannerStyle = .neutral
+            actionMessage = "\(media.title) is already in Personal."
+            viewModel.clearSelection()
             return
         }
 
@@ -444,6 +552,13 @@ struct DiscoverView: View {
                 modelContext: modelContext
             )
 
+            if let existingItem = matchingSavedWatchlistItem(for: media) {
+                _ = try watchlistRepository.markLocalWatchlistItemWatched(
+                    itemId: existingItem.id,
+                    modelContext: modelContext
+                )
+            }
+
             actionBannerStyle = .success
             actionMessage = "\(entry.displayTitle) was added to Personal."
             viewModel.clearSelection()
@@ -455,6 +570,20 @@ struct DiscoverView: View {
 
     private func saveForLater(_ media: TMDBMediaSearchResult) async {
         guard isSavingWatchlist == false else {
+            return
+        }
+
+        guard isMediaAlreadyInPersonal(media) == false else {
+            actionBannerStyle = .neutral
+            actionMessage = "\(media.title) is already in Personal."
+            viewModel.clearSelection()
+            return
+        }
+
+        guard isMediaSavedToWatchlist(media) == false else {
+            actionBannerStyle = .neutral
+            actionMessage = "\(media.title) is already saved to Want to Watch."
+            viewModel.clearSelection()
             return
         }
 
@@ -472,6 +601,104 @@ struct DiscoverView: View {
             actionBannerStyle = .success
             actionMessage = "\(item.displayTitle) was saved to Want to Watch."
             viewModel.clearSelection()
+        } catch {
+            actionBannerStyle = .warning
+            actionMessage = error.localizedDescription
+        }
+    }
+
+    private func removeFromWatchlist(
+        _ media: TMDBMediaSearchResult
+    ) async {
+        guard isSavingWatchlist == false else {
+            return
+        }
+
+        guard let item = matchingSavedWatchlistItem(for: media) else {
+            actionBannerStyle = .neutral
+            actionMessage = "\(media.title) is not currently saved."
+            viewModel.clearSelection()
+            return
+        }
+
+        isSavingWatchlist = true
+        defer { isSavingWatchlist = false }
+
+        do {
+            _ = try watchlistRepository.softDeleteLocalWatchlistItem(
+                itemId: item.id,
+                modelContext: modelContext
+            )
+
+            actionBannerStyle = .success
+            actionMessage = "\(item.displayTitle) was removed from Want to Watch."
+            viewModel.clearSelection()
+        } catch {
+            actionBannerStyle = .warning
+            actionMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Watchlist Rail Actions
+
+    private func markWatchlistItemAsWatched(
+        _ item: WatchlistItem
+    ) async {
+        guard activeWatchlistRailActionItemId == nil else {
+            return
+        }
+
+        activeWatchlistRailActionItemId = item.id
+        defer { activeWatchlistRailActionItemId = nil }
+
+        let draft = QuickAddDraft(
+            title: item.displayTitle,
+            type: item.type,
+            releaseYear: item.releaseYear,
+            quickSentiment: nil,
+            watchedDateApprox: .unknown,
+            externalMetadata: item.externalMetadata
+        )
+
+        do {
+            let entry = try entryRepository.createQuickAddEntry(
+                ownerId: user.id,
+                draft: draft,
+                visibility: .privateOnly,
+                modelContext: modelContext
+            )
+
+            _ = try watchlistRepository.markLocalWatchlistItemWatched(
+                itemId: item.id,
+                modelContext: modelContext
+            )
+
+            actionBannerStyle = .success
+            actionMessage = "\(entry.displayTitle) moved to Personal."
+        } catch {
+            actionBannerStyle = .warning
+            actionMessage = error.localizedDescription
+        }
+    }
+
+    private func dismissWatchlistItem(
+        _ item: WatchlistItem
+    ) async {
+        guard activeWatchlistRailActionItemId == nil else {
+            return
+        }
+
+        activeWatchlistRailActionItemId = item.id
+        defer { activeWatchlistRailActionItemId = nil }
+
+        do {
+            _ = try watchlistRepository.softDeleteLocalWatchlistItem(
+                itemId: item.id,
+                modelContext: modelContext
+            )
+
+            actionBannerStyle = .success
+            actionMessage = "\(item.displayTitle) was removed from Want to Watch."
         } catch {
             actionBannerStyle = .warning
             actionMessage = error.localizedDescription

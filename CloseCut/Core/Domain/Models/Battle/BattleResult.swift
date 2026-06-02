@@ -60,11 +60,49 @@ struct BattleResult: Identifiable, Codable, Equatable {
     var mode: BattleMode
     var title: String
 
+    // Legacy / Personal-backed result support.
     var optionEntryIds: [String]
-    var optionTitles: [String]
-
     var winnerEntryId: String
+
+    // Battle v2 candidate-backed result support.
+    var optionCandidateIds: [String]
+    var optionTitles: [String]
+    var optionSources: [String]
+
+    var winnerCandidateId: String
     var winnerTitle: String
+    var winnerSourceRaw: String
 
     var createdAt: Date
+
+    var winnerSource: BattleCandidateSource? {
+        BattleCandidateSource(rawValue: winnerSourceRaw)
+    }
+
+    var isArchiveBacked: Bool {
+        winnerEntryId.trimmed.isEmpty == false &&
+        optionEntryIds.count >= 2
+    }
+
+    var hasExternalWinner: Bool {
+        guard let winnerSource else {
+            return false
+        }
+
+        return winnerSource != .archive
+    }
+
+    var hasExternalCandidates: Bool {
+        optionSources.contains { sourceRaw in
+            sourceRaw != BattleCandidateSource.archive.rawValue
+        }
+    }
+
+    var sourceSummaryText: String {
+        if hasExternalCandidates {
+            return "Mixed sources"
+        }
+
+        return "Personal-backed"
+    }
 }
