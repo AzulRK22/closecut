@@ -12,25 +12,29 @@ enum CloseCutShareTextBuilder {
     // MARK: - App
 
     static func appInvite(
-        displayName: String?
+        displayName: String
     ) -> CloseCutShareItem {
-        let cleanedName = displayName?.trimmed.nilIfBlank
+        let cleanedName = displayName.trimmed
+        let senderName = cleanedName.isEmpty ? "Someone" : cleanedName
 
-        let title: String
+        let title = "\(senderName) invited you to try CloseCut"
+        let subtitle = "A private movie and series journal."
 
-        if let cleanedName {
-            title = "\(cleanedName) invited you to try CloseCut"
-        } else {
-            title = "Try CloseCut"
-        }
+        let body = """
+        I’m using CloseCut to keep track of what I watch, save titles for later, and decide what to watch next.
+
+        It’s private by default, and you only share what you choose.
+        """
+
+        let callToAction = "Try it when you want to stop forgetting good movies."
 
         return CloseCutShareItem(
             kind: .app,
             title: title,
-            subtitle: "A private movie and series journal.",
-            body: "CloseCut helps you keep a personal watch history, save titles for later, decide what to watch next, and share selected memories with people you trust.",
-            footer: "CloseCut — private by default.",
-            callToAction: "Save your taste history. Decide faster. Share only when you choose."
+            subtitle: subtitle,
+            body: body,
+            footer: "CloseCut",
+            callToAction: callToAction
         )
     }
 

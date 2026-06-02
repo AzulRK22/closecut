@@ -296,6 +296,8 @@ struct SettingsView: View {
                         privacySection
 
                         watchlistSection
+                        
+                        shareSection
 
                         localDataSection
 
@@ -698,6 +700,22 @@ struct SettingsView: View {
                     .foregroundStyle(CloseCutColors.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+    // MARK: - Share Section
+
+    private var shareSection: some View {
+        SettingsSectionCard(
+            title: "Share CloseCut",
+            subtitle: "Invite someone who would actually use a private movie and series journal."
+        ) {
+            CloseCutShareActionCard(
+                item: CloseCutShareTextBuilder.appInvite(
+                    displayName: effectiveDisplayName
+                ),
+                buttonTitle: "Share CloseCut",
+                note: "This only opens the system share sheet. Nothing from your Personal archive, Watchlist, or Circles is shared."
+            )
         }
     }
 
