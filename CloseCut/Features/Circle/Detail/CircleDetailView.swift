@@ -54,6 +54,7 @@ struct CircleDetailView: View {
 
     @State private var selectedSegment: CircleDetailSegment = .timeline
     @State private var copiedInviteCode = false
+    @State private var showShareInviteSheet = false
 
     @State private var isRefreshing = false
     @State private var isPullingSharedEntries = false
@@ -95,7 +96,10 @@ struct CircleDetailView: View {
     private var displayedCircleId: String {
         displayedCircle.id.trimmingCharacters(in: .whitespacesAndNewlines)
     }
-
+    private var canShareInvite: Bool {
+        canUseCircle &&
+        displayedCircle.cleanedInviteCodeNormalized.isEmpty == false
+    }
     private var canUseCircle: Bool {
         displayedCircleId.isEmpty == false &&
         membership.isActive &&
@@ -281,6 +285,15 @@ struct CircleDetailView: View {
                 }
             )
         }
+        .sheet(isPresented: $showShareInviteSheet) {
+            CircleInviteShareSheet(
+                circle: displayedCircle,
+                ownerDisplayName: currentUserDisplayName,
+                onDone: {
+                    showShareInviteSheet = false
+                }
+            )
+        }
         .confirmationDialog(
             "Delete Circle?",
             isPresented: $showDeleteConfirmation,
@@ -311,8 +324,18 @@ struct CircleDetailView: View {
 
     @ViewBuilder
     private var actionsMenu: some View {
-        if canShowOwnerActions || canShowMemberActions {
+        if canUseCircle {
             Menu {
+                if canShareInvite {
+                    Button {
+                        showShareInviteSheet = true
+                    } label: {
+                        Label("Share Invite", systemImage: "square.and.arrow.up")
+                    }
+
+                    Divider()
+                }
+
                 if canShowOwnerActions {
                     Button {
                         showEditCircleSheet = true
@@ -470,48 +493,77 @@ struct CircleDetailView: View {
     }
 
     private var inviteCodeBlock: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "ticket.fill")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(CloseCutColors.accentLight)
-                .frame(width: 30, height: 30)
-                .background(CloseCutColors.input)
-                .clipShape(SwiftUI.Circle())
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: "ticket.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.accentLight)
+                    .frame(width: 30, height: 30)
+                    .background(CloseCutColors.input)
+                    .clipShape(SwiftUI.Circle())
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Invite code")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textTertiary)
-                    .textCase(.uppercase)
-                    .tracking(0.8)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Invite code")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .textCase(.uppercase)
+                        .tracking(0.8)
 
-                Text(displayedCircle.inviteCode)
-                    .font(.subheadline.monospaced().weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textPrimary)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            Button {
-                copyInviteCode()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: copiedInviteCode ? "checkmark" : "doc.on.doc")
-                        .font(.caption.weight(.semibold))
-
-                    Text(copiedInviteCode ? "Copied" : "Copy")
-                        .font(.caption.weight(.semibold))
+                    Text(displayedCircle.inviteCode)
+                        .font(.subheadline.monospaced().weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
                 }
-                .foregroundStyle(CloseCutColors.accentLight)
-                .padding(.horizontal, 10)
-                .frame(height: 34)
-                .background(CloseCutColors.card)
-                .clipShape(Capsule())
+
+                Spacer()
+
+                Button {
+                    copyInviteCode()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: copiedInviteCode ? "checkmark" : "doc.on.doc")
+                            .font(.caption.weight(.semibold))
+
+                        Text(copiedInviteCode ? "Copied" : "Copy")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .foregroundStyle(CloseCutColors.accentLight)
+                    .padding(.horizontal, 10)
+                    .frame(height: 34)
+                    .background(CloseCutColors.card)
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(displayedCircle.inviteCode.trimmed.isEmpty)
+                .accessibilityLabel("Copy invite code")
             }
-            .buttonStyle(.plain)
-            .disabled(displayedCircle.inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .accessibilityLabel("Copy invite code")
+
+            if canShareInvite {
+                Button {
+                    showShareInviteSheet = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.caption.weight(.semibold))
+
+                        Text("Share invite")
+                            .font(.caption.weight(.semibold))
+
+                        Spacer(minLength: 0)
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.bold))
+                    }
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 40)
+                    .background(CloseCutColors.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(12)
         .background(CloseCutColors.input.opacity(0.76))
