@@ -98,15 +98,15 @@ struct BattleView: View {
     }
 
     private var readinessTitle: String {
-        canUseArchiveModes ? "Ready to play" : "Battle is open"
+        canUseArchiveModes ? "Game lobby ready" : "Game lobby open"
     }
 
     private var readinessMessage: String {
         if canUseArchiveModes {
-            return "Your archive can power duels, and every mode can also use TMDB or manual ideas."
+            return "Your Personal archive can power smarter battles. Want to Watch, TMDB, and manual ideas can join the arena too."
         }
 
-        return "Use Pick for Tonight, Friend Battle, or Circle Battle with TMDB/manual options. Add two archive entries to unlock archive-only history saving."
+        return "Battle can still run with Want to Watch, TMDB, and manual options. Add more Personal entries later for stronger taste signals."
     }
 
     var body: some View {
@@ -127,6 +127,18 @@ struct BattleView: View {
 
                     gameModesSection
 
+                    if selectedCandidates.isEmpty == false || pickedCandidate != nil {
+                        BattleArenaCard(
+                            candidates: selectedCandidates,
+                            winner: pickedCandidate,
+                            onEdit: {
+                                showPickTonightSheet = true
+                            },
+                            onPickAgain: pickRandomCandidate,
+                            onClear: clearBattleSelection
+                        )
+                    }
+
                     if let pickedCandidate {
                         BattlePickResultCard(
                             winner: pickedCandidate,
@@ -134,10 +146,6 @@ struct BattleView: View {
                             onPickAgain: pickRandomCandidate,
                             onClear: clearBattleSelection
                         )
-                    }
-
-                    if selectedCandidates.isEmpty == false {
-                        currentShortlistSection
                     }
 
                     if recentBattleResults.isEmpty == false {
@@ -254,12 +262,12 @@ struct BattleView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("Make choosing feel like a game.")
+                    Text("Enter the Battle lobby.")
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("Use your archive, search TMDB, add quick ideas, or make it social. CloseCut helps you stop scrolling and actually pick something.")
+                    Text("Build an arena from Personal, Want to Watch, TMDB, or manual wildcards. Then let CloseCut crown tonight’s winner.")
                         .font(.subheadline)
                         .foregroundStyle(CloseCutColors.textSecondary)
                         .lineSpacing(3)
@@ -293,9 +301,9 @@ struct BattleView: View {
                 )
 
                 battleStatPill(
-                    value: "\(recentBattleResults.count)",
-                    label: "results",
-                    icon: "trophy.fill"
+                    value: "\(selectedCandidates.count)",
+                    label: "arena",
+                    icon: "gamecontroller.fill"
                 )
             }
 
@@ -381,8 +389,8 @@ struct BattleView: View {
 
     private var gameModesSection: some View {
         BattleSectionCard(
-            title: "Game modes",
-            subtitle: "Each mode solves a different kind of watch decision."
+            title: "Choose your Battle mode",
+            subtitle: "Different ways to turn indecision into a game."
         ) {
             VStack(spacing: 14) {
                 BattleModeCard(
@@ -572,7 +580,7 @@ struct BattleView: View {
                 .foregroundStyle(CloseCutColors.textTertiary)
                 .padding(.top, 2)
 
-            Text("Battle is private by default. TMDB and manual options help with decision-making, but nothing is added to your Timeline unless you explicitly log it later.")
+            Text("Battle is private by default. External contenders help you decide, but nothing is added to Personal or shared with Circles unless you explicitly choose that later.")
                 .font(.caption)
                 .foregroundStyle(CloseCutColors.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
