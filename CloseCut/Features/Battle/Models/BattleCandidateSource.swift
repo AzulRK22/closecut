@@ -18,7 +18,7 @@ enum BattleCandidateSource: String, Codable, Equatable {
         case .archive:
             return "From Personal"
         case .watchlist:
-            return "Want to Watch"
+            return "From Want to Watch"
         case .tmdb:
             return "TMDB"
         case .manual:

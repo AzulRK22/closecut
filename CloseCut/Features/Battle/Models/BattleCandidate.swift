@@ -144,7 +144,7 @@ struct BattleCandidate: Identifiable, Equatable, Hashable {
         case .archive:
             return "From your Personal Timeline."
         case .watchlist:
-            return "Saved in Want to Watch for a future night."
+            return "Saved in Want to Watch and ready for the right moment."
         case .tmdb:
             return "Added from TMDB for this decision."
         case .manual:

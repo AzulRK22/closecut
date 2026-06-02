@@ -52,6 +52,7 @@ enum BattleCandidateMapper {
             id: "watchlist-\(item.id)",
             source: .watchlist,
             title: item.displayTitle,
+            normalizedTitle: item.displayTitle.normalizedTitleKey,
             type: item.type,
             releaseYear: item.releaseYear,
             sourceEntryId: nil,

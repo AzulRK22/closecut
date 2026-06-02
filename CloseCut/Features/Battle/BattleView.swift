@@ -22,15 +22,18 @@ struct BattleView: View {
     @State private var selectedCandidates: [BattleCandidate] = []
     @State private var pickedCandidate: BattleCandidate?
 
-    @State private var battleErrorMessage: String?
+    @State private var battleMessage: String?
+    @State private var battleBannerStyle: SyncResultBannerStyle = .neutral
+
     @State private var showClearResultsConfirmation = false
     @State private var isClearingResults = false
+    @State private var isProcessingWinnerAction = false
 
     @State private var noRepeatPolicy = BattleNoRepeatPolicy()
 
     @Query(sort: \LocalEntry.watchedAt, order: .reverse)
     private var localEntries: [LocalEntry]
-    
+
     @Query(sort: \LocalWatchlistItem.updatedAt, order: .reverse)
     private var localWatchlistItems: [LocalWatchlistItem]
 
@@ -38,6 +41,8 @@ struct BattleView: View {
     private var localBattleResults: [LocalBattleResult]
 
     private let battleResultRepository = BattleResultRepository()
+    private let entryRepository = EntryRepository()
+    private let watchlistRepository = WatchlistRepository()
 
     private var entries: [Entry] {
         localEntries
@@ -49,12 +54,15 @@ struct BattleView: View {
     private var eligibleEntries: [Entry] {
         entries
             .filter { entry in
-                entry.displayTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                entry.displayTitle
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .isEmpty == false
             }
             .sorted { first, second in
                 first.watchedAt > second.watchedAt
             }
     }
+
     private var savedWatchlistItems: [WatchlistItem] {
         localWatchlistItems
             .filter { $0.ownerId == user.id }
@@ -66,10 +74,6 @@ struct BattleView: View {
             .sorted { first, second in
                 first.updatedAt > second.updatedAt
             }
-    }
-
-    private var watchlistCandidates: [BattleCandidate] {
-        BattleCandidateMapper.candidates(from: savedWatchlistItems)
     }
 
     private var canUseArchiveModes: Bool {
@@ -103,7 +107,7 @@ struct BattleView: View {
 
     private var readinessMessage: String {
         if canUseArchiveModes {
-            return "Your Personal archive can power smarter battles. Want to Watch, TMDB, and manual ideas can join the arena too."
+            return "Your Personal archive can power smarter Battles. Want to Watch, TMDB, and manual wildcards can join the arena too."
         }
 
         return "Battle can still run with Want to Watch, TMDB, and manual options. Add more Personal entries later for stronger taste signals."
@@ -118,10 +122,10 @@ struct BattleView: View {
                 LazyVStack(alignment: .leading, spacing: 18) {
                     heroSection
 
-                    if let battleErrorMessage {
+                    if let battleMessage {
                         SyncResultBanner(
-                            message: battleErrorMessage,
-                            style: .warning
+                            message: battleMessage,
+                            style: battleBannerStyle
                         )
                     }
 
@@ -145,6 +149,23 @@ struct BattleView: View {
                             optionCount: selectedCandidates.count,
                             onPickAgain: pickRandomCandidate,
                             onClear: clearBattleSelection
+                        )
+
+                        BattleWinnerActionCard(
+                            winner: pickedCandidate,
+                            canAddToPersonal: pickedCandidate.canBeSavedToTimeline,
+                            canSaveToWatchlist: pickedCandidate.source == .tmdb || pickedCandidate.source == .manual,
+                            isProcessing: isProcessingWinnerAction,
+                            onAddToPersonal: {
+                                Task {
+                                    await addWinnerToPersonal(pickedCandidate)
+                                }
+                            },
+                            onSaveToWatchlist: {
+                                Task {
+                                    await saveWinnerToWatchlist(pickedCandidate)
+                                }
+                            }
                         )
                     }
 
@@ -174,7 +195,7 @@ struct BattleView: View {
                 onConfirm: { candidates in
                     selectedCandidates = BattleCandidateMapper.dedupe(candidates)
                     pickedCandidate = nil
-                    battleErrorMessage = nil
+                    battleMessage = nil
                     showPickTonightSheet = false
 
                     if selectedCandidates.count >= 2 {
@@ -192,9 +213,7 @@ struct BattleView: View {
                     showHeadToHeadBattle = false
                 },
                 onWinnerSelected: { winner, options in
-                    pickedCandidate = winner
-                    selectedCandidates = BattleCandidateMapper.dedupe(options)
-                    saveCandidateBattleResultIfPossible(
+                    handleWinnerSelected(
                         winner: winner,
                         options: options,
                         mode: .headToHead
@@ -211,9 +230,7 @@ struct BattleView: View {
                     showFriendBattle = false
                 },
                 onWinnerSelected: { winner, options in
-                    pickedCandidate = winner
-                    selectedCandidates = BattleCandidateMapper.dedupe(options)
-                    saveCandidateBattleResultIfPossible(
+                    handleWinnerSelected(
                         winner: winner,
                         options: options,
                         mode: .friend
@@ -230,9 +247,7 @@ struct BattleView: View {
                     showCircleBattle = false
                 },
                 onWinnerSelected: { winner, options in
-                    pickedCandidate = winner
-                    selectedCandidates = BattleCandidateMapper.dedupe(options)
-                    saveCandidateBattleResultIfPossible(
+                    handleWinnerSelected(
                         winner: winner,
                         options: options,
                         mode: .circle
@@ -290,7 +305,7 @@ struct BattleView: View {
             HStack(spacing: 10) {
                 battleStatPill(
                     value: "\(eligibleEntries.count)",
-                    label: "archive",
+                    label: "personal",
                     icon: "film.stack"
                 )
 
@@ -441,55 +456,6 @@ struct BattleView: View {
         }
     }
 
-    // MARK: - Shortlist
-
-    private var currentShortlistSection: some View {
-        BattleSectionCard(
-            title: "Current shortlist",
-            subtitle: "\(selectedCandidates.count) options selected"
-        ) {
-            VStack(spacing: 10) {
-                ForEach(selectedCandidates) { candidate in
-                    BattleCandidateRow(
-                        candidate: candidate,
-                        isSelected: candidate.id == pickedCandidate?.id,
-                        trailingStyle: .none
-                    ) {}
-                }
-
-                HStack(spacing: 10) {
-                    Button {
-                        showPickTonightSheet = true
-                    } label: {
-                        Text("Edit shortlist")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(CloseCutColors.textSecondary)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 40)
-                            .background(CloseCutColors.input)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        pickRandomCandidate()
-                    } label: {
-                        Label("Pick again", systemImage: "shuffle")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(canPickTonight ? .white : CloseCutColors.textTertiary)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 40)
-                            .background(canPickTonight ? CloseCutColors.accent : CloseCutColors.input)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(canPickTonight == false)
-                }
-                .padding(.top, 2)
-            }
-        }
-    }
-
     // MARK: - Recent Results
 
     private var recentResultsSection: some View {
@@ -500,7 +466,7 @@ struct BattleView: View {
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
 
-                    Text("Saved local Battle decisions from archive-backed results.")
+                    Text("Saved local Battle decisions from Personal-backed results.")
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textSecondary)
                 }
@@ -631,7 +597,23 @@ struct BattleView: View {
         }
     }
 
-    // MARK: - Actions
+    // MARK: - Winner Handling
+
+    private func handleWinnerSelected(
+        winner: BattleCandidate,
+        options: [BattleCandidate],
+        mode: BattleMode
+    ) {
+        pickedCandidate = winner
+        selectedCandidates = BattleCandidateMapper.dedupe(options)
+        battleMessage = nil
+
+        saveCandidateBattleResultIfPossible(
+            winner: winner,
+            options: options,
+            mode: mode
+        )
+    }
 
     private func pickRandomCandidate() {
         guard selectedCandidates.count >= 2 else {
@@ -650,7 +632,7 @@ struct BattleView: View {
         }
 
         pickedCandidate = picked
-        battleErrorMessage = nil
+        battleMessage = nil
 
         saveCandidateBattleResultIfPossible(
             winner: picked,
@@ -719,7 +701,8 @@ struct BattleView: View {
             print("ℹ️ Skipped duplicate Battle result.")
             #endif
         } catch {
-            battleErrorMessage = "Couldn’t save Battle result."
+            battleBannerStyle = .warning
+            battleMessage = "Couldn’t save Battle result."
 
             #if DEBUG
             print("❌ Failed to save Battle result:", error.localizedDescription)
@@ -727,13 +710,165 @@ struct BattleView: View {
         }
     }
 
+    // MARK: - Winner Actions
+
+    private func addWinnerToPersonal(
+        _ winner: BattleCandidate
+    ) async {
+        guard isProcessingWinnerAction == false else {
+            return
+        }
+
+        guard winner.canBeSavedToTimeline else {
+            battleBannerStyle = .neutral
+            battleMessage = "This winner is already in Personal."
+            return
+        }
+
+        isProcessingWinnerAction = true
+        defer { isProcessingWinnerAction = false }
+
+        let draft = QuickAddDraft(
+            title: winner.displayTitle,
+            type: winner.type,
+            releaseYear: winner.releaseYear,
+            quickSentiment: nil,
+            watchedDateApprox: .unknown,
+            externalMetadata: externalMetadata(from: winner)
+        )
+
+        do {
+            let entry = try entryRepository.createQuickAddEntry(
+                ownerId: user.id,
+                draft: draft,
+                visibility: .privateOnly,
+                modelContext: modelContext
+            )
+
+            if winner.source == .watchlist {
+                markMatchingWatchlistItemWatched(for: winner)
+            }
+
+            battleBannerStyle = .success
+            battleMessage = "\(entry.displayTitle) was added to Personal."
+        } catch {
+            battleBannerStyle = .warning
+            battleMessage = error.localizedDescription
+        }
+    }
+
+    private func saveWinnerToWatchlist(
+        _ winner: BattleCandidate
+    ) async {
+        guard isProcessingWinnerAction == false else {
+            return
+        }
+
+        guard winner.source == .tmdb || winner.source == .manual else {
+            battleBannerStyle = .neutral
+            battleMessage = "Only TMDB or manual Battle winners can be saved to Want to Watch."
+            return
+        }
+
+        isProcessingWinnerAction = true
+        defer { isProcessingWinnerAction = false }
+
+        do {
+            let item = try watchlistRepository.createLocalWatchlistItem(
+                ownerId: user.id,
+                media: tmdbLikeResult(from: winner),
+                source: .battle,
+                modelContext: modelContext
+            )
+
+            battleBannerStyle = .success
+            battleMessage = "\(item.displayTitle) was saved to Want to Watch."
+        } catch {
+            battleBannerStyle = .warning
+            battleMessage = error.localizedDescription
+        }
+    }
+
+    private func markMatchingWatchlistItemWatched(
+        for winner: BattleCandidate
+    ) {
+        guard winner.source == .watchlist else {
+            return
+        }
+
+        guard let matchingItem = savedWatchlistItems.first(where: {
+            $0.displayTitle.normalizedTitleKey == winner.displayTitle.normalizedTitleKey &&
+            $0.type == winner.type
+        }) else {
+            return
+        }
+
+        do {
+            _ = try watchlistRepository.markLocalWatchlistItemWatched(
+                itemId: matchingItem.id,
+                modelContext: modelContext
+            )
+        } catch {
+            #if DEBUG
+            print("⚠️ Could not mark watchlist item watched from Battle:", error.localizedDescription)
+            #endif
+        }
+    }
+
+    private func externalMetadata(
+        from candidate: BattleCandidate
+    ) -> EntryExternalMetadata? {
+        guard candidate.tmdbId != nil,
+              candidate.tmdbMediaTypeRaw != nil else {
+            return nil
+        }
+
+        return EntryExternalMetadata(
+            tmdbResult: tmdbLikeResult(from: candidate)
+        )
+    }
+
+    private func tmdbLikeResult(
+        from candidate: BattleCandidate
+    ) -> TMDBMediaSearchResult {
+        let resolvedTMDBId = candidate.tmdbId ?? abs(candidate.id.hashValue)
+        let resolvedMediaType = resolvedMediaType(from: candidate)
+
+        return TMDBMediaSearchResult(
+            id: "battle-\(resolvedMediaType.rawValue)-\(resolvedTMDBId)",
+            tmdbId: resolvedTMDBId,
+            mediaType: resolvedMediaType,
+            title: candidate.displayTitle,
+            releaseYear: candidate.releaseYear,
+            overview: candidate.overview,
+            posterPath: candidate.posterPath,
+            backdropPath: candidate.backdropPath,
+            voteAverage: candidate.tmdbRating,
+            popularity: candidate.tmdbPopularity,
+            genreIds: candidate.tmdbGenreIds
+        )
+    }
+
+    private func resolvedMediaType(
+        from candidate: BattleCandidate
+    ) -> TMDBMediaType {
+        if let raw = candidate.tmdbMediaTypeRaw,
+           let mediaType = TMDBMediaType(rawValue: raw) {
+            return mediaType
+        }
+
+        return candidate.type == .series ? .tv : .movie
+    }
+
+    // MARK: - Clear
+
     private func clearRecentResults() {
         guard isClearingResults == false else {
             return
         }
 
         isClearingResults = true
-        battleErrorMessage = nil
+        battleMessage = nil
 
         do {
             let deletedCount = try battleResultRepository.deleteAllResults(
@@ -749,7 +884,8 @@ struct BattleView: View {
             #endif
         } catch {
             isClearingResults = false
-            battleErrorMessage = "Couldn’t clear Battle results."
+            battleBannerStyle = .warning
+            battleMessage = "Couldn’t clear Battle results."
 
             #if DEBUG
             print("❌ Failed to clear Battle results:", error.localizedDescription)
@@ -760,6 +896,7 @@ struct BattleView: View {
     private func clearBattleSelection() {
         pickedCandidate = nil
         selectedCandidates = []
+        battleMessage = nil
         noRepeatPolicy.reset()
     }
 }
