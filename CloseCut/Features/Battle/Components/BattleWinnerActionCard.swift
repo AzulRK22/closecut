@@ -15,8 +15,15 @@ struct BattleWinnerActionCard: View {
     let onAddToPersonal: () -> Void
     let onSaveToWatchlist: () -> Void
 
-    private var shareText: String {
-        "CloseCut Battle picked: \(winner.displayTitle) — \(winner.metadataText)"
+    @State private var sharePayload: CloseCutSharePayload?
+
+    private var shareItem: CloseCutShareItem {
+        CloseCutShareTextBuilder.battleWinner(
+            winnerTitle: winner.displayTitle,
+            metadataText: winner.metadataText,
+            optionCount: 2,
+            sourceText: winner.sourceLabelText
+        )
     }
 
     var body: some View {
@@ -53,21 +60,77 @@ struct BattleWinnerActionCard: View {
                     .disabled(isProcessing)
                 }
 
-                ShareLink(item: shareText) {
-                    secondaryActionLabel(
-                        icon: "square.and.arrow.up",
-                        title: "Share winner"
-                    )
-                }
-                .buttonStyle(.plain)
+                shareSection
 
                 Text("Sharing uses the system share sheet. Nothing is posted automatically to Circles yet.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .task(id: winner.id) {
+                await prepareSharePayload()
+            }
         }
     }
+
+    // MARK: - Share
+
+    @ViewBuilder
+    private var shareSection: some View {
+        if let sharePayload,
+           let previewImage = sharePayload.previewImage {
+            ShareLink(
+                item: sharePayload,
+                preview: SharePreview(
+                    shareItem.title,
+                    image: Image(uiImage: previewImage)
+                )
+            ) {
+                secondaryActionLabel(
+                    icon: "photo.on.rectangle.angled",
+                    title: "Share winner card"
+                )
+            }
+            .buttonStyle(.plain)
+        } else {
+            Button {
+                Task {
+                    await prepareSharePayload()
+                }
+            } label: {
+                secondaryActionLabel(
+                    icon: "photo.on.rectangle.angled",
+                    title: "Prepare share card"
+                )
+            }
+            .buttonStyle(.plain)
+        }
+
+        ShareLink(item: shareItem.shareText) {
+            secondaryActionLabel(
+                icon: "text.quote",
+                title: "Share as text"
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    @MainActor
+    private func prepareSharePayload() async {
+        guard let imageData = CloseCutShareImageRenderer.renderShareCardPNGData(
+            item: shareItem
+        ) else {
+            sharePayload = nil
+            return
+        }
+
+        sharePayload = CloseCutSharePayload(
+            imageData: imageData,
+            fallbackText: shareItem.shareText
+        )
+    }
+
+    // MARK: - Summary
 
     private var actionSummary: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -109,6 +172,8 @@ struct BattleWinnerActionCard: View {
             return "This winner was added manually for Battle. You can turn it into a real memory."
         }
     }
+
+    // MARK: - Button Labels
 
     private func primaryActionLabel(
         icon: String,
