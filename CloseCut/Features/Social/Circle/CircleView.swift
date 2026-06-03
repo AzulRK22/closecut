@@ -23,6 +23,9 @@ struct CircleView: View {
     @Query(sort: \LocalEntry.watchedAt, order: .reverse)
     private var localEntries: [LocalEntry]
 
+    @Query(sort: \LocalWatchPlan.updatedAt, order: .reverse)
+    private var localWatchPlans: [LocalWatchPlan]
+
     @State private var showCircleActions = false
     @State private var showCreateCircleSheet = false
     @State private var showJoinCircleSheet = false
@@ -39,6 +42,11 @@ struct CircleView: View {
 
     @State private var circleErrorMessage: String?
     @State private var circleInlineMessage: String?
+
+    @State private var selectedWatchTogetherCircleId: String?
+    @State private var selectedWatchPlanForDetail: WatchPlan?
+    @State private var showCreateWatchPlanSheet = false
+    @State private var showWatchPlanPlaceholder = false
 
     private let circleService = CircleService()
     private let circleRepository = CircleRepository()
@@ -97,6 +105,20 @@ struct CircleView: View {
         activeSharedEntries.count
     }
 
+    private var watchTogetherPlans: [WatchPlan] {
+        let activeCircleIds = Set(circleRows.map { $0.circle.id })
+
+        return localWatchPlans
+            .map { $0.domain }
+            .filter { plan in
+                activeCircleIds.contains(plan.circleId) &&
+                plan.deletedAt == nil
+            }
+            .sorted { first, second in
+                first.updatedAt > second.updatedAt
+            }
+    }
+
     private func sharedMemoryCount(
         for circleId: String
     ) -> Int {
@@ -134,6 +156,16 @@ struct CircleView: View {
 
                         statusSection
 
+                        WatchTogetherHubSection(
+                            circleRows: circleRows,
+                            plans: watchTogetherPlans,
+                            currentUserId: user.id,
+                            selectedCircleId: $selectedWatchTogetherCircleId,
+                            onCreatePlan: openCreateWatchPlan,
+                            onCreateCircle: openCreateCircle,
+                            onOpenPlan: openWatchPlan
+                        )
+
                         if circleRows.isEmpty {
                             CircleEmptyStateView(
                                 onCreateCircle: openCreateCircle,
@@ -166,7 +198,7 @@ struct CircleView: View {
                     await loadCircles(force: true)
                 }
             }
-            .navigationTitle("Circle")
+            .navigationTitle("Social")
             .navigationBarTitleDisplayMode(.inline)
             .preferredColorScheme(.dark)
             .toolbar {
@@ -178,19 +210,27 @@ struct CircleView: View {
                             .font(.system(size: 17, weight: .semibold))
                             .frame(width: 44, height: 44)
                     }
-                    .accessibilityLabel("Add Circle")
+                    .accessibilityLabel("Add")
                 }
             }
             .sheet(isPresented: $showCircleActions) {
-                CircleActionSheet(
-                    onCreate: {
+                SocialActionSheet(
+                    hasCircles: circleRows.isEmpty == false,
+                    onCreateWatchPlan: {
+                        showCircleActions = false
+
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                            openCreateWatchPlan()
+                        }
+                    },
+                    onCreateCircle: {
                         showCircleActions = false
 
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
                             openCreateCircle()
                         }
                     },
-                    onJoin: {
+                    onJoinCircle: {
                         showCircleActions = false
 
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
@@ -245,6 +285,11 @@ struct CircleView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(circleErrorMessage ?? "Unknown error.")
+            }
+            .alert("Watch Together", isPresented: $showWatchPlanPlaceholder) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("The Watch Together create and detail screens are coming in the next block.")
             }
             .task {
                 await loadCirclesIfNeeded()
@@ -332,6 +377,23 @@ struct CircleView: View {
         circleErrorMessage = nil
         circleInlineMessage = nil
         showJoinCircleSheet = true
+    }
+
+    private func openCreateWatchPlan() {
+        guard circleRows.isEmpty == false else {
+            openCreateCircle()
+            return
+        }
+
+        showCreateWatchPlanSheet = true
+        showWatchPlanPlaceholder = true
+    }
+
+    private func openWatchPlan(
+        _ plan: WatchPlan
+    ) {
+        selectedWatchPlanForDetail = plan
+        showWatchPlanPlaceholder = true
     }
 
     // MARK: - Circle Actions
@@ -611,6 +673,9 @@ struct CircleView: View {
         LocalUserProfile.self,
         LocalUserState.self,
         PendingAction.self,
-        LocalBattleResult.self
+        LocalBattleResult.self,
+        LocalWatchlistItem.self,
+        LocalWatchPlan.self,
+        LocalWatchPlanResponse.self
     ], inMemory: true)
 }
