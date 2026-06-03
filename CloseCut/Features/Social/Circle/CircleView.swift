@@ -46,11 +46,13 @@ struct CircleView: View {
     @State private var selectedWatchTogetherCircleId: String?
     @State private var selectedWatchPlanIdForDetail: String?
     @State private var showCreateWatchPlanSheet = false
-    @State private var showWatchPlanPlaceholder = false
+    @State private var isCreatingWatchPlan = false
+    @State private var watchPlanErrorMessage: String?
 
     private let circleService = CircleService()
     private let circleRepository = CircleRepository()
     private let circleRemoteDataSource = CircleRemoteDataSource()
+    private let watchPlanRepository = WatchPlanRepository()
 
     private var memberships: [CircleMembership] {
         localMemberships
@@ -118,7 +120,7 @@ struct CircleView: View {
                 first.updatedAt > second.updatedAt
             }
     }
-    
+
     private var selectedWatchPlanForDetail: WatchPlan? {
         guard let selectedWatchPlanIdForDetail else {
             return nil
@@ -288,6 +290,21 @@ struct CircleView: View {
                     }
                 )
             }
+            .sheet(isPresented: $showCreateWatchPlanSheet) {
+                CreateWatchPlanSheet(
+                    circleRows: circleRows,
+                    selectedCircleId: selectedWatchTogetherCircleId,
+                    isCreating: isCreatingWatchPlan,
+                    onCancel: {
+                        showCreateWatchPlanSheet = false
+                    },
+                    onCreate: { draft in
+                        Task {
+                            await createWatchPlan(draft)
+                        }
+                    }
+                )
+            }
             .alert("Circle action failed", isPresented: Binding(
                 get: { circleErrorMessage != nil },
                 set: { if !$0 { circleErrorMessage = nil } }
@@ -296,10 +313,13 @@ struct CircleView: View {
             } message: {
                 Text(circleErrorMessage ?? "Unknown error.")
             }
-            .alert("Watch Together", isPresented: $showWatchPlanPlaceholder) {
+            .alert("Watch Together failed", isPresented: Binding(
+                get: { watchPlanErrorMessage != nil },
+                set: { if !$0 { watchPlanErrorMessage = nil } }
+            )) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text("The Watch Together create screen is coming in the next block.")
+                Text(watchPlanErrorMessage ?? "Unknown error.")
             }
             .navigationDestination(item: $selectedWatchPlanIdForDetail) { _ in
                 if let plan = selectedWatchPlanForDetail {
@@ -413,14 +433,90 @@ struct CircleView: View {
             return
         }
 
+        watchPlanErrorMessage = nil
         showCreateWatchPlanSheet = true
-        showWatchPlanPlaceholder = true
     }
 
     private func openWatchPlan(
         _ plan: WatchPlan
     ) {
         selectedWatchPlanIdForDetail = plan.id
+    }
+
+    // MARK: - Watch Together Actions
+
+    private func createWatchPlan(
+        _ draft: WatchPlanCreationDraft
+    ) async {
+        guard isCreatingWatchPlan == false else {
+            return
+        }
+
+        guard let selectedRow = circleRows.first(where: { row in
+            row.circle.id == draft.circleId
+        }) else {
+            watchPlanErrorMessage = "Choose a valid Circle before creating this plan."
+            return
+        }
+
+        let cleanedMediaTitle = draft.mediaTitle.trimmed
+
+        guard cleanedMediaTitle.isEmpty == false else {
+            watchPlanErrorMessage = "Choose a movie or series before creating the plan."
+            return
+        }
+
+        isCreatingWatchPlan = true
+        watchPlanErrorMessage = nil
+
+        defer {
+            isCreatingWatchPlan = false
+        }
+
+        do {
+            let media = WatchPlanMediaSnapshot(
+                title: cleanedMediaTitle,
+                type: draft.type,
+                source: .manual
+            )
+
+            let invitedMemberIds = selectedRow.circle.memberIds.filter { memberId in
+                memberId.trimmed != user.id.trimmed
+            }
+
+            let createdPlan = try watchPlanRepository.createLocalPlan(
+                ownerId: user.id,
+                ownerDisplayName: profile.displayName,
+                circleId: selectedRow.circle.id,
+                circleName: selectedRow.circle.displayName,
+                title: draft.planTitle,
+                note: draft.note,
+                media: media,
+                proposedStartAt: nil,
+                proposedEndAt: nil,
+                proposedDateText: draft.proposedDateText,
+                locationType: draft.locationType,
+                locationName: draft.locationName,
+                locationAddress: nil,
+                streamingService: draft.streamingService,
+                invitedMemberIds: invitedMemberIds,
+                source: .circle,
+                modelContext: modelContext
+            )
+
+            selectedWatchTogetherCircleId = selectedRow.circle.id
+            showCreateWatchPlanSheet = false
+
+            try? await Task.sleep(nanoseconds: 250_000_000)
+
+            selectedWatchPlanIdForDetail = createdPlan.id
+        } catch {
+            watchPlanErrorMessage = error.localizedDescription
+
+            #if DEBUG
+            print("❌ Failed to create Watch Together plan:", error.localizedDescription)
+            #endif
+        }
     }
 
     // MARK: - Circle Actions
