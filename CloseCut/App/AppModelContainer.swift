@@ -14,6 +14,8 @@ enum AppModelContainer {
         LocalUserState.self,
         PendingAction.self,
         LocalBattleResult.self,
-        LocalWatchlistItem.self
+        LocalWatchlistItem.self,
+        LocalWatchPlan.self,
+        LocalWatchPlanResponse.self
     ]
 }
