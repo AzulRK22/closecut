@@ -44,7 +44,7 @@ struct CircleView: View {
     @State private var circleInlineMessage: String?
 
     @State private var selectedWatchTogetherCircleId: String?
-    @State private var selectedWatchPlanForDetail: WatchPlan?
+    @State private var selectedWatchPlanIdForDetail: String?
     @State private var showCreateWatchPlanSheet = false
     @State private var showWatchPlanPlaceholder = false
 
@@ -117,6 +117,16 @@ struct CircleView: View {
             .sorted { first, second in
                 first.updatedAt > second.updatedAt
             }
+    }
+    
+    private var selectedWatchPlanForDetail: WatchPlan? {
+        guard let selectedWatchPlanIdForDetail else {
+            return nil
+        }
+
+        return watchTogetherPlans.first { plan in
+            plan.id == selectedWatchPlanIdForDetail
+        }
     }
 
     private func sharedMemoryCount(
@@ -289,7 +299,25 @@ struct CircleView: View {
             .alert("Watch Together", isPresented: $showWatchPlanPlaceholder) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text("The Watch Together create and detail screens are coming in the next block.")
+                Text("The Watch Together create screen is coming in the next block.")
+            }
+            .navigationDestination(item: $selectedWatchPlanIdForDetail) { _ in
+                if let plan = selectedWatchPlanForDetail {
+                    WatchPlanDetailView(
+                        initialPlan: plan,
+                        currentUserId: user.id,
+                        currentUserDisplayName: profile.displayName
+                    )
+                } else {
+                    EmptyStateView(
+                        title: "Plan not found",
+                        message: "This Watch Together plan is no longer available locally.",
+                        systemImage: "calendar.badge.exclamationmark",
+                        actionTitle: nil,
+                        action: nil
+                    )
+                    .preferredColorScheme(.dark)
+                }
             }
             .task {
                 await loadCirclesIfNeeded()
@@ -392,8 +420,7 @@ struct CircleView: View {
     private func openWatchPlan(
         _ plan: WatchPlan
     ) {
-        selectedWatchPlanForDetail = plan
-        showWatchPlanPlaceholder = true
+        selectedWatchPlanIdForDetail = plan.id
     }
 
     // MARK: - Circle Actions
