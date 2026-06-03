@@ -194,7 +194,7 @@ final class EntrySyncService {
                 modelContext: modelContext
             )
 
-        case .createWatchlistItem, .updateWatchlistItem, .deleteWatchlistItem:
+        default:
             throw EntrySyncError.unsupportedAction(action.actionType.rawValue)
         }
 

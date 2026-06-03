@@ -16,6 +16,9 @@ enum FirestorePaths {
     static let reactions = "reactions"
     static let comments = "comments"
 
+    static let watchPlans = "watchPlans"
+    static let responses = "responses"
+
     // MARK: - Users
 
     static func user(_ userId: String) -> DocumentReference {
@@ -115,10 +118,58 @@ enum FirestorePaths {
             .document(activityId)
     }
 
+    // MARK: - Watch Together
+
+    static func circleWatchPlans(_ circleId: String) -> CollectionReference {
+        circle(circleId)
+            .collection(watchPlans)
+    }
+
+    static func circleWatchPlan(
+        circleId: String,
+        planId: String
+    ) -> DocumentReference {
+        circleWatchPlans(circleId)
+            .document(planId)
+    }
+
+    static func watchPlanResponses(
+        circleId: String,
+        planId: String
+    ) -> CollectionReference {
+        circleWatchPlan(
+            circleId: circleId,
+            planId: planId
+        )
+        .collection(responses)
+    }
+
+    static func watchPlanResponse(
+        circleId: String,
+        planId: String,
+        responseId: String
+    ) -> DocumentReference {
+        watchPlanResponses(
+            circleId: circleId,
+            planId: planId
+        )
+        .document(responseId)
+    }
+
     // MARK: - Collection Groups
 
     static func membersCollectionGroup() -> Query {
         Firestore.firestore()
             .collectionGroup(members)
+    }
+
+    static func watchPlansCollectionGroup() -> Query {
+        Firestore.firestore()
+            .collectionGroup(watchPlans)
+    }
+
+    static func watchPlanResponsesCollectionGroup() -> Query {
+        Firestore.firestore()
+            .collectionGroup(responses)
     }
 }

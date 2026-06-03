@@ -61,6 +61,10 @@ final class WatchlistSyncService {
                     try? modelContext.save()
 
                     failedCount += 1
+
+                    #if DEBUG
+                    print("⚠️ Failed to sync watchlist action:", error.localizedDescription)
+                    #endif
                 }
             }
 
@@ -184,7 +188,7 @@ final class WatchlistSyncService {
                 modelContext: modelContext
             )
 
-        case .createEntry, .updateEntry, .deleteEntry, .updateVisibility:
+        default:
             throw WatchlistSyncError.unsupportedAction(action.actionType.rawValue)
         }
 
@@ -227,6 +231,10 @@ final class WatchlistSyncService {
                     )
 
                     failedCount += 1
+
+                    #if DEBUG
+                    print("⚠️ Failed to sync orphan watchlist item:", error.localizedDescription)
+                    #endif
                 }
             }
 
@@ -295,8 +303,10 @@ enum WatchlistSyncError: LocalizedError {
         switch self {
         case .missingPayload:
             return "Missing Watchlist sync payload."
+
         case .itemNotFound:
             return "Watchlist item was not found locally."
+
         case .unsupportedAction(let action):
             return "Unsupported Watchlist sync action: \(action)."
         }

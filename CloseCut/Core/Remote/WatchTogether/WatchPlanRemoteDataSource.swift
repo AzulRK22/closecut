@@ -9,35 +9,33 @@ import Foundation
 import FirebaseFirestore
 
 final class WatchPlanRemoteDataSource {
-    private let db = Firestore.firestore()
 
     // MARK: - Paths
 
     private func plansCollection(
         circleId: String
     ) -> CollectionReference {
-        db.collection("circles")
-            .document(circleId)
-            .collection("watchPlans")
+        FirestorePaths.circleWatchPlans(circleId)
     }
 
     private func planDocument(
         circleId: String,
         planId: String
     ) -> DocumentReference {
-        plansCollection(circleId: circleId)
-            .document(planId)
+        FirestorePaths.circleWatchPlan(
+            circleId: circleId,
+            planId: planId
+        )
     }
 
     private func responsesCollection(
         circleId: String,
         planId: String
     ) -> CollectionReference {
-        planDocument(
+        FirestorePaths.watchPlanResponses(
             circleId: circleId,
             planId: planId
         )
-        .collection("responses")
     }
 
     private func responseDocument(
@@ -45,11 +43,11 @@ final class WatchPlanRemoteDataSource {
         planId: String,
         responseId: String
     ) -> DocumentReference {
-        responsesCollection(
+        FirestorePaths.watchPlanResponse(
             circleId: circleId,
-            planId: planId
+            planId: planId,
+            responseId: responseId
         )
-        .document(responseId)
     }
 
     // MARK: - Plan Writes
@@ -315,12 +313,16 @@ enum WatchPlanRemoteDataSourceError: LocalizedError {
         switch self {
         case .missingCircleId:
             return "A valid Circle is required to sync this Watch Together plan."
+
         case .missingPlanId:
             return "A valid Watch Together plan is required."
+
         case .missingResponseId:
             return "A valid Watch Together response is required."
+
         case .planDocumentMissing:
             return "This Watch Together plan could not be found in the cloud."
+
         case .responseDocumentMissing:
             return "This Watch Together response could not be found in the cloud."
         }
