@@ -69,6 +69,10 @@ struct WatchPlan: Identifiable, Codable, Equatable {
         status == .confirmed
     }
 
+    var isWatched: Bool {
+        status == .watched
+    }
+
     var isCanceled: Bool {
         status == .canceled
     }
@@ -78,17 +82,54 @@ struct WatchPlan: Identifiable, Codable, Equatable {
     }
 
     var hasProposedSchedule: Bool {
-        proposedStartAt != nil || proposedDateText?.trimmed.isEmpty == false
+        proposedStartAt != nil ||
+        proposedDateText?.trimmed.isEmpty == false
     }
 
-    var hasAnyAcceptedMember: Bool {
-        acceptedMemberIds.isEmpty == false
+    var acceptedInviteeIds: [String] {
+        acceptedMemberIds.filter { memberId in
+            memberId.trimmed != ownerId.trimmed
+        }
+    }
+
+    var hasAcceptedInvitees: Bool {
+        acceptedInviteeIds.isEmpty == false
+    }
+
+    var pendingInviteeIds: [String] {
+        let cleanedOwnerId = ownerId.trimmed
+
+        let respondedIds = Set(
+            WatchPlan.cleanIds(
+                acceptedMemberIds + declinedMemberIds + maybeMemberIds
+            )
+        )
+
+        return invitedMemberIds.filter { memberId in
+            let cleanedMemberId = memberId.trimmed
+
+            return cleanedMemberId.isEmpty == false &&
+                cleanedMemberId != cleanedOwnerId &&
+                respondedIds.contains(cleanedMemberId) == false
+        }
+    }
+
+    var acceptedCountExcludingOwner: Int {
+        acceptedInviteeIds.count
+    }
+
+    var pendingResponseCount: Int {
+        pendingInviteeIds.count
+    }
+
+    var hasPendingResponses: Bool {
+        pendingResponseCount > 0
     }
 
     var canBeConfirmed: Bool {
         isActive &&
         status == .proposed &&
-        hasAnyAcceptedMember
+        hasAcceptedInvitees
     }
 
     var canBeMarkedWatched: Bool {
@@ -124,11 +165,17 @@ struct WatchPlan: Identifiable, Codable, Equatable {
 
     var scheduleText: String {
         if let confirmedStartAt {
-            return confirmedStartAt.formatted(date: .abbreviated, time: .shortened)
+            return confirmedStartAt.formatted(
+                date: .abbreviated,
+                time: .shortened
+            )
         }
 
         if let proposedStartAt {
-            return proposedStartAt.formatted(date: .abbreviated, time: .shortened)
+            return proposedStartAt.formatted(
+                date: .abbreviated,
+                time: .shortened
+            )
         }
 
         if let proposedDateText = proposedDateText?.trimmed.nilIfBlank {
@@ -142,19 +189,22 @@ struct WatchPlan: Identifiable, Codable, Equatable {
         switch locationType {
         case .inPerson:
             return locationName?.trimmed.nilIfBlank ?? "In person"
+
         case .streaming:
             return streamingService?.trimmed.nilIfBlank ?? "Streaming"
+
         case .hybrid:
             return "Hybrid"
+
         case .notDecided:
             return "Location not decided"
         }
     }
 
     var responseSummaryText: String {
-        let accepted = acceptedMemberIds.count
-        let declined = declinedMemberIds.count
-        let maybe = maybeMemberIds.count
+        let accepted = acceptedCountExcludingOwner
+        let declined = declinedMemberIds.filter { $0.trimmed != ownerId.trimmed }.count
+        let maybe = maybeMemberIds.filter { $0.trimmed != ownerId.trimmed }.count
 
         var parts: [String] = []
 
@@ -171,6 +221,57 @@ struct WatchPlan: Identifiable, Codable, Equatable {
         }
 
         return parts.isEmpty ? "No responses yet" : parts.joined(separator: " • ")
+    }
+
+    var scheduleStatusText: String {
+        switch status {
+        case .draft:
+            return "Draft"
+
+        case .proposed:
+            return "Waiting for responses"
+
+        case .confirmed:
+            return "Confirmed"
+
+        case .watched:
+            return "Watched"
+
+        case .canceled:
+            return "Canceled"
+        }
+    }
+
+    var confirmationRequirementText: String {
+        if status == .confirmed {
+            return "Plan confirmed"
+        }
+
+        if status == .watched {
+            return "Already watched together"
+        }
+
+        if status == .canceled {
+            return "Plan canceled"
+        }
+
+        if hasAcceptedInvitees {
+            return "Ready to confirm"
+        }
+
+        return "Waiting for at least one invited member to say yes"
+    }
+
+    var participantSummaryText: String {
+        if acceptedCountExcludingOwner > 0 {
+            return "\(acceptedCountExcludingOwner) accepted"
+        }
+
+        if pendingResponseCount > 0 {
+            return "\(pendingResponseCount) waiting"
+        }
+
+        return "No invitee responses yet"
     }
 
     // MARK: - Helpers
@@ -207,6 +308,12 @@ struct WatchPlan: Identifiable, Codable, Equatable {
         acceptedMemberIds.contains(memberId.trimmed)
     }
 
+    func isOwned(
+        by userId: String
+    ) -> Bool {
+        ownerId.trimmed == userId.trimmed
+    }
+
     mutating func normalizeForLocalUse() {
         ownerId = ownerId.trimmed
         ownerDisplayName = ownerDisplayName.trimmed
@@ -214,13 +321,16 @@ struct WatchPlan: Identifiable, Codable, Equatable {
         circleName = circleName.trimmed
         title = displayTitle
         note = note?.trimmed.nilIfBlank
+
         locationName = locationName?.trimmed.nilIfBlank
         locationAddress = locationAddress?.trimmed.nilIfBlank
         streamingService = streamingService?.trimmed.nilIfBlank
-        invitedMemberIds = Self.cleanIds(invitedMemberIds)
+
+        invitedMemberIds = Self.cleanIds(invitedMemberIds + [ownerId])
         acceptedMemberIds = Self.cleanIds(acceptedMemberIds)
         declinedMemberIds = Self.cleanIds(declinedMemberIds)
         maybeMemberIds = Self.cleanIds(maybeMemberIds)
+
         updatedAt = Date()
     }
 

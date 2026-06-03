@@ -48,9 +48,11 @@ final class WatchPlanRepository {
             throw WatchPlanRepositoryError.emptyMediaTitle
         }
 
-        let cleanedInvitedIds = WatchPlan.cleanIds(invitedMemberIds)
+        let cleanedInvitedIds = WatchPlan.cleanIds(
+            invitedMemberIds + [cleanedOwnerId]
+        )
 
-        guard cleanedInvitedIds.isEmpty == false else {
+        guard cleanedInvitedIds.contains(where: { $0 != cleanedOwnerId }) else {
             throw WatchPlanRepositoryError.noInvitees
         }
 
@@ -59,23 +61,23 @@ final class WatchPlanRepository {
 
         let localPlan = LocalWatchPlan(
             ownerId: cleanedOwnerId,
-            ownerDisplayName: ownerDisplayName,
+            ownerDisplayName: ownerDisplayName.trimmed,
             circleId: cleanedCircleId,
-            circleName: circleName,
+            circleName: circleName.trimmed,
             title: resolvedTitle,
-            note: note,
+            note: note?.trimmed.nilIfBlank,
             media: media,
             proposedStartAt: proposedStartAt,
             proposedEndAt: proposedEndAt,
-            proposedDateText: proposedDateText,
+            proposedDateText: proposedDateText?.trimmed.nilIfBlank,
             locationType: locationType,
-            locationName: locationName,
-            locationAddress: locationAddress,
-            streamingService: streamingService,
+            locationName: locationName?.trimmed.nilIfBlank,
+            locationAddress: locationAddress?.trimmed.nilIfBlank,
+            streamingService: streamingService?.trimmed.nilIfBlank,
             status: .proposed,
             source: source,
             invitedMemberIds: cleanedInvitedIds,
-            acceptedMemberIds: [],
+            acceptedMemberIds: WatchPlan.cleanIds([cleanedOwnerId]),
             declinedMemberIds: [],
             maybeMemberIds: [],
             confirmedStartAt: nil,
@@ -328,7 +330,9 @@ final class WatchPlanRepository {
         }
 
         if let invitedMemberIds {
-            localPlan.invitedMemberIds = WatchPlan.cleanIds(invitedMemberIds)
+            localPlan.invitedMemberIds = WatchPlan.cleanIds(
+                invitedMemberIds + [localPlan.ownerId]
+            )
         }
 
         localPlan.updatedAt = Date()
@@ -379,7 +383,8 @@ final class WatchPlanRepository {
             throw WatchPlanRepositoryError.planInactive
         }
 
-        guard localPlan.statusRaw != WatchPlanStatus.canceled.rawValue else {
+        guard localPlan.statusRaw != WatchPlanStatus.canceled.rawValue,
+              localPlan.statusRaw != WatchPlanStatus.watched.rawValue else {
             throw WatchPlanRepositoryError.planInactive
         }
 
@@ -404,11 +409,11 @@ final class WatchPlanRepository {
                 planId: cleanedPlanId,
                 circleId: cleanedCircleId,
                 userId: cleanedUserId,
-                userDisplayName: userDisplayName,
+                userDisplayName: userDisplayName.trimmed,
                 responseType: responseType,
-                note: note,
+                note: note?.trimmed.nilIfBlank,
                 suggestedStartAt: suggestedStartAt,
-                suggestedDateText: suggestedDateText,
+                suggestedDateText: suggestedDateText?.trimmed.nilIfBlank,
                 syncStatus: .pending
             )
 
@@ -446,7 +451,15 @@ final class WatchPlanRepository {
             throw WatchPlanRepositoryError.planInactive
         }
 
-        guard localPlan.acceptedMemberIds.isEmpty == false else {
+        guard localPlan.statusRaw == WatchPlanStatus.proposed.rawValue else {
+            throw WatchPlanRepositoryError.planMustBeProposed
+        }
+
+        let acceptedInviteeIds = localPlan.acceptedMemberIds.filter {
+            $0.trimmed != localPlan.ownerId.trimmed
+        }
+
+        guard acceptedInviteeIds.isEmpty == false else {
             throw WatchPlanRepositoryError.noAcceptedParticipants
         }
 
@@ -590,6 +603,10 @@ final class WatchPlanRepository {
     ) {
         let cleanedUserId = userId.trimmed
 
+        guard cleanedUserId.isEmpty == false else {
+            return
+        }
+
         plan.acceptedMemberIds.removeAll { $0 == cleanedUserId }
         plan.declinedMemberIds.removeAll { $0 == cleanedUserId }
         plan.maybeMemberIds.removeAll { $0 == cleanedUserId }
@@ -611,8 +628,13 @@ final class WatchPlanRepository {
 
         if plan.invitedMemberIds.contains(cleanedUserId) == false {
             plan.invitedMemberIds.append(cleanedUserId)
-            plan.invitedMemberIds = WatchPlan.cleanIds(plan.invitedMemberIds)
         }
+
+        if plan.invitedMemberIds.contains(plan.ownerId) == false {
+            plan.invitedMemberIds.append(plan.ownerId)
+        }
+
+        plan.invitedMemberIds = WatchPlan.cleanIds(plan.invitedMemberIds)
 
         plan.updatedAt = Date()
         plan.syncStatusRaw = SyncStatus.pending.rawValue
@@ -629,28 +651,41 @@ enum WatchPlanRepositoryError: LocalizedError {
     case planNotFound
     case planInactive
     case noAcceptedParticipants
+    case planMustBeProposed
     case planMustBeConfirmed
 
     var errorDescription: String? {
         switch self {
         case .missingOwnerId:
             return "A valid owner is required to create this Watch Together plan."
+
         case .missingUserId:
             return "A valid user is required to respond to this plan."
+
         case .missingCircleId:
             return "A valid Circle is required for this Watch Together plan."
+
         case .missingPlanId:
             return "A valid Watch Together plan is required."
+
         case .emptyMediaTitle:
             return "Choose a movie or series before creating the plan."
+
         case .noInvitees:
             return "Invite at least one Circle member to create a Watch Together plan."
+
         case .planNotFound:
             return "This Watch Together plan was not found."
+
         case .planInactive:
             return "This Watch Together plan is no longer active."
+
         case .noAcceptedParticipants:
-            return "At least one person must say yes before confirming the plan."
+            return "At least one invited member must say yes before confirming the plan."
+
+        case .planMustBeProposed:
+            return "Only proposed Watch Together plans can be confirmed."
+
         case .planMustBeConfirmed:
             return "Only confirmed Watch Together plans can be marked as watched."
         }
