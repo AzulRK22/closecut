@@ -56,6 +56,8 @@ final class PendingActionQueue {
         try modelContext.save()
     }
 
+    // MARK: - Entry Enqueue
+
     func enqueueEntryAction(
         userId: String,
         entryId: String,
@@ -95,10 +97,12 @@ final class PendingActionQueue {
                 modelContext: modelContext
             )
 
-        case .createWatchlistItem, .updateWatchlistItem, .deleteWatchlistItem:
+        default:
             throw PendingActionQueueError.invalidActionFamily
         }
     }
+
+    // MARK: - Watchlist Enqueue
 
     func enqueueWatchlistItemAction(
         userId: String,
@@ -138,7 +142,95 @@ final class PendingActionQueue {
                 modelContext: modelContext
             )
 
-        case .createEntry, .updateEntry, .deleteEntry, .updateVisibility:
+        default:
+            throw PendingActionQueueError.invalidActionFamily
+        }
+    }
+
+    // MARK: - Watch Together Enqueue
+
+    func enqueueWatchPlanAction(
+        userId: String,
+        planId: String,
+        actionType: PendingActionType,
+        payloadData: Data?,
+        modelContext: ModelContext
+    ) throws {
+        let cleanedPlanId = planId.trimmed
+
+        guard cleanedPlanId.isEmpty == false else {
+            throw PendingActionQueueError.missingWatchPlanId
+        }
+
+        switch actionType {
+        case .createWatchPlan:
+            try enqueueCreateWatchPlanAction(
+                userId: userId,
+                planId: cleanedPlanId,
+                payloadData: payloadData,
+                modelContext: modelContext
+            )
+
+        case .updateWatchPlan:
+            try enqueueUpdateWatchPlanAction(
+                userId: userId,
+                planId: cleanedPlanId,
+                payloadData: payloadData,
+                modelContext: modelContext
+            )
+
+        case .deleteWatchPlan:
+            try enqueueDeleteWatchPlanAction(
+                userId: userId,
+                planId: cleanedPlanId,
+                payloadData: payloadData,
+                modelContext: modelContext
+            )
+
+        default:
+            throw PendingActionQueueError.invalidActionFamily
+        }
+    }
+
+    func enqueueWatchPlanResponseAction(
+        userId: String,
+        responseId: String,
+        actionType: PendingActionType,
+        payloadData: Data?,
+        modelContext: ModelContext
+    ) throws {
+        let cleanedResponseId = responseId.trimmed
+
+        guard cleanedResponseId.isEmpty == false else {
+            throw PendingActionQueueError.missingWatchPlanResponseId
+        }
+
+        switch actionType {
+        case .createWatchPlanResponse:
+            try enqueueCreateWatchPlanResponseAction(
+                userId: userId,
+                responseId: cleanedResponseId,
+                payloadData: payloadData,
+                modelContext: modelContext
+            )
+
+        case .updateWatchPlanResponse:
+            try enqueueUpdateWatchPlanResponseAction(
+                userId: userId,
+                responseId: cleanedResponseId,
+                payloadData: payloadData,
+                modelContext: modelContext
+            )
+
+        case .deleteWatchPlanResponse:
+            try enqueueDeleteWatchPlanResponseAction(
+                userId: userId,
+                responseId: cleanedResponseId,
+                payloadData: payloadData,
+                modelContext: modelContext
+            )
+
+        default:
             throw PendingActionQueueError.invalidActionFamily
         }
     }
@@ -487,6 +579,156 @@ final class PendingActionQueue {
         )
     }
 
+    // MARK: - Watch Plan Action Strategy
+
+    private func enqueueCreateWatchPlanAction(
+        userId: String,
+        planId: String,
+        payloadData: Data?,
+        modelContext: ModelContext
+    ) throws {
+        try enqueue(
+            userId: userId,
+            actionType: .createWatchPlan,
+            payloadData: payloadData,
+            dedupeKey: watchPlanCreateKey(planId),
+            modelContext: modelContext
+        )
+    }
+
+    private func enqueueUpdateWatchPlanAction(
+        userId: String,
+        planId: String,
+        payloadData: Data?,
+        modelContext: ModelContext
+    ) throws {
+        if let createAction = try fetchActionByDedupeKey(
+            userId: userId,
+            dedupeKey: watchPlanCreateKey(planId),
+            modelContext: modelContext
+        ) {
+            createAction.payloadData = payloadData
+            createAction.statusRaw = PendingActionStatus.pending.rawValue
+            createAction.updatedAt = Date()
+            createAction.lastErrorMessage = nil
+
+            try modelContext.save()
+            return
+        }
+
+        if try fetchActionByDedupeKey(
+            userId: userId,
+            dedupeKey: watchPlanDeleteKey(planId),
+            modelContext: modelContext
+        ) != nil {
+            return
+        }
+
+        try enqueue(
+            userId: userId,
+            actionType: .updateWatchPlan,
+            payloadData: payloadData,
+            dedupeKey: watchPlanUpdateKey(planId),
+            modelContext: modelContext
+        )
+    }
+
+    private func enqueueDeleteWatchPlanAction(
+        userId: String,
+        planId: String,
+        payloadData: Data?,
+        modelContext: ModelContext
+    ) throws {
+        try deleteActionIfExists(
+            userId: userId,
+            dedupeKey: watchPlanUpdateKey(planId),
+            modelContext: modelContext
+        )
+
+        try enqueue(
+            userId: userId,
+            actionType: .deleteWatchPlan,
+            payloadData: payloadData,
+            dedupeKey: watchPlanDeleteKey(planId),
+            modelContext: modelContext
+        )
+    }
+
+    // MARK: - Watch Plan Response Action Strategy
+
+    private func enqueueCreateWatchPlanResponseAction(
+        userId: String,
+        responseId: String,
+        payloadData: Data?,
+        modelContext: ModelContext
+    ) throws {
+        try enqueue(
+            userId: userId,
+            actionType: .createWatchPlanResponse,
+            payloadData: payloadData,
+            dedupeKey: watchPlanResponseCreateKey(responseId),
+            modelContext: modelContext
+        )
+    }
+
+    private func enqueueUpdateWatchPlanResponseAction(
+        userId: String,
+        responseId: String,
+        payloadData: Data?,
+        modelContext: ModelContext
+    ) throws {
+        if let createAction = try fetchActionByDedupeKey(
+            userId: userId,
+            dedupeKey: watchPlanResponseCreateKey(responseId),
+            modelContext: modelContext
+        ) {
+            createAction.payloadData = payloadData
+            createAction.statusRaw = PendingActionStatus.pending.rawValue
+            createAction.updatedAt = Date()
+            createAction.lastErrorMessage = nil
+
+            try modelContext.save()
+            return
+        }
+
+        if try fetchActionByDedupeKey(
+            userId: userId,
+            dedupeKey: watchPlanResponseDeleteKey(responseId),
+            modelContext: modelContext
+        ) != nil {
+            return
+        }
+
+        try enqueue(
+            userId: userId,
+            actionType: .updateWatchPlanResponse,
+            payloadData: payloadData,
+            dedupeKey: watchPlanResponseUpdateKey(responseId),
+            modelContext: modelContext
+        )
+    }
+
+    private func enqueueDeleteWatchPlanResponseAction(
+        userId: String,
+        responseId: String,
+        payloadData: Data?,
+        modelContext: ModelContext
+    ) throws {
+        try deleteActionIfExists(
+            userId: userId,
+            dedupeKey: watchPlanResponseUpdateKey(responseId),
+            modelContext: modelContext
+        )
+
+        try enqueue(
+            userId: userId,
+            actionType: .deleteWatchPlanResponse,
+            payloadData: payloadData,
+            dedupeKey: watchPlanResponseDeleteKey(responseId),
+            modelContext: modelContext
+        )
+    }
+
     // MARK: - Private Fetch Helpers
 
     private func fetchActionByDedupeKey(
@@ -553,12 +795,38 @@ final class PendingActionQueue {
     private func watchlistDeleteKey(_ itemId: String) -> String {
         "watchlist:delete:\(itemId)"
     }
+
+    private func watchPlanCreateKey(_ planId: String) -> String {
+        "watchPlan:create:\(planId)"
+    }
+
+    private func watchPlanUpdateKey(_ planId: String) -> String {
+        "watchPlan:update:\(planId)"
+    }
+
+    private func watchPlanDeleteKey(_ planId: String) -> String {
+        "watchPlan:delete:\(planId)"
+    }
+
+    private func watchPlanResponseCreateKey(_ responseId: String) -> String {
+        "watchPlanResponse:create:\(responseId)"
+    }
+
+    private func watchPlanResponseUpdateKey(_ responseId: String) -> String {
+        "watchPlanResponse:update:\(responseId)"
+    }
+
+    private func watchPlanResponseDeleteKey(_ responseId: String) -> String {
+        "watchPlanResponse:delete:\(responseId)"
+    }
 }
 
 enum PendingActionQueueError: LocalizedError {
     case missingUserId
     case missingEntryId
     case missingWatchlistItemId
+    case missingWatchPlanId
+    case missingWatchPlanResponseId
     case invalidActionFamily
 
     var errorDescription: String? {
@@ -569,6 +837,10 @@ enum PendingActionQueueError: LocalizedError {
             return "A valid entry is required to enqueue this sync action."
         case .missingWatchlistItemId:
             return "A valid Watchlist item is required to enqueue this sync action."
+        case .missingWatchPlanId:
+            return "A valid Watch Together plan is required to enqueue this sync action."
+        case .missingWatchPlanResponseId:
+            return "A valid Watch Together response is required to enqueue this sync action."
         case .invalidActionFamily:
             return "This sync action does not belong to the requested action family."
         }

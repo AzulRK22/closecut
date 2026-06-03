@@ -10,6 +10,7 @@ import SwiftData
 
 @MainActor
 final class WatchPlanRepository {
+    private let pendingActionQueue = PendingActionQueue()
 
     // MARK: - Create
 
@@ -91,7 +92,15 @@ final class WatchPlanRepository {
         modelContext.insert(localPlan)
         try modelContext.save()
 
-        return localPlan.domain
+        let plan = localPlan.domain
+
+        try enqueuePlanAction(
+            actionType: .createWatchPlan,
+            plan: plan,
+            modelContext: modelContext
+        )
+
+        return plan
     }
 
     // MARK: - Read
@@ -293,6 +302,10 @@ final class WatchPlanRepository {
             throw WatchPlanRepositoryError.planNotFound
         }
 
+        guard localPlan.deletedAt == nil else {
+            throw WatchPlanRepositoryError.planInactive
+        }
+
         if let title {
             localPlan.title = title.trimmed
         }
@@ -340,7 +353,15 @@ final class WatchPlanRepository {
 
         try modelContext.save()
 
-        return localPlan.domain
+        let plan = localPlan.domain
+
+        try enqueuePlanAction(
+            actionType: .updateWatchPlan,
+            plan: plan,
+            modelContext: modelContext
+        )
+
+        return plan
     }
 
     // MARK: - Respond
@@ -388,6 +409,12 @@ final class WatchPlanRepository {
             throw WatchPlanRepositoryError.planInactive
         }
 
+        let wasExistingResponse = try fetchResponseModel(
+            planId: cleanedPlanId,
+            userId: cleanedUserId,
+            modelContext: modelContext
+        ) != nil
+
         let response: LocalWatchPlanResponse
 
         if let existingResponse = try fetchResponseModel(
@@ -429,7 +456,23 @@ final class WatchPlanRepository {
 
         try modelContext.save()
 
-        return response.domain
+        let responseDomain = response.domain
+
+        try enqueueResponseAction(
+            actionType: wasExistingResponse ? .updateWatchPlanResponse : .createWatchPlanResponse,
+            response: responseDomain,
+            modelContext: modelContext
+        )
+
+        let planDomain = localPlan.domain
+
+        try enqueuePlanAction(
+            actionType: .updateWatchPlan,
+            plan: planDomain,
+            modelContext: modelContext
+        )
+
+        return responseDomain
     }
 
     // MARK: - Confirm / Cancel / Watched
@@ -471,7 +514,15 @@ final class WatchPlanRepository {
 
         try modelContext.save()
 
-        return localPlan.domain
+        let plan = localPlan.domain
+
+        try enqueuePlanAction(
+            actionType: .updateWatchPlan,
+            plan: plan,
+            modelContext: modelContext
+        )
+
+        return plan
     }
 
     func cancelPlan(
@@ -495,7 +546,15 @@ final class WatchPlanRepository {
 
         try modelContext.save()
 
-        return localPlan.domain
+        let plan = localPlan.domain
+
+        try enqueuePlanAction(
+            actionType: .updateWatchPlan,
+            plan: plan,
+            modelContext: modelContext
+        )
+
+        return plan
     }
 
     func markPlanWatched(
@@ -523,7 +582,15 @@ final class WatchPlanRepository {
 
         try modelContext.save()
 
-        return localPlan.domain
+        let plan = localPlan.domain
+
+        try enqueuePlanAction(
+            actionType: .updateWatchPlan,
+            plan: plan,
+            modelContext: modelContext
+        )
+
+        return plan
     }
 
     // MARK: - Delete
@@ -545,7 +612,15 @@ final class WatchPlanRepository {
 
         try modelContext.save()
 
-        return localPlan.domain
+        let plan = localPlan.domain
+
+        try enqueuePlanAction(
+            actionType: .deleteWatchPlan,
+            plan: plan,
+            modelContext: modelContext
+        )
+
+        return plan
     }
 
     func deleteLocalPlanCompletely(
@@ -638,6 +713,58 @@ final class WatchPlanRepository {
 
         plan.updatedAt = Date()
         plan.syncStatusRaw = SyncStatus.pending.rawValue
+    }
+
+    // MARK: - Pending Actions
+
+    private func enqueuePlanAction(
+        actionType: PendingActionType,
+        plan: WatchPlan,
+        modelContext: ModelContext
+    ) throws {
+        let payload = PendingWatchPlanPayload(
+            planId: plan.id,
+            ownerId: plan.ownerId,
+            circleId: plan.circleId,
+            title: plan.displayTitle,
+            status: plan.status.rawValue,
+            updatedAt: plan.updatedAt
+        )
+
+        let payloadData = try CodableHelpers.encode(payload)
+
+        try pendingActionQueue.enqueueWatchPlanAction(
+            userId: plan.ownerId,
+            planId: plan.id,
+            actionType: actionType,
+            payloadData: payloadData,
+            modelContext: modelContext
+        )
+    }
+
+    private func enqueueResponseAction(
+        actionType: PendingActionType,
+        response: WatchPlanResponse,
+        modelContext: ModelContext
+    ) throws {
+        let payload = PendingWatchPlanResponsePayload(
+            responseId: response.id,
+            planId: response.planId,
+            circleId: response.circleId,
+            userId: response.userId,
+            responseType: response.responseType.rawValue,
+            updatedAt: response.updatedAt
+        )
+
+        let payloadData = try CodableHelpers.encode(payload)
+
+        try pendingActionQueue.enqueueWatchPlanResponseAction(
+            userId: response.userId,
+            responseId: response.id,
+            actionType: actionType,
+            payloadData: payloadData,
+            modelContext: modelContext
+        )
     }
 }
 

@@ -16,6 +16,7 @@ final class SessionSyncViewModel: ObservableObject {
 
     private let entrySyncService = EntrySyncService()
     private let watchlistSyncService = WatchlistSyncService()
+    private let watchPlanSyncService = WatchPlanSyncService()
 
     private var refreshedUserIds: Set<String> = []
 
@@ -126,6 +127,16 @@ final class SessionSyncViewModel: ObservableObject {
             modelContext: modelContext
         )
 
+        let watchPlanPushSummary = await watchPlanSyncService.syncPendingWatchTogetherItems(
+            userId: userId,
+            modelContext: modelContext
+        )
+
+        let circleIds = fetchActiveCircleIds(
+            userId: userId,
+            modelContext: modelContext
+        )
+
         let entryPullSummary = await entrySyncService.pullRemoteEntries(
             userId: userId,
             modelContext: modelContext
@@ -136,14 +147,51 @@ final class SessionSyncViewModel: ObservableObject {
             modelContext: modelContext
         )
 
+        let watchPlanPullSummary = await watchPlanSyncService.pullRemoteWatchTogetherItems(
+            circleIds: circleIds,
+            modelContext: modelContext
+        )
+
         return CloudRefreshSummary(
-            syncedCount: entryPushSummary.syncedCount + watchlistPushSummary.syncedCount,
+            syncedCount: entryPushSummary.syncedCount +
+                watchlistPushSummary.syncedCount +
+                watchPlanPushSummary.syncedCount,
             failedCount: entryPushSummary.failedCount +
                 watchlistPushSummary.failedCount +
+                watchPlanPushSummary.failedCount +
                 entryPullSummary.failedCount +
-                watchlistPullSummary.failedCount,
-            pulledCount: entryPullSummary.pulledCount + watchlistPullSummary.pulledCount
+                watchlistPullSummary.failedCount +
+                watchPlanPullSummary.failedCount,
+            pulledCount: entryPullSummary.pulledCount +
+                watchlistPullSummary.pulledCount +
+                watchPlanPullSummary.pulledCount
         )
+    }
+
+    private func fetchActiveCircleIds(
+        userId: String,
+        modelContext: ModelContext
+    ) -> [String] {
+        do {
+            let cleanedUserId = userId.trimmed
+
+            let descriptor = FetchDescriptor<LocalCircleMembership>(
+                predicate: #Predicate { membership in
+                    membership.userId == cleanedUserId
+                }
+            )
+
+            return try modelContext.fetch(descriptor)
+                .map { $0.domain }
+                .filter { $0.isActive }
+                .map { $0.circleId }
+        } catch {
+            #if DEBUG
+            print("⚠️ Could not fetch Circle ids for Watch Together refresh:", error.localizedDescription)
+            #endif
+
+            return []
+        }
     }
 }
 
