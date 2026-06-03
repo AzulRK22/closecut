@@ -81,7 +81,7 @@ enum WatchPlanResponseType: String, Codable, CaseIterable, Identifiable {
         case .maybe:
             return "Maybe"
         case .suggestAnotherTime:
-            return "Another time"
+            return "Suggest another time"
         }
     }
 
