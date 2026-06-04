@@ -466,6 +466,16 @@ struct CircleView: View {
             return
         }
 
+        let invitedMemberIds = draft.invitedMemberIds.filter { memberId in
+            memberId.trimmed.isEmpty == false &&
+            memberId.trimmed != user.id.trimmed
+        }
+
+        guard invitedMemberIds.isEmpty == false else {
+            watchPlanErrorMessage = "Select at least one Circle member to invite."
+            return
+        }
+
         isCreatingWatchPlan = true
         watchPlanErrorMessage = nil
 
@@ -480,10 +490,6 @@ struct CircleView: View {
                 source: .manual
             )
 
-            let invitedMemberIds = selectedRow.circle.memberIds.filter { memberId in
-                memberId.trimmed != user.id.trimmed
-            }
-
             let createdPlan = try watchPlanRepository.createLocalPlan(
                 ownerId: user.id,
                 ownerDisplayName: profile.displayName,
@@ -497,7 +503,7 @@ struct CircleView: View {
                 proposedDateText: draft.proposedDateText,
                 locationType: draft.locationType,
                 locationName: draft.locationName,
-                locationAddress: nil,
+                locationAddress: draft.locationAddress,
                 streamingService: draft.streamingService,
                 invitedMemberIds: invitedMemberIds,
                 source: .circle,

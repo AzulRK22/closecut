@@ -22,7 +22,9 @@ struct CreateWatchPlanSheet: View {
     @State private var selectedType: EntryType = .movie
     @State private var locationType: WatchPlanLocationType = .notDecided
     @State private var locationName = ""
+    @State private var locationAddress = ""
     @State private var streamingService = ""
+    @State private var selectedInviteeIds: Set<String> = []
 
     @FocusState private var focusedField: Field?
 
@@ -32,6 +34,7 @@ struct CreateWatchPlanSheet: View {
         case note
         case proposedDate
         case locationName
+        case locationAddress
         case streamingService
     }
 
@@ -74,6 +77,10 @@ struct CreateWatchPlanSheet: View {
         locationName.trimmed.nilIfBlank
     }
 
+    private var cleanedLocationAddress: String? {
+        locationAddress.trimmed.nilIfBlank
+    }
+
     private var cleanedStreamingService: String? {
         streamingService.trimmed.nilIfBlank
     }
@@ -84,9 +91,43 @@ struct CreateWatchPlanSheet: View {
         }?.circle
     }
 
+    private var selectedCircleMembership: CircleMembership? {
+        circleRows.first { row in
+            row.circle.id == selectedCircleIdInternal
+        }?.membership
+    }
+
+    private var availableInviteeIds: [String] {
+        guard let selectedCircle else {
+            return []
+        }
+
+        let currentUserId = selectedCircleMembership?.userId.trimmed
+
+        return selectedCircle.memberIds
+            .map { $0.trimmed }
+            .filter { $0.isEmpty == false }
+            .filter { memberId in
+                memberId != currentUserId
+            }
+            .sorted()
+    }
+
+    private var hasInviteesAvailable: Bool {
+        availableInviteeIds.isEmpty == false
+    }
+
+    private var selectedInviteeIdsArray: [String] {
+        selectedInviteeIds
+            .map { $0.trimmed }
+            .filter { $0.isEmpty == false }
+            .sorted()
+    }
+
     private var canCreate: Bool {
         selectedCircle != nil &&
         cleanedMediaTitle.isEmpty == false &&
+        selectedInviteeIds.isEmpty == false &&
         isCreating == false
     }
 
@@ -107,6 +148,8 @@ struct CreateWatchPlanSheet: View {
                         planDetailsSection
 
                         locationSection
+
+                        inviteesSection
 
                         privacyNote
 
@@ -139,6 +182,8 @@ struct CreateWatchPlanSheet: View {
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .onAppear {
+            syncInviteesForSelectedCircle()
+
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                 focusedField = .mediaTitle
             }
@@ -204,6 +249,9 @@ struct CreateWatchPlanSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(CloseCutColors.input)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .onChange(of: selectedCircleIdInternal) { _, _ in
+                    syncInviteesForSelectedCircle()
+                }
 
                 if let selectedCircle {
                     HStack(alignment: .top, spacing: 8) {
@@ -372,6 +420,27 @@ struct CreateWatchPlanSheet: View {
                         .font(.body)
                         .foregroundStyle(CloseCutColors.textPrimary)
                         .textInputAutocapitalization(.words)
+                        .submitLabel(.next)
+                        .onSubmit {
+                            focusedField = .locationAddress
+                        }
+                        .padding(14)
+                        .background(CloseCutColors.input)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Address optional")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .textCase(.uppercase)
+                        .tracking(0.8)
+
+                    TextField("Street, neighborhood, city…", text: $locationAddress)
+                        .focused($focusedField, equals: .locationAddress)
+                        .font(.body)
+                        .foregroundStyle(CloseCutColors.textPrimary)
+                        .textInputAutocapitalization(.words)
                         .padding(14)
                         .background(CloseCutColors.input)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -397,6 +466,122 @@ struct CreateWatchPlanSheet: View {
                 }
             }
         }
+    }
+
+    // MARK: - Invitees
+
+    private var inviteesSection: some View {
+        formCard {
+            sectionHeader(
+                title: "Invitees",
+                subtitle: "Choose who should respond to this plan."
+            )
+
+            if selectedCircle == nil {
+                Text("Choose a Circle first.")
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if hasInviteesAvailable == false {
+                HStack(alignment: .top, spacing: 9) {
+                    Image(systemName: "person.badge.plus")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .padding(.top, 2)
+
+                    Text("This Circle does not have other members available locally yet. Add or sync members before creating a Watch Together plan.")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 0)
+                }
+                .padding(12)
+                .background(CloseCutColors.input.opacity(0.74))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            } else {
+                HStack(spacing: 10) {
+                    Button {
+                        selectedInviteeIds = Set(availableInviteeIds)
+                    } label: {
+                        Text("Select all")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.accentLight)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isCreating)
+
+                    Button {
+                        selectedInviteeIds = []
+                    } label: {
+                        Text("Clear")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isCreating)
+
+                    Spacer(minLength: 0)
+
+                    Text(selectedInviteeIds.isEmpty ? "Required" : "\(selectedInviteeIds.count) selected")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(selectedInviteeIds.isEmpty ? CloseCutColors.failed : CloseCutColors.textTertiary)
+                }
+
+                VStack(spacing: 10) {
+                    ForEach(availableInviteeIds, id: \.self) { memberId in
+                        inviteeToggleRow(memberId: memberId)
+                    }
+                }
+
+                Text("Member names can be improved later when Circle member profile snapshots are available locally.")
+                    .font(.caption2)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func inviteeToggleRow(
+        memberId: String
+    ) -> some View {
+        let isSelected = selectedInviteeIds.contains(memberId)
+
+        return Button {
+            if isSelected {
+                selectedInviteeIds.remove(memberId)
+            } else {
+                selectedInviteeIds.insert(memberId)
+            }
+        } label: {
+            HStack(spacing: 11) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(isSelected ? CloseCutColors.accentLight : CloseCutColors.textTertiary)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(memberId)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
+                        .lineLimit(1)
+
+                    Text("Circle member")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(12)
+            .background(isSelected ? CloseCutColors.accent.opacity(0.14) : CloseCutColors.input.opacity(0.74))
+            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    .stroke(isSelected ? CloseCutColors.accent.opacity(0.55) : CloseCutColors.separator, lineWidth: 0.5)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(isCreating)
     }
 
     // MARK: - Privacy
@@ -449,7 +634,9 @@ struct CreateWatchPlanSheet: View {
                 proposedDateText: cleanedProposedDateText,
                 locationType: locationType,
                 locationName: cleanedLocationName,
-                streamingService: cleanedStreamingService
+                locationAddress: cleanedLocationAddress,
+                streamingService: cleanedStreamingService,
+                invitedMemberIds: selectedInviteeIdsArray
             )
 
             onCreate(draft)
@@ -489,6 +676,10 @@ struct CreateWatchPlanSheet: View {
     }
 
     // MARK: - Helpers
+
+    private func syncInviteesForSelectedCircle() {
+        selectedInviteeIds = Set(availableInviteeIds)
+    }
 
     private func formCard<Content: View>(
         @ViewBuilder content: () -> Content
@@ -531,5 +722,7 @@ struct WatchPlanCreationDraft: Equatable {
     let proposedDateText: String?
     let locationType: WatchPlanLocationType
     let locationName: String?
+    let locationAddress: String?
     let streamingService: String?
+    let invitedMemberIds: [String]
 }
