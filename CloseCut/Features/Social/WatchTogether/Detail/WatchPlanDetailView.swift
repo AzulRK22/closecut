@@ -29,6 +29,7 @@ struct WatchPlanDetailView: View {
     @State private var showCancelConfirmation = false
     @State private var showDeleteConfirmation = false
     @State private var showSuggestTimeSheet = false
+    @State private var showEditPlanSheet = false
 
     private let repository = WatchPlanRepository()
 
@@ -212,12 +213,42 @@ struct WatchPlanDetailView: View {
                 }
             )
         }
+        .sheet(isPresented: $showEditPlanSheet) {
+            EditWatchPlanSheet(
+                plan: plan,
+                isSaving: isPerformingAction,
+                onCancel: {
+                    showEditPlanSheet = false
+                },
+                onSave: { title, note, proposedDateText, locationType, locationName, locationAddress, streamingService in
+                    Task {
+                        await updatePlan(
+                            title: title,
+                            note: note,
+                            proposedDateText: proposedDateText,
+                            locationType: locationType,
+                            locationName: locationName,
+                            locationAddress: locationAddress,
+                            streamingService: streamingService
+                        )
+                    }
+                }
+            )
+        }
     }
 
     // MARK: - Toolbar
 
     private var ownerMenu: some View {
         Menu {
+            Button {
+                showEditPlanSheet = true
+            } label: {
+                Label("Edit plan", systemImage: "pencil")
+            }
+
+            Divider()
+
             if canConfirm {
                 Button {
                     Task {
@@ -493,7 +524,7 @@ struct WatchPlanDetailView: View {
                         value: "Owner"
                     )
 
-                    Text("You can confirm, cancel, delete, or mark this plan as watched once the plan is ready.")
+                    Text("You can edit, confirm, cancel, delete, or mark this plan as watched once the plan is ready.")
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -655,6 +686,15 @@ struct WatchPlanDetailView: View {
     private var ownerActionsSection: some View {
         DetailSectionCard(title: "Owner actions") {
             VStack(alignment: .leading, spacing: 10) {
+                actionButton(
+                    title: "Edit plan",
+                    icon: "pencil",
+                    isPrimary: false,
+                    isDestructive: false
+                ) {
+                    showEditPlanSheet = true
+                }
+
                 if canConfirm {
                     actionButton(
                         title: "Confirm plan",
@@ -701,16 +741,6 @@ struct WatchPlanDetailView: View {
                     ) {
                         showDeleteConfirmation = true
                     }
-                }
-
-                if canConfirm == false &&
-                    canMarkWatched == false &&
-                    canCancel == false &&
-                    canDelete == false {
-                    Text("No owner actions are available for this plan right now.")
-                        .font(.caption)
-                        .foregroundStyle(CloseCutColors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
@@ -944,6 +974,56 @@ struct WatchPlanDetailView: View {
             showSuggestTimeSheet = false
             actionBannerStyle = .success
             actionMessage = "Suggestion saved. It will sync with the Circle."
+        } catch {
+            actionBannerStyle = .warning
+            actionMessage = error.localizedDescription
+        }
+    }
+
+    private func updatePlan(
+        title: String,
+        note: String?,
+        proposedDateText: String?,
+        locationType: WatchPlanLocationType,
+        locationName: String?,
+        locationAddress: String?,
+        streamingService: String?
+    ) async {
+        guard isPerformingAction == false else {
+            return
+        }
+
+        let cleanedTitle = title.trimmed
+
+        guard cleanedTitle.isEmpty == false else {
+            actionBannerStyle = .warning
+            actionMessage = "Plan title is required."
+            return
+        }
+
+        isPerformingAction = true
+        actionMessage = nil
+
+        defer {
+            isPerformingAction = false
+        }
+
+        do {
+            _ = try repository.updateLocalPlan(
+                planId: plan.id,
+                title: cleanedTitle,
+                note: note?.trimmed.nilIfBlank,
+                proposedDateText: proposedDateText?.trimmed.nilIfBlank,
+                locationType: locationType,
+                locationName: locationName?.trimmed.nilIfBlank,
+                locationAddress: locationAddress?.trimmed.nilIfBlank,
+                streamingService: streamingService?.trimmed.nilIfBlank,
+                modelContext: modelContext
+            )
+
+            showEditPlanSheet = false
+            actionBannerStyle = .success
+            actionMessage = "Plan updated. Changes will sync with the Circle."
         } catch {
             actionBannerStyle = .warning
             actionMessage = error.localizedDescription
