@@ -25,8 +25,10 @@ struct WatchPlanDetailView: View {
     @State private var actionMessage: String?
     @State private var actionBannerStyle: SyncResultBannerStyle = .neutral
     @State private var isPerformingAction = false
+
     @State private var showCancelConfirmation = false
     @State private var showDeleteConfirmation = false
+    @State private var showSuggestTimeSheet = false
 
     private let repository = WatchPlanRepository()
 
@@ -56,12 +58,16 @@ struct WatchPlanDetailView: View {
         plan.isOwned(by: currentUserId)
     }
 
+    private var isInvitedUser: Bool {
+        plan.isInvited(memberId: currentUserId)
+    }
+
     private var canRespond: Bool {
         plan.isActive &&
         plan.status != .canceled &&
         plan.status != .watched &&
         isOwner == false &&
-        plan.isInvited(memberId: currentUserId)
+        isInvitedUser
     }
 
     private var canConfirm: Bool {
@@ -91,12 +97,16 @@ struct WatchPlanDetailView: View {
         switch plan.status {
         case .draft:
             return CloseCutColors.textTertiary
+
         case .proposed:
             return CloseCutColors.accentLight
+
         case .confirmed:
             return CloseCutColors.synced
+
         case .watched:
             return CloseCutColors.textSecondary
+
         case .canceled:
             return CloseCutColors.failed
         }
@@ -119,6 +129,8 @@ struct WatchPlanDetailView: View {
                     }
 
                     responseSummarySection
+
+                    participantAccessSection
 
                     if canRespond {
                         respondSection
@@ -182,6 +194,23 @@ struct WatchPlanDetailView: View {
             Button("Keep plan", role: .cancel) {}
         } message: {
             Text("This archives the plan locally and queues the delete for cloud sync.")
+        }
+        .sheet(isPresented: $showSuggestTimeSheet) {
+            WatchPlanSuggestTimeSheet(
+                currentResponse: currentUserResponse,
+                isSaving: isPerformingAction,
+                onCancel: {
+                    showSuggestTimeSheet = false
+                },
+                onSave: { suggestedDateText, note in
+                    Task {
+                        await suggestAnotherTime(
+                            suggestedDateText: suggestedDateText,
+                            note: note
+                        )
+                    }
+                }
+            )
         }
     }
 
@@ -454,35 +483,54 @@ struct WatchPlanDetailView: View {
         }
     }
 
+    private var participantAccessSection: some View {
+        DetailSectionCard(title: "Access") {
+            VStack(alignment: .leading, spacing: 12) {
+                if isOwner {
+                    WatchPlanInfoRow(
+                        icon: "crown.fill",
+                        title: "Your role",
+                        value: "Owner"
+                    )
+
+                    Text("You can confirm, cancel, delete, or mark this plan as watched once the plan is ready.")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if isInvitedUser {
+                    WatchPlanInfoRow(
+                        icon: "person.fill.checkmark",
+                        title: "Your role",
+                        value: "Invited"
+                    )
+
+                    Text("You can respond to this plan. Your response is saved locally first and syncs with the Circle.")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    WatchPlanInfoRow(
+                        icon: "eye.fill",
+                        title: "Your role",
+                        value: "Viewer"
+                    )
+
+                    Text("You can view this plan because it belongs to one of your Circles, but you are not listed as an invitee.")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
     // MARK: - Respond
 
     private var respondSection: some View {
         DetailSectionCard(title: "Your response") {
             VStack(alignment: .leading, spacing: 14) {
                 if let currentUserResponse {
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: currentUserResponse.responseType.systemImage)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(CloseCutColors.accentLight)
-                            .padding(.top, 2)
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("You answered \(currentUserResponse.responseType.displayName)")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(CloseCutColors.textPrimary)
-
-                            if let note = currentUserResponse.displayNote {
-                                Text(note)
-                                    .font(.caption)
-                                    .foregroundStyle(CloseCutColors.textSecondary)
-                            }
-                        }
-
-                        Spacer(minLength: 0)
-                    }
-                    .padding(12)
-                    .background(CloseCutColors.input.opacity(0.74))
-                    .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    currentResponseCard(currentUserResponse)
                 }
 
                 HStack(spacing: 10) {
@@ -502,12 +550,72 @@ struct WatchPlanDetailView: View {
                     )
                 }
 
+                Button {
+                    showSuggestTimeSheet = true
+                } label: {
+                    HStack(spacing: 9) {
+                        Image(systemName: WatchPlanResponseType.suggestAnotherTime.systemImage)
+                            .font(.caption.weight(.semibold))
+
+                        Text("Suggest another time")
+                            .font(.subheadline.weight(.semibold))
+
+                        Spacer(minLength: 0)
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.bold))
+                    }
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .padding(.horizontal, 14)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+                    .background(CloseCutColors.input)
+                    .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(isPerformingAction)
+
                 Text("Your response updates the plan locally first and syncs when CloseCut refreshes cloud data.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+
+    private func currentResponseCard(
+        _ response: WatchPlanResponse
+    ) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: response.responseType.systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CloseCutColors.accentLight)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("You answered \(response.responseType.displayName)")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+
+                if let suggestedTimeText = response.suggestedTimeText {
+                    Text("Suggested: \(suggestedTimeText)")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                }
+
+                if let note = response.displayNote {
+                    Text(note)
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(CloseCutColors.input.opacity(0.74))
+        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
     }
 
     private func responseButton(
@@ -595,7 +703,10 @@ struct WatchPlanDetailView: View {
                     }
                 }
 
-                if canConfirm == false && canMarkWatched == false && canCancel == false && canDelete == false {
+                if canConfirm == false &&
+                    canMarkWatched == false &&
+                    canCancel == false &&
+                    canDelete == false {
                     Text("No owner actions are available for this plan right now.")
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textSecondary)
@@ -668,7 +779,13 @@ struct WatchPlanDetailView: View {
 
                 WatchPlanInfoRow(
                     icon: plan.media.source.systemImage,
-                    title: "Source",
+                    title: "Media source",
+                    value: plan.media.source.displayName
+                )
+
+                WatchPlanInfoRow(
+                    icon: "square.stack.3d.up.fill",
+                    title: "Plan source",
                     value: plan.source.displayName
                 )
 
@@ -788,6 +905,51 @@ struct WatchPlanDetailView: View {
         }
     }
 
+    private func suggestAnotherTime(
+        suggestedDateText: String,
+        note: String?
+    ) async {
+        guard isPerformingAction == false else {
+            return
+        }
+
+        let cleanedSuggestedDateText = suggestedDateText.trimmed
+        let cleanedNote = note?.trimmed.nilIfBlank
+
+        guard cleanedSuggestedDateText.isEmpty == false || cleanedNote != nil else {
+            actionBannerStyle = .warning
+            actionMessage = "Add a suggested time or a short note."
+            return
+        }
+
+        isPerformingAction = true
+        actionMessage = nil
+
+        defer {
+            isPerformingAction = false
+        }
+
+        do {
+            _ = try repository.respondToPlan(
+                planId: plan.id,
+                circleId: plan.circleId,
+                userId: currentUserId,
+                userDisplayName: currentUserDisplayName,
+                responseType: .suggestAnotherTime,
+                note: cleanedNote,
+                suggestedDateText: cleanedSuggestedDateText.nilIfBlank,
+                modelContext: modelContext
+            )
+
+            showSuggestTimeSheet = false
+            actionBannerStyle = .success
+            actionMessage = "Suggestion saved. It will sync with the Circle."
+        } catch {
+            actionBannerStyle = .warning
+            actionMessage = error.localizedDescription
+        }
+    }
+
     private func confirmPlan() async {
         guard isPerformingAction == false else {
             return
@@ -889,6 +1051,215 @@ struct WatchPlanDetailView: View {
             actionBannerStyle = .warning
             actionMessage = error.localizedDescription
         }
+    }
+}
+
+// MARK: - Suggest Time Sheet
+
+private struct WatchPlanSuggestTimeSheet: View {
+    let currentResponse: WatchPlanResponse?
+    let isSaving: Bool
+    let onCancel: () -> Void
+    let onSave: (_ suggestedDateText: String, _ note: String?) -> Void
+
+    @State private var suggestedDateText: String
+    @State private var note: String
+
+    @FocusState private var focusedField: Field?
+
+    private enum Field {
+        case suggestedDate
+        case note
+    }
+
+    init(
+        currentResponse: WatchPlanResponse?,
+        isSaving: Bool,
+        onCancel: @escaping () -> Void,
+        onSave: @escaping (_ suggestedDateText: String, _ note: String?) -> Void
+    ) {
+        self.currentResponse = currentResponse
+        self.isSaving = isSaving
+        self.onCancel = onCancel
+        self.onSave = onSave
+
+        _suggestedDateText = State(initialValue: currentResponse?.suggestedDateText ?? "")
+        _note = State(initialValue: currentResponse?.note ?? "")
+    }
+
+    private var cleanedSuggestedDateText: String {
+        suggestedDateText.trimmed
+    }
+
+    private var cleanedNote: String {
+        note.trimmed
+    }
+
+    private var canSave: Bool {
+        isSaving == false &&
+        (
+            cleanedSuggestedDateText.isEmpty == false ||
+            cleanedNote.isEmpty == false
+        )
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                CloseCutColors.backgroundPrimary
+                    .ignoresSafeArea()
+
+                VStack(alignment: .leading, spacing: 18) {
+                    header
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        inputSection(
+                            title: "Suggested time",
+                            subtitle: "Use natural language for now.",
+                            placeholder: "Friday night, Sunday afternoon, next week…",
+                            text: $suggestedDateText,
+                            focusedField: .suggestedDate
+                        )
+
+                        inputSection(
+                            title: "Note optional",
+                            subtitle: "Keep it short and useful.",
+                            placeholder: "I can’t that day, but Saturday works.",
+                            text: $note,
+                            focusedField: .note
+                        )
+                    }
+                    .padding(16)
+                    .background(CloseCutColors.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .stroke(CloseCutColors.separator, lineWidth: 0.5)
+                    }
+
+                    privacyNote
+
+                    if isSaving {
+                        HStack(spacing: 10) {
+                            ProgressView()
+
+                            Text("Saving suggestion…")
+                                .font(.caption)
+                                .foregroundStyle(CloseCutColors.textSecondary)
+
+                            Spacer(minLength: 0)
+                        }
+                        .padding(12)
+                        .background(CloseCutColors.input)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .padding(20)
+            }
+            .navigationTitle("Suggest Time")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        onCancel()
+                    }
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .disabled(isSaving)
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave(
+                            cleanedSuggestedDateText,
+                            cleanedNote.nilIfBlank
+                        )
+                    }
+                    .disabled(canSave == false)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                focusedField = .suggestedDate
+            }
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: "calendar.badge.clock")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(CloseCutColors.accentLight)
+                .frame(width: 46, height: 46)
+                .background(CloseCutColors.input)
+                .clipShape(SwiftUI.Circle())
+
+            Text("Suggest another time.")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textPrimary)
+
+            Text("This keeps the plan alive without forcing a yes or no.")
+                .font(.subheadline)
+                .foregroundStyle(CloseCutColors.textSecondary)
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func inputSection(
+        title: String,
+        subtitle: String,
+        placeholder: String,
+        text: Binding<String>,
+        focusedField: Field
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .textCase(.uppercase)
+                    .tracking(0.8)
+
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+            }
+
+            TextField(placeholder, text: text, axis: .vertical)
+                .focused($focusedField, equals: focusedField)
+                .font(.body)
+                .foregroundStyle(CloseCutColors.textPrimary)
+                .textInputAutocapitalization(.sentences)
+                .lineLimit(1...3)
+                .padding(14)
+                .background(CloseCutColors.input)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
+    private var privacyNote: some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: "lock.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textTertiary)
+                .padding(.top, 2)
+
+            Text("Your suggestion is visible only inside this private Circle plan.")
+                .font(.caption)
+                .foregroundStyle(CloseCutColors.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+        .padding(13)
+        .background(CloseCutColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
