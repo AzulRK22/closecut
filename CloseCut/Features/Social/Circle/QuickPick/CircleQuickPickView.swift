@@ -58,7 +58,7 @@ struct CircleQuickPickView: View {
                     .clipShape(SwiftUI.Circle())
 
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Watch together")
+                    Text("Circle QuickPick")
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
 

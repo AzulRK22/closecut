@@ -38,6 +38,7 @@ struct CircleView: View {
     @State private var isJoiningCircle = false
     @State private var isPullingRemoteMemberships = false
     @State private var isRefreshingCircleDetails = false
+    @State private var isPullingWatchTogetherItems = false
     @State private var hasLoadedInitialCircles = false
 
     @State private var circleErrorMessage: String?
@@ -53,6 +54,7 @@ struct CircleView: View {
     private let circleRepository = CircleRepository()
     private let circleRemoteDataSource = CircleRemoteDataSource()
     private let watchPlanRepository = WatchPlanRepository()
+    private let watchPlanSyncService = WatchPlanSyncService()
 
     private var memberships: [CircleMembership] {
         localMemberships
@@ -140,12 +142,18 @@ struct CircleView: View {
     }
 
     private var isLoadingCircles: Bool {
-        isPullingRemoteMemberships || isRefreshingCircleDetails
+        isPullingRemoteMemberships ||
+        isRefreshingCircleDetails ||
+        isPullingWatchTogetherItems
     }
 
     private var loadingMessage: String {
         if isPullingRemoteMemberships {
             return "Finding your Circles…"
+        }
+
+        if isPullingWatchTogetherItems {
+            return "Refreshing Watch Together…"
         }
 
         return "Refreshing your Circles…"
@@ -321,23 +329,12 @@ struct CircleView: View {
             } message: {
                 Text(watchPlanErrorMessage ?? "Unknown error.")
             }
-            .navigationDestination(item: $selectedWatchPlanIdForDetail) { _ in
-                if let plan = selectedWatchPlanForDetail {
-                    WatchPlanDetailView(
-                        initialPlan: plan,
-                        currentUserId: user.id,
-                        currentUserDisplayName: profile.displayName
-                    )
-                } else {
-                    EmptyStateView(
-                        title: "Plan not found",
-                        message: "This Watch Together plan is no longer available locally.",
-                        systemImage: "calendar.badge.exclamationmark",
-                        actionTitle: nil,
-                        action: nil
-                    )
-                    .preferredColorScheme(.dark)
-                }
+            .navigationDestination(item: $selectedWatchPlanIdForDetail) { planId in
+                WatchPlanDetailLoaderView(
+                    planId: planId,
+                    currentUserId: user.id,
+                    currentUserDisplayName: profile.displayName
+                )
             }
             .task {
                 await loadCirclesIfNeeded()
@@ -510,6 +507,28 @@ struct CircleView: View {
                 modelContext: modelContext
             )
 
+            #if DEBUG
+            print("✅ Created local WatchPlan:", createdPlan.id)
+            print("📍 Circle:", createdPlan.circleId)
+            print("👥 Invited:", createdPlan.invitedMemberIds)
+            print("☁️ Sync status before push:", createdPlan.syncStatus.displayName)
+            #endif
+
+            let syncSummary = await watchPlanSyncService.syncPendingWatchTogetherItems(
+                userId: user.id,
+                modelContext: modelContext
+            )
+
+            #if DEBUG
+            print("☁️ Watch Together push summary:")
+            print("Synced:", syncSummary.syncedCount)
+            print("Failed:", syncSummary.failedCount)
+            #endif
+
+            if syncSummary.hasFailures {
+                watchPlanErrorMessage = "Plan created locally, but it could not sync yet. It will retry later."
+            }
+
             selectedWatchTogetherCircleId = selectedRow.circle.id
             showCreateWatchPlanSheet = false
 
@@ -660,8 +679,43 @@ struct CircleView: View {
 
         await refreshLocalCirclesFromRemote()
 
+        await pullWatchTogetherItemsForCurrentCircles()
+
         if force && circleRows.isEmpty {
             circleInlineMessage = nil
+        }
+    }
+
+    private func pullWatchTogetherItemsForCurrentCircles() async {
+        guard isPullingWatchTogetherItems == false else {
+            return
+        }
+
+        let circleIds = circleRows.map { $0.circle.id }
+
+        guard circleIds.isEmpty == false else {
+            return
+        }
+
+        isPullingWatchTogetherItems = true
+
+        defer {
+            isPullingWatchTogetherItems = false
+        }
+
+        let summary = await watchPlanSyncService.pullRemoteWatchTogetherItems(
+            circleIds: circleIds,
+            modelContext: modelContext
+        )
+
+        #if DEBUG
+        print("☁️ Watch Together pull summary:")
+        print("Pulled:", summary.pulledCount)
+        print("Failed:", summary.failedCount)
+        #endif
+
+        if summary.hasFailures {
+            circleInlineMessage = "Couldn’t refresh some Watch Together plans."
         }
     }
 

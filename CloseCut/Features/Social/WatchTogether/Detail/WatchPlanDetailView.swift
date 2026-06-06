@@ -31,6 +31,7 @@ struct WatchPlanDetailView: View {
     @State private var showSuggestTimeSheet = false
     @State private var showEditPlanSheet = false
 
+    private let syncService = WatchPlanSyncService()
     private let repository = WatchPlanRepository()
 
     private var plan: WatchPlan {
@@ -535,7 +536,7 @@ struct WatchPlanDetailView: View {
                         value: "Invited"
                     )
 
-                    Text("You can respond to this plan. Your response is saved locally first and syncs with the Circle.")
+                    Text("You can respond to this plan. Your response is saved locally first and then synced with the Circle.")
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -606,7 +607,7 @@ struct WatchPlanDetailView: View {
                 .buttonStyle(.plain)
                 .disabled(isPerformingAction)
 
-                Text("Your response updates the plan locally first and syncs when CloseCut refreshes cloud data.")
+                Text("Your response updates locally first, then syncs with the Circle.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -901,6 +902,28 @@ struct WatchPlanDetailView: View {
         }
     }
 
+    // MARK: - Sync
+
+    private func syncWatchTogetherChanges(
+        successMessage: String
+    ) async {
+        actionBannerStyle = .neutral
+        actionMessage = "Syncing with the Circle…"
+
+        let summary = await syncService.syncPendingWatchTogetherItems(
+            userId: currentUserId,
+            modelContext: modelContext
+        )
+
+        if summary.hasFailures {
+            actionBannerStyle = .warning
+            actionMessage = "Saved locally, but it could not sync yet. It will retry later."
+        } else {
+            actionBannerStyle = .success
+            actionMessage = successMessage
+        }
+    }
+
     // MARK: - Actions
 
     private func respond(
@@ -927,8 +950,9 @@ struct WatchPlanDetailView: View {
                 modelContext: modelContext
             )
 
-            actionBannerStyle = .success
-            actionMessage = "Response saved. It will sync with the Circle."
+            await syncWatchTogetherChanges(
+                successMessage: "Response synced with the Circle."
+            )
         } catch {
             actionBannerStyle = .warning
             actionMessage = error.localizedDescription
@@ -972,8 +996,10 @@ struct WatchPlanDetailView: View {
             )
 
             showSuggestTimeSheet = false
-            actionBannerStyle = .success
-            actionMessage = "Suggestion saved. It will sync with the Circle."
+
+            await syncWatchTogetherChanges(
+                successMessage: "Suggestion synced with the Circle."
+            )
         } catch {
             actionBannerStyle = .warning
             actionMessage = error.localizedDescription
@@ -1022,8 +1048,10 @@ struct WatchPlanDetailView: View {
             )
 
             showEditPlanSheet = false
-            actionBannerStyle = .success
-            actionMessage = "Plan updated. Changes will sync with the Circle."
+
+            await syncWatchTogetherChanges(
+                successMessage: "Plan changes synced with the Circle."
+            )
         } catch {
             actionBannerStyle = .warning
             actionMessage = error.localizedDescription
@@ -1048,8 +1076,9 @@ struct WatchPlanDetailView: View {
                 modelContext: modelContext
             )
 
-            actionBannerStyle = .success
-            actionMessage = "Plan confirmed."
+            await syncWatchTogetherChanges(
+                successMessage: "Plan confirmed and synced with the Circle."
+            )
         } catch {
             actionBannerStyle = .warning
             actionMessage = error.localizedDescription
@@ -1074,8 +1103,9 @@ struct WatchPlanDetailView: View {
                 modelContext: modelContext
             )
 
-            actionBannerStyle = .success
-            actionMessage = "Plan canceled."
+            await syncWatchTogetherChanges(
+                successMessage: "Plan canceled and synced with the Circle."
+            )
         } catch {
             actionBannerStyle = .warning
             actionMessage = error.localizedDescription
@@ -1100,8 +1130,9 @@ struct WatchPlanDetailView: View {
                 modelContext: modelContext
             )
 
-            actionBannerStyle = .success
-            actionMessage = "Marked as watched together."
+            await syncWatchTogetherChanges(
+                successMessage: "Marked as watched together and synced."
+            )
         } catch {
             actionBannerStyle = .warning
             actionMessage = error.localizedDescription
@@ -1126,7 +1157,13 @@ struct WatchPlanDetailView: View {
                 modelContext: modelContext
             )
 
-            dismiss()
+            await syncWatchTogetherChanges(
+                successMessage: "Plan deleted and synced with the Circle."
+            )
+
+            if actionBannerStyle != .warning {
+                dismiss()
+            }
         } catch {
             actionBannerStyle = .warning
             actionMessage = error.localizedDescription

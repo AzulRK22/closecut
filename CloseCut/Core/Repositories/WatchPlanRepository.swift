@@ -409,19 +409,17 @@ final class WatchPlanRepository {
             throw WatchPlanRepositoryError.planInactive
         }
 
-        let wasExistingResponse = try fetchResponseModel(
+        let existingResponse = try fetchResponseModel(
             planId: cleanedPlanId,
             userId: cleanedUserId,
             modelContext: modelContext
-        ) != nil
+        )
+
+        let wasExistingResponse = existingResponse != nil
 
         let response: LocalWatchPlanResponse
 
-        if let existingResponse = try fetchResponseModel(
-            planId: cleanedPlanId,
-            userId: cleanedUserId,
-            modelContext: modelContext
-        ) {
+        if let existingResponse {
             existingResponse.responseTypeRaw = responseType.rawValue
             existingResponse.note = note?.trimmed.nilIfBlank
             existingResponse.suggestedStartAt = suggestedStartAt
@@ -464,17 +462,8 @@ final class WatchPlanRepository {
             modelContext: modelContext
         )
 
-        let planDomain = localPlan.domain
-
-        try enqueuePlanAction(
-            actionType: .updateWatchPlan,
-            plan: planDomain,
-            modelContext: modelContext
-        )
-
         return responseDomain
     }
-
     // MARK: - Confirm / Cancel / Watched
 
     func confirmPlan(
@@ -711,8 +700,13 @@ final class WatchPlanRepository {
 
         plan.invitedMemberIds = WatchPlan.cleanIds(plan.invitedMemberIds)
 
-        plan.updatedAt = Date()
-        plan.syncStatusRaw = SyncStatus.pending.rawValue
+        /*
+         Important:
+         A member response is not an owner plan edit.
+         Do not mark the plan itself as pending here.
+         The response sync will update the remote plan aggregate.
+         */
+        plan.syncStatusRaw = SyncStatus.synced.rawValue
     }
 
     // MARK: - Pending Actions

@@ -22,7 +22,7 @@ private enum MainTab: String {
         case .discover:
             return "Discover"
         case .circle:
-            return "Circle"
+            return "Social"
         case .battle:
             return "Battle"
         case .settings:

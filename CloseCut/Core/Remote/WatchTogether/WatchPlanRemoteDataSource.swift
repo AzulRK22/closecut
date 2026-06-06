@@ -114,7 +114,6 @@ final class WatchPlanRemoteDataSource {
         }
 
         let dto = try snapshot.data(as: FirestoreWatchPlanDTO.self)
-
         return dto.domain
     }
 
@@ -196,6 +195,7 @@ final class WatchPlanRemoteDataSource {
         let cleanedCircleId = response.circleId.trimmed
         let cleanedPlanId = response.planId.trimmed
         let cleanedResponseId = response.id.trimmed
+        let cleanedUserId = response.userId.trimmed
 
         guard cleanedCircleId.isEmpty == false else {
             throw WatchPlanRemoteDataSourceError.missingCircleId
@@ -209,14 +209,59 @@ final class WatchPlanRemoteDataSource {
             throw WatchPlanRemoteDataSourceError.missingResponseId
         }
 
-        let dto = FirestoreWatchPlanResponseDTO(response: response)
+        guard cleanedUserId.isEmpty == false else {
+            throw WatchPlanRemoteDataSourceError.missingUserId
+        }
 
-        try responseDocument(
+        let planRef = planDocument(
+            circleId: cleanedCircleId,
+            planId: cleanedPlanId
+        )
+
+        let responseRef = responseDocument(
             circleId: cleanedCircleId,
             planId: cleanedPlanId,
             responseId: cleanedResponseId
         )
-        .setData(from: dto, merge: true)
+
+        let dto = FirestoreWatchPlanResponseDTO(response: response)
+        let responseData = try Firestore.Encoder().encode(dto)
+
+        let batch = Firestore.firestore().batch()
+
+        batch.setData(
+            responseData,
+            forDocument: responseRef,
+            merge: true
+        )
+
+        var planPayload: [String: Any] = [
+            "acceptedMemberIds": FieldValue.arrayRemove([cleanedUserId]),
+            "declinedMemberIds": FieldValue.arrayRemove([cleanedUserId]),
+            "maybeMemberIds": FieldValue.arrayRemove([cleanedUserId]),
+            "invitedMemberIds": FieldValue.arrayUnion([cleanedUserId]),
+            "updatedAt": Timestamp(date: Date())
+        ]
+
+        if response.deletedAt == nil {
+            switch response.responseType {
+            case .accepted:
+                planPayload["acceptedMemberIds"] = FieldValue.arrayUnion([cleanedUserId])
+
+            case .declined:
+                planPayload["declinedMemberIds"] = FieldValue.arrayUnion([cleanedUserId])
+
+            case .maybe, .suggestAnotherTime:
+                planPayload["maybeMemberIds"] = FieldValue.arrayUnion([cleanedUserId])
+            }
+        }
+
+        batch.updateData(
+            planPayload,
+            forDocument: planRef
+        )
+
+        try await batch.commit()
     }
 
     func softDeleteResponse(
@@ -227,7 +272,60 @@ final class WatchPlanRemoteDataSource {
         deletedResponse.updatedAt = Date()
         deletedResponse.syncStatus = .pending
 
-        try await upsertResponse(deletedResponse)
+        let cleanedCircleId = deletedResponse.circleId.trimmed
+        let cleanedPlanId = deletedResponse.planId.trimmed
+        let cleanedResponseId = deletedResponse.id.trimmed
+        let cleanedUserId = deletedResponse.userId.trimmed
+
+        guard cleanedCircleId.isEmpty == false else {
+            throw WatchPlanRemoteDataSourceError.missingCircleId
+        }
+
+        guard cleanedPlanId.isEmpty == false else {
+            throw WatchPlanRemoteDataSourceError.missingPlanId
+        }
+
+        guard cleanedResponseId.isEmpty == false else {
+            throw WatchPlanRemoteDataSourceError.missingResponseId
+        }
+
+        guard cleanedUserId.isEmpty == false else {
+            throw WatchPlanRemoteDataSourceError.missingUserId
+        }
+
+        let planRef = planDocument(
+            circleId: cleanedCircleId,
+            planId: cleanedPlanId
+        )
+
+        let responseRef = responseDocument(
+            circleId: cleanedCircleId,
+            planId: cleanedPlanId,
+            responseId: cleanedResponseId
+        )
+
+        let dto = FirestoreWatchPlanResponseDTO(response: deletedResponse)
+        let responseData = try Firestore.Encoder().encode(dto)
+
+        let batch = Firestore.firestore().batch()
+
+        batch.setData(
+            responseData,
+            forDocument: responseRef,
+            merge: true
+        )
+
+        batch.updateData(
+            [
+                "acceptedMemberIds": FieldValue.arrayRemove([cleanedUserId]),
+                "declinedMemberIds": FieldValue.arrayRemove([cleanedUserId]),
+                "maybeMemberIds": FieldValue.arrayRemove([cleanedUserId]),
+                "updatedAt": Timestamp(date: Date())
+            ],
+            forDocument: planRef
+        )
+
+        try await batch.commit()
     }
 
     // MARK: - Response Reads
@@ -297,7 +395,6 @@ final class WatchPlanRemoteDataSource {
         }
 
         let dto = try snapshot.data(as: FirestoreWatchPlanResponseDTO.self)
-
         return dto.domain
     }
 }
@@ -306,6 +403,7 @@ enum WatchPlanRemoteDataSourceError: LocalizedError {
     case missingCircleId
     case missingPlanId
     case missingResponseId
+    case missingUserId
     case planDocumentMissing
     case responseDocumentMissing
 
@@ -319,6 +417,9 @@ enum WatchPlanRemoteDataSourceError: LocalizedError {
 
         case .missingResponseId:
             return "A valid Watch Together response is required."
+
+        case .missingUserId:
+            return "A valid user is required to sync this Watch Together response."
 
         case .planDocumentMissing:
             return "This Watch Together plan could not be found in the cloud."

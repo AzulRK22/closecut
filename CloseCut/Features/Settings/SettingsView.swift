@@ -41,11 +41,18 @@ struct SettingsView: View {
     @Query(sort: \LocalCircleMembership.updatedAt, order: .reverse)
     private var localMemberships: [LocalCircleMembership]
 
+    @Query(sort: \LocalWatchPlan.updatedAt, order: .reverse)
+    private var localWatchPlans: [LocalWatchPlan]
+
+    @Query(sort: \LocalWatchPlanResponse.updatedAt, order: .reverse)
+    private var localWatchPlanResponses: [LocalWatchPlanResponse]
+
     let user: AuthUser
     let profile: UserProfile
 
     private let entrySyncService = EntrySyncService()
     private let watchlistSyncService = WatchlistSyncService()
+    private let watchPlanSyncService = WatchPlanSyncService()
     private let pendingActionQueue = PendingActionQueue()
 
     // MARK: - Local Domain State
@@ -81,6 +88,39 @@ struct SettingsView: View {
     private var currentUserDismissedWatchlistItems: [WatchlistItem] {
         allCurrentUserWatchlistItems
             .filter { $0.status == .dismissed || $0.deletedAt != nil }
+    }
+
+    private var currentUserActiveCircleIds: [String] {
+        let ids = localMemberships
+            .filter { $0.userId == user.id }
+            .map { $0.domain }
+            .filter { $0.isActive }
+            .map { $0.circleId }
+
+        return WatchPlan.cleanIds(ids)
+    }
+
+    private var currentUserRelevantWatchPlans: [LocalWatchPlan] {
+        let activeCircleIds = Set(currentUserActiveCircleIds)
+
+        return localWatchPlans.filter { plan in
+            activeCircleIds.contains(plan.circleId)
+        }
+    }
+
+    private var currentUserActiveWatchPlans: [LocalWatchPlan] {
+        currentUserRelevantWatchPlans.filter {
+            $0.deletedAt == nil
+        }
+    }
+
+    private var currentUserActiveWatchPlanResponses: [LocalWatchPlanResponse] {
+        let activeCircleIds = Set(currentUserActiveCircleIds)
+
+        return localWatchPlanResponses.filter { response in
+            activeCircleIds.contains(response.circleId) &&
+            response.deletedAt == nil
+        }
     }
 
     // MARK: - Pending / Failed Work
@@ -134,6 +174,32 @@ struct SettingsView: View {
         }
     }
 
+    private var currentUserPendingWatchPlans: [LocalWatchPlan] {
+        currentUserRelevantWatchPlans.filter {
+            $0.syncStatusRaw == SyncStatus.pending.rawValue
+        }
+    }
+
+    private var currentUserFailedWatchPlans: [LocalWatchPlan] {
+        currentUserRelevantWatchPlans.filter {
+            $0.syncStatusRaw == SyncStatus.failed.rawValue
+        }
+    }
+
+    private var currentUserPendingWatchPlanResponses: [LocalWatchPlanResponse] {
+        localWatchPlanResponses.filter {
+            $0.userId == user.id &&
+            $0.syncStatusRaw == SyncStatus.pending.rawValue
+        }
+    }
+
+    private var currentUserFailedWatchPlanResponses: [LocalWatchPlanResponse] {
+        localWatchPlanResponses.filter {
+            $0.userId == user.id &&
+            $0.syncStatusRaw == SyncStatus.failed.rawValue
+        }
+    }
+
     private var currentUserPendingWatchlistActions: [PendingAction] {
         currentUserPendingActions.filter {
             $0.actionType.isWatchlistAction
@@ -143,6 +209,12 @@ struct SettingsView: View {
     private var currentUserPendingEntryActions: [PendingAction] {
         currentUserPendingActions.filter {
             $0.actionType.isEntryAction
+        }
+    }
+
+    private var currentUserPendingWatchTogetherActions: [PendingAction] {
+        currentUserPendingActions.filter {
+            $0.actionType.isWatchTogetherAction
         }
     }
 
@@ -158,9 +230,20 @@ struct SettingsView: View {
         }
     }
 
+    private var currentUserFailedWatchTogetherActions: [PendingAction] {
+        currentUserFailedActions.filter {
+            $0.actionType.isWatchTogetherAction
+        }
+    }
+
     private var visiblePendingCount: Int {
         let actionBackedCount = currentUserPendingActions.count
-        let orphanCount = currentUserPendingEntries.count + currentUserPendingWatchlistItems.count
+
+        let orphanCount =
+            currentUserPendingEntries.count +
+            currentUserPendingWatchlistItems.count +
+            currentUserPendingWatchPlans.count +
+            currentUserPendingWatchPlanResponses.count
 
         return max(
             actionBackedCount,
@@ -170,7 +253,12 @@ struct SettingsView: View {
 
     private var visibleFailedCount: Int {
         let actionBackedCount = currentUserFailedActions.count
-        let orphanCount = currentUserFailedEntries.count + currentUserFailedWatchlistItems.count
+
+        let orphanCount =
+            currentUserFailedEntries.count +
+            currentUserFailedWatchlistItems.count +
+            currentUserFailedWatchPlans.count +
+            currentUserFailedWatchPlanResponses.count
 
         return max(
             actionBackedCount,
@@ -296,7 +384,9 @@ struct SettingsView: View {
                         privacySection
 
                         watchlistSection
-                        
+
+                        watchTogetherSection
+
                         shareSection
 
                         localDataSection
@@ -351,7 +441,7 @@ struct SettingsView: View {
     private var syncSection: some View {
         SettingsSectionCard(
             title: "Sync",
-            subtitle: "Control cloud refresh, retries, entries, and Want to Watch changes."
+            subtitle: "Control cloud refresh, retries, entries, Want to Watch, and Watch Together changes."
         ) {
             VStack(alignment: .leading, spacing: 12) {
                 if sessionSyncViewModel.isInitialCloudRefreshRunning {
@@ -457,6 +547,12 @@ struct SettingsView: View {
             )
 
             SettingsRow(
+                icon: "calendar.badge.clock",
+                title: "Pending Watch Together actions",
+                value: "\(currentUserPendingWatchTogetherActions.count)"
+            )
+
+            SettingsRow(
                 icon: "exclamationmark.triangle.fill",
                 title: "Failed entry actions",
                 value: "\(currentUserFailedEntryActions.count)"
@@ -469,6 +565,12 @@ struct SettingsView: View {
             )
 
             SettingsRow(
+                icon: "calendar.badge.exclamationmark",
+                title: "Failed Watch Together actions",
+                value: "\(currentUserFailedWatchTogetherActions.count)"
+            )
+
+            SettingsRow(
                 icon: "clock.fill",
                 title: "Pending local entries",
                 value: "\(currentUserPendingEntries.count)"
@@ -478,6 +580,12 @@ struct SettingsView: View {
                 icon: "clock.badge.questionmark.fill",
                 title: "Pending local Watchlist",
                 value: "\(currentUserPendingWatchlistItems.count)"
+            )
+
+            SettingsRow(
+                icon: "clock.badge.checkmark.fill",
+                title: "Pending local Watch Together",
+                value: "\(currentUserPendingWatchPlans.count + currentUserPendingWatchPlanResponses.count)"
             )
         }
         .padding(12)
@@ -587,6 +695,52 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Watch Together Section
+
+    private var watchTogetherSection: some View {
+        SettingsSectionCard(
+            title: "Watch Together",
+            subtitle: "Private Circle plans, responses, and local-first sync."
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                SettingsRow(
+                    icon: "calendar.badge.clock",
+                    title: "Local plans",
+                    value: "\(currentUserActiveWatchPlans.count)"
+                )
+
+                SettingsRow(
+                    icon: "person.2.fill",
+                    title: "Local responses",
+                    value: "\(currentUserActiveWatchPlanResponses.count)"
+                )
+
+                SettingsRow(
+                    icon: "clock.fill",
+                    title: "Pending plans",
+                    value: "\(currentUserPendingWatchPlans.count)"
+                )
+
+                SettingsRow(
+                    icon: "bubble.left.and.bubble.right.fill",
+                    title: "Pending responses",
+                    value: "\(currentUserPendingWatchPlanResponses.count)"
+                )
+
+                SettingsRow(
+                    icon: "exclamationmark.triangle.fill",
+                    title: "Failed Watch Together sync",
+                    value: "\(currentUserFailedWatchPlans.count + currentUserFailedWatchPlanResponses.count)"
+                )
+
+                Text("Watch Together plans live inside private Circles. Creation and responses are saved locally first, queued as pending actions, then synced to Firestore.")
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
     // MARK: - Local Data Section
 
     private var localDataSection: some View {
@@ -614,6 +768,12 @@ struct SettingsView: View {
                 )
 
                 SettingsRow(
+                    icon: "calendar.badge.clock",
+                    title: "Local Watch Together",
+                    value: "\(currentUserActiveWatchPlans.count)"
+                )
+
+                SettingsRow(
                     icon: "clock.fill",
                     title: "Pending local entries",
                     value: "\(currentUserPendingEntries.count)"
@@ -623,6 +783,12 @@ struct SettingsView: View {
                     icon: "bookmark.circle.fill",
                     title: "Pending Watchlist items",
                     value: "\(currentUserPendingWatchlistItems.count)"
+                )
+
+                SettingsRow(
+                    icon: "calendar.badge.clock",
+                    title: "Pending Watch Together items",
+                    value: "\(currentUserPendingWatchPlans.count + currentUserPendingWatchPlanResponses.count)"
                 )
 
                 SettingsRow(
@@ -637,7 +803,7 @@ struct SettingsView: View {
                     value: "\(currentUserCompletedActions.count)"
                 )
 
-                Text("You can add, edit, delete memories, and save titles offline. CloseCut keeps local changes queued until you sync them with the cloud.")
+                Text("You can add, edit, delete memories, save titles offline, and respond to Circle plans. CloseCut keeps local changes queued until you sync them with the cloud.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -702,6 +868,7 @@ struct SettingsView: View {
             }
         }
     }
+
     // MARK: - Share Section
 
     private var shareSection: some View {
@@ -850,8 +1017,27 @@ struct SettingsView: View {
             modelContext: modelContext
         )
 
-        let syncedCount = entrySummary.syncedCount + watchlistSummary.syncedCount
-        let failedCount = entrySummary.failedCount + watchlistSummary.failedCount
+        let watchTogetherSummary = await watchPlanSyncService.syncPendingWatchTogetherItems(
+            userId: user.id,
+            modelContext: modelContext
+        )
+
+        let syncedCount =
+            entrySummary.syncedCount +
+            watchlistSummary.syncedCount +
+            watchTogetherSummary.syncedCount
+
+        let failedCount =
+            entrySummary.failedCount +
+            watchlistSummary.failedCount +
+            watchTogetherSummary.failedCount
+
+        #if DEBUG
+        print("☁️ Manual sync summary:")
+        print("Entries synced:", entrySummary.syncedCount, "failed:", entrySummary.failedCount)
+        print("Watchlist synced:", watchlistSummary.syncedCount, "failed:", watchlistSummary.failedCount)
+        print("Watch Together synced:", watchTogetherSummary.syncedCount, "failed:", watchTogetherSummary.failedCount)
+        #endif
 
         if failedCount > 0 {
             lastSyncBannerStyle = .warning
@@ -884,8 +1070,27 @@ struct SettingsView: View {
             modelContext: modelContext
         )
 
-        let pulledCount = entrySummary.pulledCount + watchlistSummary.pulledCount
-        let failedCount = entrySummary.failedCount + watchlistSummary.failedCount
+        let watchTogetherSummary = await watchPlanSyncService.pullRemoteWatchTogetherItems(
+            circleIds: currentUserActiveCircleIds,
+            modelContext: modelContext
+        )
+
+        let pulledCount =
+            entrySummary.pulledCount +
+            watchlistSummary.pulledCount +
+            watchTogetherSummary.pulledCount
+
+        let failedCount =
+            entrySummary.failedCount +
+            watchlistSummary.failedCount +
+            watchTogetherSummary.failedCount
+
+        #if DEBUG
+        print("☁️ Manual pull summary:")
+        print("Entries pulled:", entrySummary.pulledCount, "failed:", entrySummary.failedCount)
+        print("Watchlist pulled:", watchlistSummary.pulledCount, "failed:", watchlistSummary.failedCount)
+        print("Watch Together pulled:", watchTogetherSummary.pulledCount, "failed:", watchTogetherSummary.failedCount)
+        #endif
 
         if failedCount > 0 {
             lastSyncBannerStyle = .warning
@@ -950,6 +1155,8 @@ struct SettingsView: View {
         LocalUserState.self,
         PendingAction.self,
         LocalBattleResult.self,
-        LocalWatchlistItem.self
+        LocalWatchlistItem.self,
+        LocalWatchPlan.self,
+        LocalWatchPlanResponse.self
     ], inMemory: true)
 }
