@@ -456,7 +456,8 @@ struct CircleView: View {
             return
         }
 
-        let cleanedMediaTitle = draft.mediaTitle.trimmed
+        let media = draft.media
+        let cleanedMediaTitle = media.displayTitle.trimmed
 
         guard cleanedMediaTitle.isEmpty == false else {
             watchPlanErrorMessage = "Choose a movie or series before creating the plan."
@@ -481,12 +482,6 @@ struct CircleView: View {
         }
 
         do {
-            let media = WatchPlanMediaSnapshot(
-                title: cleanedMediaTitle,
-                type: draft.type,
-                source: .manual
-            )
-
             let createdPlan = try watchPlanRepository.createLocalPlan(
                 ownerId: user.id,
                 ownerDisplayName: profile.displayName,
@@ -509,6 +504,9 @@ struct CircleView: View {
 
             #if DEBUG
             print("✅ Created local WatchPlan:", createdPlan.id)
+            print("🎬 Media:", createdPlan.media.displayTitle)
+            print("🎞️ TMDB:", createdPlan.media.tmdbId ?? -1)
+            print("🖼️ Poster:", createdPlan.media.posterPath ?? "nil")
             print("📍 Circle:", createdPlan.circleId)
             print("👥 Invited:", createdPlan.invitedMemberIds)
             print("☁️ Sync status before push:", createdPlan.syncStatus.displayName)
