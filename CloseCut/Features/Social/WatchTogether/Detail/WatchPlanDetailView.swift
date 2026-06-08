@@ -22,6 +22,9 @@ struct WatchPlanDetailView: View {
     @Query(sort: \LocalWatchPlanResponse.updatedAt, order: .reverse)
     private var localResponses: [LocalWatchPlanResponse]
 
+    @Query(sort: \LocalEntry.updatedAt, order: .reverse)
+    private var localEntries: [LocalEntry]
+
     @State private var actionMessage: String?
     @State private var actionBannerStyle: SyncResultBannerStyle = .neutral
     @State private var isPerformingAction = false
@@ -33,6 +36,7 @@ struct WatchPlanDetailView: View {
 
     private let syncService = WatchPlanSyncService()
     private let repository = WatchPlanRepository()
+    private let entryRepository = EntryRepository()
 
     private var plan: WatchPlan {
         localPlans
@@ -54,6 +58,40 @@ struct WatchPlanDetailView: View {
 
     private var currentUserResponse: WatchPlanResponse? {
         responses.first { $0.userId == currentUserId }
+    }
+
+    private var currentUserEntries: [Entry] {
+        localEntries
+            .filter { $0.ownerId == currentUserId }
+            .map { $0.domain }
+            .filter { $0.deletedAt == nil }
+    }
+
+    private var matchingPersonalEntry: Entry? {
+        currentUserEntries.first { entry in
+            if let planTMDBId = plan.media.tmdbId,
+               let planMediaTypeRaw = plan.media.tmdbMediaTypeRaw,
+               let entryTMDBId = entry.tmdbId,
+               let entryMediaTypeRaw = entry.tmdbMediaTypeRaw {
+                return planTMDBId == entryTMDBId &&
+                    planMediaTypeRaw == entryMediaTypeRaw
+            }
+
+            return entry.displayTitle.normalizedTitleKey == plan.media.displayTitle.normalizedTitleKey &&
+                entry.type == plan.media.type &&
+                yearsAreCompatible(entry.releaseYear, plan.media.releaseYear)
+        }
+    }
+
+    private var isAlreadyInPersonal: Bool {
+        matchingPersonalEntry != nil
+    }
+
+    private var canAddToPersonal: Bool {
+        plan.isActive &&
+        plan.status == .watched &&
+        isAlreadyInPersonal == false &&
+        isPerformingAction == false
     }
 
     private var isOwner: Bool {
@@ -141,6 +179,8 @@ struct WatchPlanDetailView: View {
                     if isOwner {
                         ownerActionsSection
                     }
+
+                    personalTimelineSection
 
                     planDetailsSection
 
@@ -797,6 +837,108 @@ struct WatchPlanDetailView: View {
         return CloseCutColors.textSecondary
     }
 
+    // MARK: - Personal Timeline
+
+    private var personalTimelineSection: some View {
+        DetailSectionCard(title: "Personal Timeline") {
+            VStack(alignment: .leading, spacing: 12) {
+                WatchPlanInfoRow(
+                    icon: isAlreadyInPersonal ? "checkmark.circle.fill" : "person.crop.square.filled.and.at.rectangle",
+                    title: "Personal memory",
+                    value: personalTimelineStatusText
+                )
+
+                Text(personalTimelineHelperText)
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if isAlreadyInPersonal {
+                    HStack(alignment: .top, spacing: 9) {
+                        Image(systemName: "lock.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                            .padding(.top, 2)
+
+                        Text("This title already exists in your private Personal Timeline. The Circle plan stays separate from your personal memory.")
+                            .font(.caption)
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Spacer(minLength: 0)
+                    }
+                    .padding(12)
+                    .background(CloseCutColors.input.opacity(0.74))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                } else {
+                    Button {
+                        Task {
+                            await addPlanToPersonalTimeline()
+                        }
+                    } label: {
+                        HStack(spacing: 9) {
+                            if isPerformingAction {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            } else {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.caption.weight(.semibold))
+                            }
+
+                            Text("Add to Personal Timeline")
+                                .font(.subheadline.weight(.semibold))
+
+                            Spacer(minLength: 0)
+
+                            Image(systemName: "chevron.right")
+                                .font(.caption2.weight(.bold))
+                        }
+                        .foregroundStyle(canAddToPersonal ? .white : CloseCutColors.textTertiary)
+                        .padding(.horizontal, 14)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 46)
+                        .background(canAddToPersonal ? CloseCutColors.accent : CloseCutColors.input)
+                        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(canAddToPersonal == false)
+                }
+            }
+        }
+    }
+
+    private var personalTimelineStatusText: String {
+        if isAlreadyInPersonal {
+            return "Already saved in Personal"
+        }
+
+        if plan.status == .watched {
+            return "Ready to save privately"
+        }
+
+        if plan.status == .confirmed {
+            return "Mark watched first"
+        }
+
+        if plan.status == .canceled {
+            return "Canceled plans cannot be added"
+        }
+
+        return "Available after watching"
+    }
+
+    private var personalTimelineHelperText: String {
+        if isAlreadyInPersonal {
+            return "CloseCut found a matching title in your Personal Timeline."
+        }
+
+        if plan.status == .watched {
+            return "Save this watched plan as a private Personal memory with its title, type, poster, year, overview, rating, and TMDB metadata."
+        }
+
+        return "Once this plan is marked as watched, you can add it to your private Personal Timeline."
+    }
+
     // MARK: - Plan Details
 
     private var planDetailsSection: some View {
@@ -925,6 +1067,48 @@ struct WatchPlanDetailView: View {
     }
 
     // MARK: - Actions
+
+    private func addPlanToPersonalTimeline() async {
+        guard isPerformingAction == false else {
+            return
+        }
+
+        guard plan.status == .watched else {
+            actionBannerStyle = .warning
+            actionMessage = "Mark this plan as watched before adding it to Personal."
+            return
+        }
+
+        guard isAlreadyInPersonal == false else {
+            actionBannerStyle = .neutral
+            actionMessage = "\(plan.media.displayTitle) is already in your Personal Timeline."
+            return
+        }
+
+        isPerformingAction = true
+        actionMessage = nil
+
+        defer {
+            isPerformingAction = false
+        }
+
+        let draft = EntryDraftFactory.quickAddFromWatchPlan(plan)
+
+        do {
+            let entry = try entryRepository.createQuickAddEntry(
+                ownerId: currentUserId,
+                draft: draft,
+                visibility: .privateOnly,
+                modelContext: modelContext
+            )
+
+            actionBannerStyle = .success
+            actionMessage = "\(entry.displayTitle) was added to your Personal Timeline."
+        } catch {
+            actionBannerStyle = .warning
+            actionMessage = error.localizedDescription
+        }
+    }
 
     private func respond(
         _ responseType: WatchPlanResponseType
@@ -1168,6 +1352,17 @@ struct WatchPlanDetailView: View {
             actionBannerStyle = .warning
             actionMessage = error.localizedDescription
         }
+    }
+
+    private func yearsAreCompatible(
+        _ first: Int?,
+        _ second: Int?
+    ) -> Bool {
+        if let first, let second {
+            return first == second
+        }
+
+        return first == nil || second == nil
     }
 }
 
