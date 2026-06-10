@@ -399,6 +399,9 @@ struct DiscoverView: View {
                 onMarkWatched: { item in
                     await markWatchlistItemAsWatched(item)
                 },
+                onPlanWithCircle: { item in
+                    openCreateWatchPlanFromWatchlistRail(item)
+                },
                 onDismiss: { item in
                     await dismissWatchlistItem(item)
                 }
@@ -799,6 +802,21 @@ struct DiscoverView: View {
             }
         } catch {
             watchPlanErrorMessage = error.localizedDescription
+        }
+    }
+    private func openCreateWatchPlanFromWatchlistRail(
+        _ item: WatchlistItem
+    ) {
+        guard circleRows.isEmpty == false else {
+            actionBannerStyle = .warning
+            actionMessage = "Create or join a Circle before planning this title."
+            return
+        }
+
+        selectedMediaForWatchPlan = WatchPlanMediaSnapshotFactory.fromWatchlistItem(item)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            showCreateWatchPlanSheet = true
         }
     }
 

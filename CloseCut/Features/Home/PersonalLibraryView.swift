@@ -22,6 +22,7 @@ struct PersonalLibraryView: View {
     let onRefreshMetadata: () async -> Void
     let onMarkWatchlistItemWatched: (WatchlistItem) async -> Void
     let onDismissWatchlistItem: (WatchlistItem) async -> Void
+    let onPlanWatchlistItemWithCircle: (WatchlistItem) -> Void
 
     @StateObject private var quickPickViewModel = HomeQuickPickViewModel()
 
@@ -223,6 +224,9 @@ struct PersonalLibraryView: View {
                     profile: profile,
                     onMarkWatched: { item in
                         await onMarkWatchlistItemWatched(item)
+                    },
+                    onPlanWithCircle: { item in
+                        onPlanWatchlistItemWithCircle(item)
                     },
                     onDismiss: { item in
                         await onDismissWatchlistItem(item)

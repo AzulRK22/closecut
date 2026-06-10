@@ -14,6 +14,7 @@ struct WatchlistRailView: View {
     let user: AuthUser
     let profile: UserProfile
     let onMarkWatched: (WatchlistItem) async -> Void
+    let onPlanWithCircle: (WatchlistItem) -> Void
     let onDismiss: (WatchlistItem) async -> Void
 
     @State private var selectedItem: WatchlistItem?
@@ -48,6 +49,13 @@ struct WatchlistRailView: View {
                             await runAction(for: item) {
                                 await onMarkWatched(item)
                             }
+                        }
+                    },
+                    onPlanWithCircle: {
+                        selectedItem = nil
+
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                            onPlanWithCircle(item)
                         }
                     },
                     onDismiss: {

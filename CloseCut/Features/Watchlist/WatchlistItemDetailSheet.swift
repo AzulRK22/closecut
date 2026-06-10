@@ -11,6 +11,7 @@ struct WatchlistItemDetailSheet: View {
     let item: WatchlistItem
     let isProcessing: Bool
     let onMarkWatched: () -> Void
+    let onPlanWithCircle: () -> Void
     let onDismiss: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -253,6 +254,30 @@ struct WatchlistItemDetailSheet: View {
                     .disabled(isProcessing)
 
                     Button {
+                        onPlanWithCircle()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "person.2.wave.2.fill")
+
+                            Text("Plan with Circle")
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.86)
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.accentLight)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 46)
+                        .background(CloseCutColors.input)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(CloseCutColors.accentLight.opacity(0.55), lineWidth: 0.5)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isProcessing)
+
+                    Button {
                         onDismiss()
                     } label: {
                         Text("Dismiss")
@@ -266,7 +291,7 @@ struct WatchlistItemDetailSheet: View {
                     .buttonStyle(.plain)
                     .disabled(isProcessing)
 
-                    Text("Marking as watched moves this title into Personal as a Quick Add. You can complete mood, tags, and memory details later.")
+                    Text("You can move this title into Personal, plan it with a Circle, or dismiss it from your queue.")
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textTertiary)
                         .lineSpacing(3)
