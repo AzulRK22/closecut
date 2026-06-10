@@ -46,6 +46,7 @@ struct CircleView: View {
 
     @State private var selectedWatchTogetherCircleId: String?
     @State private var selectedWatchPlanIdForDetail: String?
+    @State private var initialWatchPlanMedia: WatchPlanMediaSnapshot?
     @State private var showCreateWatchPlanSheet = false
     @State private var isCreatingWatchPlan = false
     @State private var watchPlanErrorMessage: String?
@@ -123,16 +124,6 @@ struct CircleView: View {
             }
     }
 
-    private var selectedWatchPlanForDetail: WatchPlan? {
-        guard let selectedWatchPlanIdForDetail else {
-            return nil
-        }
-
-        return watchTogetherPlans.first { plan in
-            plan.id == selectedWatchPlanIdForDetail
-        }
-    }
-
     private func sharedMemoryCount(
         for circleId: String
     ) -> Int {
@@ -181,7 +172,9 @@ struct CircleView: View {
                             plans: watchTogetherPlans,
                             currentUserId: user.id,
                             selectedCircleId: $selectedWatchTogetherCircleId,
-                            onCreatePlan: openCreateWatchPlan,
+                            onCreatePlan: {
+                                openCreateWatchPlan()
+                            },
                             onCreateCircle: openCreateCircle,
                             onOpenPlan: openWatchPlan
                         )
@@ -302,9 +295,11 @@ struct CircleView: View {
                 CreateWatchPlanSheet(
                     circleRows: circleRows,
                     selectedCircleId: selectedWatchTogetherCircleId,
+                    initialMedia: initialWatchPlanMedia,
                     isCreating: isCreatingWatchPlan,
                     onCancel: {
                         showCreateWatchPlanSheet = false
+                        initialWatchPlanMedia = nil
                     },
                     onCreate: { draft in
                         Task {
@@ -424,13 +419,16 @@ struct CircleView: View {
         showJoinCircleSheet = true
     }
 
-    private func openCreateWatchPlan() {
+    private func openCreateWatchPlan(
+        initialMedia: WatchPlanMediaSnapshot? = nil
+    ) {
         guard circleRows.isEmpty == false else {
             openCreateCircle()
             return
         }
 
         watchPlanErrorMessage = nil
+        initialWatchPlanMedia = initialMedia
         showCreateWatchPlanSheet = true
     }
 
@@ -529,6 +527,7 @@ struct CircleView: View {
 
             selectedWatchTogetherCircleId = selectedRow.circle.id
             showCreateWatchPlanSheet = false
+            initialWatchPlanMedia = nil
 
             try? await Task.sleep(nanoseconds: 250_000_000)
 

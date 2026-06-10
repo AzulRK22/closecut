@@ -10,13 +10,15 @@ import SwiftUI
 struct CreateWatchPlanSheet: View {
     let circleRows: [(circle: CloseCircle, membership: CircleMembership)]
     let selectedCircleId: String?
+    let initialMedia: WatchPlanMediaSnapshot?
     let isCreating: Bool
     let onCancel: () -> Void
     let onCreate: (WatchPlanCreationDraft) -> Void
 
     @State private var selectedCircleIdInternal: String
 
-    @State private var selectedMedia: TMDBMediaSearchResult?
+    @State private var selectedTMDBMedia: TMDBMediaSearchResult?
+    @State private var selectedMediaSnapshotFromSource: WatchPlanMediaSnapshot?
     @State private var showMediaSearchSheet = false
 
     @State private var mediaTitle = ""
@@ -45,12 +47,14 @@ struct CreateWatchPlanSheet: View {
     init(
         circleRows: [(circle: CloseCircle, membership: CircleMembership)],
         selectedCircleId: String?,
+        initialMedia: WatchPlanMediaSnapshot? = nil,
         isCreating: Bool,
         onCancel: @escaping () -> Void,
         onCreate: @escaping (WatchPlanCreationDraft) -> Void
     ) {
         self.circleRows = circleRows
         self.selectedCircleId = selectedCircleId
+        self.initialMedia = initialMedia
         self.isCreating = isCreating
         self.onCancel = onCancel
         self.onCreate = onCreate
@@ -59,10 +63,16 @@ struct CreateWatchPlanSheet: View {
         let resolvedCircleId = selectedCircleId?.trimmed.nilIfBlank ?? fallbackCircleId
 
         _selectedCircleIdInternal = State(initialValue: resolvedCircleId)
+        _selectedMediaSnapshotFromSource = State(initialValue: initialMedia)
+        _mediaTitle = State(initialValue: initialMedia?.displayTitle ?? "")
+        _selectedType = State(initialValue: initialMedia?.type ?? .movie)
+        _planTitle = State(initialValue: initialMedia.map { "Watch \($0.displayTitle)" } ?? "")
     }
 
     private var cleanedMediaTitle: String {
-        selectedMedia?.title.trimmed ?? mediaTitle.trimmed
+        selectedTMDBMedia?.title.trimmed ??
+        selectedMediaSnapshotFromSource?.displayTitle.trimmed ??
+        mediaTitle.trimmed
     }
 
     private var cleanedPlanTitle: String? {
@@ -129,15 +139,15 @@ struct CreateWatchPlanSheet: View {
     }
 
     private var selectedMediaSnapshot: WatchPlanMediaSnapshot? {
-        if let selectedMedia {
-            return WatchPlanMediaSnapshot(
-                title: selectedMedia.title,
-                type: selectedMedia.entryType,
-                releaseYear: selectedMedia.releaseYear,
-                source: .discover,
-                sourceId: selectedMedia.id,
-                externalMetadata: EntryExternalMetadata(tmdbResult: selectedMedia)
+        if let selectedTMDBMedia {
+            return WatchPlanMediaSnapshotFactory.fromTMDBResult(
+                selectedTMDBMedia,
+                source: .discover
             )
+        }
+
+        if let selectedMediaSnapshotFromSource {
+            return selectedMediaSnapshotFromSource
         }
 
         let cleanedManualTitle = mediaTitle.trimmed
@@ -146,10 +156,9 @@ struct CreateWatchPlanSheet: View {
             return nil
         }
 
-        return WatchPlanMediaSnapshot(
+        return WatchPlanMediaSnapshotFactory.manual(
             title: cleanedManualTitle,
-            type: selectedType,
-            source: .manual
+            type: selectedType
         )
     }
 
@@ -214,7 +223,7 @@ struct CreateWatchPlanSheet: View {
             syncInviteesForSelectedCircle()
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                if selectedMedia == nil {
+                if selectedTMDBMedia == nil && selectedMediaSnapshotFromSource == nil {
                     focusedField = .mediaTitle
                 }
             }
@@ -331,8 +340,10 @@ struct CreateWatchPlanSheet: View {
                 subtitle: "Search TMDB to attach the correct poster, year, rating, and overview."
             )
 
-            if let selectedMedia {
-                selectedMediaCard(selectedMedia)
+            if let selectedTMDBMedia {
+                selectedTMDBMediaCard(selectedTMDBMedia)
+            } else if let selectedMediaSnapshotFromSource {
+                selectedSnapshotCard(selectedMediaSnapshotFromSource)
             } else {
                 Button {
                     showMediaSearchSheet = true
@@ -407,7 +418,7 @@ struct CreateWatchPlanSheet: View {
         }
     }
 
-    private func selectedMediaCard(
+    private func selectedTMDBMediaCard(
         _ media: TMDBMediaSearchResult
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -446,6 +457,98 @@ struct CreateWatchPlanSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     Text(media.subtitle)
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .lineLimit(1)
+
+                    if let overview = media.overview?.trimmed.nilIfBlank {
+                        Text(overview)
+                            .font(.caption)
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    showMediaSearchSheet = true
+                } label: {
+                    Label("Change title", systemImage: "magnifyingglass")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.accentLight)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 38)
+                        .background(CloseCutColors.input)
+                        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    clearSelectedMedia()
+                } label: {
+                    Label("Use manual", systemImage: "pencil")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 38)
+                        .background(CloseCutColors.input)
+                        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(14)
+        .background(CloseCutColors.input.opacity(0.74))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(CloseCutColors.accentLight.opacity(0.45), lineWidth: 0.7)
+        }
+    }
+
+    private func selectedSnapshotCard(
+        _ media: WatchPlanMediaSnapshot
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                MediaPosterView(
+                    posterPath: media.posterPath,
+                    mediaType: media.tmdbMediaTypeRaw == TMDBMediaType.tv.rawValue ? .tv : .movie,
+                    width: 68,
+                    height: 102,
+                    cornerRadius: 14
+                )
+
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(spacing: 7) {
+                        Label(media.source.displayName, systemImage: media.source.systemImage)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.accentLight)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(CloseCutColors.input)
+                            .clipShape(Capsule())
+
+                        Text(media.type.displayName)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(CloseCutColors.input)
+                            .clipShape(Capsule())
+                    }
+
+                    Text(media.displayTitle)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(media.metadataText)
                         .font(.caption)
                         .foregroundStyle(CloseCutColors.textSecondary)
                         .lineLimit(1)
@@ -869,7 +972,8 @@ struct CreateWatchPlanSheet: View {
     private func applySelectedMedia(
         _ media: TMDBMediaSearchResult
     ) {
-        selectedMedia = media
+        selectedTMDBMedia = media
+        selectedMediaSnapshotFromSource = nil
         mediaTitle = media.title
         selectedType = media.entryType
 
@@ -881,7 +985,9 @@ struct CreateWatchPlanSheet: View {
     }
 
     private func clearSelectedMedia() {
-        selectedMedia = nil
+        selectedTMDBMedia = nil
+        selectedMediaSnapshotFromSource = nil
+        mediaTitle = ""
         focusedField = .mediaTitle
     }
 

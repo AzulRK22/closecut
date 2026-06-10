@@ -15,6 +15,12 @@ struct DiscoverView: View {
     @Query(sort: \LocalWatchlistItem.updatedAt, order: .reverse)
     private var localWatchlistItems: [LocalWatchlistItem]
 
+    @Query(sort: \LocalCircle.updatedAt, order: .reverse)
+    private var localCircles: [LocalCircle]
+
+    @Query(sort: \LocalCircleMembership.updatedAt, order: .reverse)
+    private var localMemberships: [LocalCircleMembership]
+
     @StateObject private var viewModel = DiscoverViewModel()
 
     @State private var actionMessage: String?
@@ -30,12 +36,19 @@ struct DiscoverView: View {
     @State private var isSearching = false
     @State private var searchErrorMessage: String?
 
+    @State private var selectedMediaForWatchPlan: WatchPlanMediaSnapshot?
+    @State private var showCreateWatchPlanSheet = false
+    @State private var isCreatingWatchPlan = false
+    @State private var watchPlanErrorMessage: String?
+
     let user: AuthUser
     let profile: UserProfile
 
     private let entryRepository = EntryRepository()
     private let watchlistRepository = WatchlistRepository()
     private let tmdbRepository = TMDBMediaRepository()
+    private let watchPlanRepository = WatchPlanRepository()
+    private let watchPlanSyncService = WatchPlanSyncService()
 
     private var currentUserEntries: [Entry] {
         localEntries
@@ -56,6 +69,37 @@ struct DiscoverView: View {
     private var savedWatchlistItems: [WatchlistItem] {
         currentUserWatchlistItems.filter { item in
             item.status == .saved && item.deletedAt == nil
+        }
+    }
+
+    private var memberships: [CircleMembership] {
+        localMemberships
+            .filter { $0.userId == user.id }
+            .map { $0.domain }
+            .filter { $0.isActive }
+            .sorted { first, second in
+                if first.isOwner != second.isOwner {
+                    return first.isOwner && !second.isOwner
+                }
+
+                return first.updatedAt > second.updatedAt
+            }
+    }
+
+    private var circlesById: [String: CloseCircle] {
+        Dictionary(
+            uniqueKeysWithValues: localCircles.map { ($0.id, $0.domain) }
+        )
+    }
+
+    private var circleRows: [(circle: CloseCircle, membership: CircleMembership)] {
+        memberships.compactMap { membership in
+            guard let circle = circlesById[membership.circleId],
+                  circle.deletedAt == nil else {
+                return nil
+            }
+
+            return (circle, membership)
         }
     }
 
@@ -133,10 +177,40 @@ struct DiscoverView: View {
                     Task {
                         await removeFromWatchlist(media)
                     }
+                },
+                onCreateWatchPlan: {
+                    openCreateWatchPlanFromDiscover(media)
                 }
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showCreateWatchPlanSheet) {
+            CreateWatchPlanSheet(
+                circleRows: circleRows,
+                selectedCircleId: circleRows.first?.circle.id,
+                initialMedia: selectedMediaForWatchPlan,
+                isCreating: isCreatingWatchPlan,
+                onCancel: {
+                    showCreateWatchPlanSheet = false
+                    selectedMediaForWatchPlan = nil
+                },
+                onCreate: { draft in
+                    Task {
+                        await createWatchPlanFromDiscover(draft)
+                    }
+                }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+        .alert("Watch Together failed", isPresented: Binding(
+            get: { watchPlanErrorMessage != nil },
+            set: { if !$0 { watchPlanErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(watchPlanErrorMessage ?? "Unknown error.")
         }
     }
 
@@ -297,7 +371,7 @@ struct DiscoverView: View {
         } else if searchResults.isEmpty {
             EmptyStateView(
                 title: "Search Discover",
-                message: "Look up a movie or series, then add it to Personal or save it to Want to Watch.",
+                message: "Look up a movie or series, then add it to Personal, save it to Want to Watch, or plan it with a Circle.",
                 systemImage: "magnifyingglass",
                 actionTitle: nil,
                 action: nil
@@ -305,7 +379,7 @@ struct DiscoverView: View {
         } else {
             DiscoverMediaRail(
                 title: "Search results",
-                subtitle: "Choose a title to preview before saving.",
+                subtitle: "Choose a title to preview before saving or planning.",
                 emptyMessage: "No matching titles found.",
                 items: searchResults
             ) { media in
@@ -535,14 +609,7 @@ struct DiscoverView: View {
         isSavingWatched = true
         defer { isSavingWatched = false }
 
-        let draft = QuickAddDraft(
-            title: media.title,
-            type: media.entryType,
-            releaseYear: media.releaseYear,
-            quickSentiment: nil,
-            watchedDateApprox: .unknown,
-            externalMetadata: EntryExternalMetadata(tmdbResult: media)
-        )
+        let draft = EntryDraftFactory.quickAddFromTMDBResult(media)
 
         do {
             let entry = try entryRepository.createQuickAddEntry(
@@ -639,6 +706,102 @@ struct DiscoverView: View {
         }
     }
 
+    // MARK: - Watch Together from Discover
+
+    private func openCreateWatchPlanFromDiscover(
+        _ media: TMDBMediaSearchResult
+    ) {
+        guard circleRows.isEmpty == false else {
+            actionBannerStyle = .warning
+            actionMessage = "Create or join a Circle before planning this title."
+            viewModel.clearSelection()
+            return
+        }
+
+        selectedMediaForWatchPlan = WatchPlanMediaSnapshotFactory.fromTMDBResult(
+            media,
+            source: .discover
+        )
+
+        viewModel.clearSelection()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            showCreateWatchPlanSheet = true
+        }
+    }
+
+    private func createWatchPlanFromDiscover(
+        _ draft: WatchPlanCreationDraft
+    ) async {
+        guard isCreatingWatchPlan == false else {
+            return
+        }
+
+        guard let selectedRow = circleRows.first(where: { row in
+            row.circle.id == draft.circleId
+        }) else {
+            watchPlanErrorMessage = "Choose a valid Circle before creating this plan."
+            return
+        }
+
+        let invitedMemberIds = draft.invitedMemberIds.filter { memberId in
+            memberId.trimmed.isEmpty == false &&
+            memberId.trimmed != user.id.trimmed
+        }
+
+        guard invitedMemberIds.isEmpty == false else {
+            watchPlanErrorMessage = "Select at least one Circle member to invite."
+            return
+        }
+
+        isCreatingWatchPlan = true
+        watchPlanErrorMessage = nil
+
+        defer {
+            isCreatingWatchPlan = false
+        }
+
+        do {
+            let createdPlan = try watchPlanRepository.createLocalPlan(
+                ownerId: user.id,
+                ownerDisplayName: profile.displayName,
+                circleId: selectedRow.circle.id,
+                circleName: selectedRow.circle.displayName,
+                title: draft.planTitle,
+                note: draft.note,
+                media: draft.media,
+                proposedStartAt: nil,
+                proposedEndAt: nil,
+                proposedDateText: draft.proposedDateText,
+                locationType: draft.locationType,
+                locationName: draft.locationName,
+                locationAddress: draft.locationAddress,
+                streamingService: draft.streamingService,
+                invitedMemberIds: invitedMemberIds,
+                source: .discover,
+                modelContext: modelContext
+            )
+
+            let syncSummary = await watchPlanSyncService.syncPendingWatchTogetherItems(
+                userId: user.id,
+                modelContext: modelContext
+            )
+
+            showCreateWatchPlanSheet = false
+            selectedMediaForWatchPlan = nil
+
+            if syncSummary.hasFailures {
+                actionBannerStyle = .warning
+                actionMessage = "Plan created locally, but it could not sync yet. It will retry later."
+            } else {
+                actionBannerStyle = .success
+                actionMessage = "\(createdPlan.media.displayTitle) was planned with your Circle."
+            }
+        } catch {
+            watchPlanErrorMessage = error.localizedDescription
+        }
+    }
+
     // MARK: - Watchlist Rail Actions
 
     private func markWatchlistItemAsWatched(
@@ -651,14 +814,7 @@ struct DiscoverView: View {
         activeWatchlistRailActionItemId = item.id
         defer { activeWatchlistRailActionItemId = nil }
 
-        let draft = QuickAddDraft(
-            title: item.displayTitle,
-            type: item.type,
-            releaseYear: item.releaseYear,
-            quickSentiment: nil,
-            watchedDateApprox: .unknown,
-            externalMetadata: item.externalMetadata
-        )
+        let draft = EntryDraftFactory.quickAddFromWatchlistItem(item)
 
         do {
             let entry = try entryRepository.createQuickAddEntry(

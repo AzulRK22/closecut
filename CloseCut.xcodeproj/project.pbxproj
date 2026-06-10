@@ -7,9 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		350395262FD2374F00AE03C8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 350395232FD2374F00AE03C8 /* Assets.xcassets */; };
-		350395272FD2374F00AE03C8 /* playstore.png in Resources */ = {isa = PBXBuildFile; fileRef = 350395242FD2374F00AE03C8 /* playstore.png */; };
-		350395282FD2374F00AE03C8 /* appstore.png in Resources */ = {isa = PBXBuildFile; fileRef = 350395222FD2374F00AE03C8 /* appstore.png */; };
+		350395442FDA212400AE03C8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 350395412FDA212400AE03C8 /* Assets.xcassets */; };
+		350395452FDA212400AE03C8 /* playstore.png in Resources */ = {isa = PBXBuildFile; fileRef = 350395422FDA212400AE03C8 /* playstore.png */; };
+		350395462FDA212400AE03C8 /* appstore.png in Resources */ = {isa = PBXBuildFile; fileRef = 350395402FDA212400AE03C8 /* appstore.png */; };
 		3507208F2F9D2F86005D6E92 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 3507208E2F9D2F86005D6E92 /* FirebaseAnalytics */; };
 		350720912F9D2F86005D6E92 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 350720902F9D2F86005D6E92 /* FirebaseAuth */; };
 		350720932F9D2F86005D6E92 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = 350720922F9D2F86005D6E92 /* FirebaseCrashlytics */; };
@@ -36,9 +36,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		350395222FD2374F00AE03C8 /* appstore.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = appstore.png; sourceTree = "<group>"; };
-		350395232FD2374F00AE03C8 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		350395242FD2374F00AE03C8 /* playstore.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = playstore.png; sourceTree = "<group>"; };
+		350395402FDA212400AE03C8 /* appstore.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = appstore.png; sourceTree = "<group>"; };
+		350395412FDA212400AE03C8 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		350395422FDA212400AE03C8 /* playstore.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = playstore.png; sourceTree = "<group>"; };
 		351456042FABFB6D00115579 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 		351456062FABFE3D00115579 /* CloseCut.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = CloseCut.xcconfig; sourceTree = "<group>"; };
 		356EB3532F9D1C1A00E9C3FF /* CloseCut.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CloseCut.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -144,20 +144,20 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		350395252FD2374F00AE03C8 /* AppIcons-2 */ = {
+		350395432FDA212400AE03C8 /* AppIcons */ = {
 			isa = PBXGroup;
 			children = (
-				350395222FD2374F00AE03C8 /* appstore.png */,
-				350395232FD2374F00AE03C8 /* Assets.xcassets */,
-				350395242FD2374F00AE03C8 /* playstore.png */,
+				350395402FDA212400AE03C8 /* appstore.png */,
+				350395412FDA212400AE03C8 /* Assets.xcassets */,
+				350395422FDA212400AE03C8 /* playstore.png */,
 			);
-			path = "AppIcons-2";
+			path = AppIcons;
 			sourceTree = "<group>";
 		};
 		356EB34A2F9D1C1A00E9C3FF = {
 			isa = PBXGroup;
 			children = (
-				350395252FD2374F00AE03C8 /* AppIcons-2 */,
+				350395432FDA212400AE03C8 /* AppIcons */,
 				351456062FABFE3D00115579 /* CloseCut.xcconfig */,
 				3554AD392FA293C0006B3AE5 /* Documentation */,
 				356EB3552F9D1C1A00E9C3FF /* CloseCut */,
@@ -300,9 +300,9 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				350395262FD2374F00AE03C8 /* Assets.xcassets in Resources */,
-				350395272FD2374F00AE03C8 /* playstore.png in Resources */,
-				350395282FD2374F00AE03C8 /* appstore.png in Resources */,
+				350395442FDA212400AE03C8 /* Assets.xcassets in Resources */,
+				350395452FDA212400AE03C8 /* playstore.png in Resources */,
+				350395462FDA212400AE03C8 /* appstore.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

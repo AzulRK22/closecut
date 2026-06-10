@@ -18,6 +18,7 @@ struct DiscoverMediaDetailSheet: View {
     let onAddWatched: () -> Void
     let onSaveForLater: () -> Void
     let onRemoveFromWatchlist: () -> Void
+    let onCreateWatchPlan: () -> Void
 
     private var posterURL: URL? {
         TMDBImageURLBuilder.imageURL(
@@ -438,6 +439,19 @@ struct DiscoverMediaDetailSheet: View {
             }
             .buttonStyle(.plain)
             .disabled(isProcessing || (isAlreadyInPersonal && isSavedToWatchlist == false))
+
+            Button {
+                onCreateWatchPlan()
+            } label: {
+                actionButtonLabel(
+                    icon: "person.2.wave.2.fill",
+                    text: "Plan with Circle",
+                    showsProgress: false,
+                    isHighlighted: false
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(isProcessing)
         }
         .frame(maxWidth: .infinity)
     }
@@ -486,7 +500,7 @@ struct DiscoverMediaDetailSheet: View {
                 .foregroundStyle(CloseCutColors.textTertiary)
                 .padding(.top, 2)
 
-            Text("Adding this as watched or saving it for later stays private first. You choose later if it belongs in a Circle.")
+            Text("Adding this as watched or saving it for later stays private first. You choose later if it belongs in a Circle or becomes a Watch Together plan.")
                 .font(.caption)
                 .foregroundStyle(CloseCutColors.textTertiary)
                 .lineSpacing(2)
