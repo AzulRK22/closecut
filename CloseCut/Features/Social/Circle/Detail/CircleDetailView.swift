@@ -9,6 +9,7 @@ import SwiftUI
 import SwiftData
 
 private enum CircleDetailSegment: String, CaseIterable, Identifiable {
+    case watchTogether
     case timeline
     case quickPick
     case members
@@ -18,6 +19,8 @@ private enum CircleDetailSegment: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .watchTogether:
+            return "Plans"
         case .timeline:
             return "Memories"
         case .quickPick:
@@ -31,6 +34,8 @@ private enum CircleDetailSegment: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
+        case .watchTogether:
+            return "calendar.badge.clock"
         case .timeline:
             return "film.stack.fill"
         case .quickPick:
@@ -52,12 +57,13 @@ struct CircleDetailView: View {
     let currentUserId: String
     let currentUserDisplayName: String
 
-    @State private var selectedSegment: CircleDetailSegment = .timeline
+    @State private var selectedSegment: CircleDetailSegment = .watchTogether
     @State private var copiedInviteCode = false
     @State private var showShareInviteSheet = false
 
     @State private var isRefreshing = false
     @State private var isPullingSharedEntries = false
+    @State private var isPullingWatchTogetherItems = false
 
     @State private var refreshedCircle: CloseCircle?
     @State private var members: [CircleMember] = []
@@ -67,6 +73,7 @@ struct CircleDetailView: View {
     @State private var sharedEntriesErrorMessage: String?
     @State private var membersErrorMessage: String?
     @State private var activityErrorMessage: String?
+    @State private var watchTogetherErrorMessage: String?
 
     @State private var showLeaveConfirmation = false
     @State private var isLeavingCircle = false
@@ -78,16 +85,29 @@ struct CircleDetailView: View {
 
     @State private var circleActionErrorMessage: String?
 
+    @State private var selectedWatchTogetherCircleId: String?
+    @State private var selectedWatchPlanIdForDetail: String?
+    @State private var showCreateWatchPlanSheet = false
+    @State private var isCreatingWatchPlan = false
+    @State private var watchPlanErrorMessage: String?
+    @State private var watchPlanInlineMessage: String?
+    @State private var watchPlanBannerStyle: SyncResultBannerStyle = .neutral
+
     @StateObject private var circleQuickPickViewModel = HomeQuickPickViewModel()
 
     @Query(sort: \LocalEntry.watchedAt, order: .reverse)
     private var localEntries: [LocalEntry]
+
+    @Query(sort: \LocalWatchPlan.updatedAt, order: .reverse)
+    private var localWatchPlans: [LocalWatchPlan]
 
     private let circleRemoteDataSource = CircleRemoteDataSource()
     private let circleService = CircleService()
     private let circleRepository = CircleRepository()
     private let entryRemoteDataSource = EntryRemoteDataSource()
     private let entryRepository = EntryRepository()
+    private let watchPlanRepository = WatchPlanRepository()
+    private let watchPlanSyncService = WatchPlanSyncService()
 
     private var displayedCircle: CloseCircle {
         refreshedCircle ?? circle
@@ -96,14 +116,24 @@ struct CircleDetailView: View {
     private var displayedCircleId: String {
         displayedCircle.id.trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    private var canShareInvite: Bool {
-        canUseCircle &&
-        displayedCircle.cleanedInviteCodeNormalized.isEmpty == false
-    }
+
     private var canUseCircle: Bool {
         displayedCircleId.isEmpty == false &&
         membership.isActive &&
         displayedCircle.deletedAt == nil
+    }
+
+    private var canShareInvite: Bool {
+        canUseCircle &&
+        displayedCircle.cleanedInviteCodeNormalized.isEmpty == false
+    }
+
+    private var singleCircleRows: [(circle: CloseCircle, membership: CircleMembership)] {
+        guard canUseCircle else {
+            return []
+        }
+
+        return [(displayedCircle, membership)]
     }
 
     private var sharedEntries: [Entry] {
@@ -117,6 +147,22 @@ struct CircleDetailView: View {
             .sorted { first, second in
                 first.watchedAt > second.watchedAt
             }
+    }
+
+    private var circleWatchPlans: [WatchPlan] {
+        localWatchPlans
+            .map { $0.domain }
+            .filter { plan in
+                plan.circleId == displayedCircleId &&
+                plan.deletedAt == nil
+            }
+            .sorted { first, second in
+                first.updatedAt > second.updatedAt
+            }
+    }
+
+    private var activeCircleWatchPlans: [WatchPlan] {
+        circleWatchPlans.filter { $0.isActive }
     }
 
     private var displayedMemberCount: Int {
@@ -137,7 +183,7 @@ struct CircleDetailView: View {
             return description
         }
 
-        return "A private space for shared watch memories."
+        return "A private space for shared watch memories and Watch Together plans."
     }
 
     private var sortedMembers: [CircleMember] {
@@ -216,6 +262,7 @@ struct CircleDetailView: View {
                     quickStatsStrip
 
                     if canUseCircle {
+                        primaryCircleActions
                         premiumSegmentControl
                     }
 
@@ -238,10 +285,12 @@ struct CircleDetailView: View {
         .tint(CloseCutColors.accent)
         .preferredColorScheme(.dark)
         .task {
+            selectedWatchTogetherCircleId = displayedCircleId
             await refreshCircleDetail()
             generateStableCircleQuickPick()
         }
         .onAppear {
+            selectedWatchTogetherCircleId = displayedCircleId
             generateStableCircleQuickPick()
         }
         .onChange(of: circleQuickPickRefreshKey) { _, _ in
@@ -252,21 +301,23 @@ struct CircleDetailView: View {
                 actionsMenu
             }
         }
-        .confirmationDialog(
-            "Leave Circle?",
-            isPresented: $showLeaveConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Leave Circle", role: .destructive) {
-                Task {
-                    await leaveCircle()
+        .sheet(isPresented: $showCreateWatchPlanSheet) {
+            CreateWatchPlanSheet(
+                circleRows: singleCircleRows,
+                selectedCircleId: displayedCircleId,
+                initialMedia: nil,
+                isCreating: isCreatingWatchPlan,
+                onCancel: {
+                    showCreateWatchPlanSheet = false
+                },
+                onCreate: { draft in
+                    Task {
+                        await createWatchPlan(draft)
+                    }
                 }
-            }
-            .disabled(isLeavingCircle)
-
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("You’ll stop seeing this Circle in your list. Entries shared with this Circle will no longer appear in your Circle space.")
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showEditCircleSheet) {
             CircleEditSheet(
@@ -295,6 +346,22 @@ struct CircleDetailView: View {
             )
         }
         .confirmationDialog(
+            "Leave Circle?",
+            isPresented: $showLeaveConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Leave Circle", role: .destructive) {
+                Task {
+                    await leaveCircle()
+                }
+            }
+            .disabled(isLeavingCircle)
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You’ll stop seeing this Circle in your list. Entries shared with this Circle will no longer appear in your Circle space.")
+        }
+        .confirmationDialog(
             "Delete Circle?",
             isPresented: $showDeleteConfirmation,
             titleVisibility: .visible
@@ -318,6 +385,21 @@ struct CircleDetailView: View {
         } message: {
             Text(circleActionErrorMessage ?? "Unknown error.")
         }
+        .alert("Watch Together failed", isPresented: Binding(
+            get: { watchPlanErrorMessage != nil },
+            set: { if !$0 { watchPlanErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(watchPlanErrorMessage ?? "Unknown error.")
+        }
+        .navigationDestination(item: $selectedWatchPlanIdForDetail) { planId in
+            WatchPlanDetailLoaderView(
+                planId: planId,
+                currentUserId: currentUserId,
+                currentUserDisplayName: currentUserDisplayName
+            )
+        }
     }
 
     // MARK: - Toolbar
@@ -326,6 +408,15 @@ struct CircleDetailView: View {
     private var actionsMenu: some View {
         if canUseCircle {
             Menu {
+                Button {
+                    openCreateWatchPlan()
+                } label: {
+                    Label("Create Watch Plan", systemImage: "calendar.badge.plus")
+                }
+                .disabled(isCreatingWatchPlan)
+
+                Divider()
+
                 if canShareInvite {
                     Button {
                         showShareInviteSheet = true
@@ -373,7 +464,7 @@ struct CircleDetailView: View {
         }
     }
 
-    // MARK: - Premium Hero
+    // MARK: - Hero
 
     private var hero: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -436,7 +527,9 @@ struct CircleDetailView: View {
                 Spacer(minLength: 0)
             }
 
-            if recentSharedEntries.isEmpty == false {
+            if activeCircleWatchPlans.isEmpty == false {
+                activePlansPreview
+            } else if recentSharedEntries.isEmpty == false {
                 recentSharedPosterStrip
             }
 
@@ -460,6 +553,43 @@ struct CircleDetailView: View {
             .padding(.vertical, 5)
             .background(CloseCutColors.input)
             .clipShape(Capsule())
+    }
+
+    private var activePlansPreview: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                selectedSegment = .watchTogether
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.accentLight)
+                    .frame(width: 34, height: 34)
+                    .background(CloseCutColors.card)
+                    .clipShape(SwiftUI.Circle())
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Watch Together")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
+
+                    Text(activeCircleWatchPlans.count == 1 ? "1 active plan in this Circle" : "\(activeCircleWatchPlans.count) active plans in this Circle")
+                        .font(.caption2)
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(CloseCutColors.textTertiary)
+            }
+            .padding(12)
+            .background(CloseCutColors.input.opacity(0.75))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private var recentSharedPosterStrip: some View {
@@ -575,6 +705,12 @@ struct CircleDetailView: View {
     private var quickStatsStrip: some View {
         HStack(spacing: 10) {
             statPill(
+                value: "\(activeCircleWatchPlans.count)",
+                label: activeCircleWatchPlans.count == 1 ? "plan" : "plans",
+                icon: "calendar.badge.clock"
+            )
+
+            statPill(
                 value: "\(sharedEntries.count)",
                 label: sharedEntries.count == 1 ? "memory" : "memories",
                 icon: "film.stack.fill"
@@ -584,12 +720,6 @@ struct CircleDetailView: View {
                 value: "\(displayedMemberCount)",
                 label: displayedMemberCount == 1 ? "person" : "people",
                 icon: "person.2.fill"
-            )
-
-            statPill(
-                value: "\(activities.count)",
-                label: "updates",
-                icon: "bolt.fill"
             )
         }
     }
@@ -622,6 +752,55 @@ struct CircleDetailView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
+        }
+    }
+
+    private var primaryCircleActions: some View {
+        HStack(spacing: 10) {
+            Button {
+                openCreateWatchPlan()
+            } label: {
+                HStack(spacing: 8) {
+                    if isCreatingWatchPlan {
+                        ProgressView()
+                            .scaleEffect(0.85)
+                            .tint(.white)
+                    } else {
+                        Image(systemName: "calendar.badge.plus")
+                    }
+
+                    Text(isCreatingWatchPlan ? "Creating…" : "Create Plan")
+                        .font(.caption.weight(.semibold))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 42)
+                .background(CloseCutColors.accent)
+                .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(isCreatingWatchPlan)
+
+            Button {
+                showShareInviteSheet = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "person.badge.plus")
+                    Text("Invite")
+                        .font(.caption.weight(.semibold))
+                }
+                .foregroundStyle(CloseCutColors.textSecondary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 42)
+                .background(CloseCutColors.card)
+                .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .stroke(CloseCutColors.separator, lineWidth: 0.5)
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(canShareInvite == false)
         }
     }
 
@@ -688,6 +867,20 @@ struct CircleDetailView: View {
             )
         }
 
+        if isPullingWatchTogetherItems {
+            SyncResultBanner(
+                message: "Refreshing Watch Together plans…",
+                style: .neutral
+            )
+        }
+
+        if let watchPlanInlineMessage {
+            SyncResultBanner(
+                message: watchPlanInlineMessage,
+                style: watchPlanBannerStyle
+            )
+        }
+
         if let refreshErrorMessage {
             SyncResultBanner(
                 message: refreshErrorMessage,
@@ -698,6 +891,13 @@ struct CircleDetailView: View {
         if let sharedEntriesErrorMessage {
             SyncResultBanner(
                 message: sharedEntriesErrorMessage,
+                style: .warning
+            )
+        }
+
+        if let watchTogetherErrorMessage {
+            SyncResultBanner(
+                message: watchTogetherErrorMessage,
                 style: .warning
             )
         }
@@ -722,6 +922,9 @@ struct CircleDetailView: View {
     @ViewBuilder
     private var selectedContent: some View {
         switch selectedSegment {
+        case .watchTogether:
+            watchTogetherSection
+
         case .timeline:
             timelineSection
 
@@ -749,6 +952,68 @@ struct CircleDetailView: View {
 
         case .activity:
             activitySection
+        }
+    }
+
+    private var watchTogetherSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionTitle(
+                title: "Watch Together",
+                subtitle: "Plans created specifically for this Circle.",
+                trailing: activeCircleWatchPlans.isEmpty ? nil : "\(activeCircleWatchPlans.count) active"
+            )
+
+            WatchTogetherHubSection(
+                circleRows: singleCircleRows,
+                plans: circleWatchPlans,
+                currentUserId: currentUserId,
+                selectedCircleId: $selectedWatchTogetherCircleId,
+                onCreatePlan: {
+                    openCreateWatchPlan()
+                },
+                onCreateCircle: {
+                    watchPlanBannerStyle = .warning
+                    watchPlanInlineMessage = "This Circle is not available for new plans right now."
+                },
+                onOpenPlan: { plan in
+                    selectedWatchPlanIdForDetail = plan.id
+                }
+            )
+
+            if circleWatchPlans.isEmpty {
+                circlePlanEducationCard
+            }
+        }
+    }
+
+    private var circlePlanEducationCard: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "sparkles.tv")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(CloseCutColors.accentLight)
+                .frame(width: 34, height: 34)
+                .background(CloseCutColors.input)
+                .clipShape(SwiftUI.Circle())
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Start with one plan.")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+
+                Text("Pick a title, invite Circle members, and let everyone respond. After watching, you can add it back to Personal.")
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+        }
+        .padding(14)
+        .background(CloseCutColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
     }
 
@@ -818,7 +1083,7 @@ struct CircleDetailView: View {
         VStack(alignment: .leading, spacing: 14) {
             sectionTitle(
                 title: "People",
-                subtitle: "Only these members can see entries shared with this Circle.",
+                subtitle: "Only these members can see entries and plans shared with this Circle.",
                 trailing: displayedMemberCountText
             )
 
@@ -934,6 +1199,124 @@ struct CircleDetailView: View {
         )
     }
 
+    // MARK: - Watch Together Actions
+
+    private func openCreateWatchPlan() {
+        guard canUseCircle else {
+            watchPlanBannerStyle = .warning
+            watchPlanInlineMessage = "This Circle is not available for new plans right now."
+            return
+        }
+
+        selectedWatchTogetherCircleId = displayedCircleId
+        watchPlanErrorMessage = nil
+        showCreateWatchPlanSheet = true
+    }
+
+    private func createWatchPlan(
+        _ draft: WatchPlanCreationDraft
+    ) async {
+        guard isCreatingWatchPlan == false else {
+            return
+        }
+
+        guard canUseCircle else {
+            watchPlanErrorMessage = "This Circle is not available for new plans right now."
+            return
+        }
+
+        let invitedMemberIds = draft.invitedMemberIds.filter { memberId in
+            memberId.trimmed.isEmpty == false &&
+            memberId.trimmed != currentUserId.trimmed
+        }
+
+        guard invitedMemberIds.isEmpty == false else {
+            watchPlanErrorMessage = "Select at least one Circle member to invite."
+            return
+        }
+
+        isCreatingWatchPlan = true
+        watchPlanErrorMessage = nil
+        watchPlanInlineMessage = nil
+
+        defer {
+            isCreatingWatchPlan = false
+        }
+
+        do {
+            let createdPlan = try watchPlanRepository.createLocalPlan(
+                ownerId: currentUserId,
+                ownerDisplayName: currentUserDisplayName,
+                circleId: displayedCircle.id,
+                circleName: displayedCircle.displayName,
+                title: draft.planTitle,
+                note: draft.note,
+                media: draft.media,
+                proposedStartAt: nil,
+                proposedEndAt: nil,
+                proposedDateText: draft.proposedDateText,
+                locationType: draft.locationType,
+                locationName: draft.locationName,
+                locationAddress: draft.locationAddress,
+                streamingService: draft.streamingService,
+                invitedMemberIds: invitedMemberIds,
+                source: .circle,
+                modelContext: modelContext
+            )
+
+            let syncSummary = await watchPlanSyncService.syncPendingWatchTogetherItems(
+                userId: currentUserId,
+                modelContext: modelContext
+            )
+
+            await MainActor.run {
+                showCreateWatchPlanSheet = false
+                selectedSegment = .watchTogether
+                selectedWatchTogetherCircleId = displayedCircleId
+
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    if syncSummary.hasFailures {
+                        watchPlanBannerStyle = .warning
+                        watchPlanInlineMessage = "Plan created locally, but it could not sync yet. It will retry later."
+                    } else {
+                        watchPlanBannerStyle = .success
+                        watchPlanInlineMessage = "\(createdPlan.media.displayTitle) was added to this Circle."
+                    }
+                }
+            }
+        } catch {
+            await MainActor.run {
+                watchPlanErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func pullWatchTogetherItems(circleId: String) async {
+        guard isPullingWatchTogetherItems == false else {
+            return
+        }
+
+        guard circleId.trimmed.isEmpty == false else {
+            return
+        }
+
+        isPullingWatchTogetherItems = true
+        watchTogetherErrorMessage = nil
+
+        defer {
+            isPullingWatchTogetherItems = false
+        }
+
+        let summary = await watchPlanSyncService.pullRemoteWatchTogetherItems(
+            circleIds: [circleId],
+            modelContext: modelContext
+        )
+
+        if summary.hasFailures {
+            watchTogetherErrorMessage = "Couldn’t refresh Watch Together plans."
+        }
+    }
+
     // MARK: - Data Loading
 
     private func refreshCircleDetail() async {
@@ -953,6 +1336,7 @@ struct CircleDetailView: View {
         sharedEntriesErrorMessage = nil
         membersErrorMessage = nil
         activityErrorMessage = nil
+        watchTogetherErrorMessage = nil
 
         defer { isRefreshing = false }
 
@@ -990,6 +1374,7 @@ struct CircleDetailView: View {
         }
 
         await pullSharedEntries(circleId: circleId)
+        await pullWatchTogetherItems(circleId: circleId)
         await refreshMembers(circleId: circleId)
         await refreshActivities(circleId: circleId)
     }
@@ -1058,7 +1443,7 @@ struct CircleDetailView: View {
         }
     }
 
-    // MARK: - Actions
+    // MARK: - Circle Actions
 
     private func copyInviteCode() {
         let inviteCode = displayedCircle.inviteCode.trimmingCharacters(in: .whitespacesAndNewlines)
