@@ -52,6 +52,23 @@ enum WatchPlanMediaSnapshotFactory {
         )
     }
 
+    static func fromBattleCandidate(
+        _ candidate: BattleCandidate
+    ) -> WatchPlanMediaSnapshot {
+        WatchPlanMediaSnapshot(
+            title: candidate.displayTitle,
+            type: candidate.type,
+            releaseYear: candidate.releaseYear,
+            source: .battle,
+            sourceId: candidate.id,
+            externalMetadata: externalMetadata(from: candidate),
+            overview: candidate.overview,
+            tmdbRating: candidate.tmdbRating,
+            tmdbPopularity: candidate.tmdbPopularity,
+            tmdbGenreIds: candidate.tmdbGenreIds
+        )
+    }
+
     static func manual(
         title: String,
         type: EntryType
@@ -61,5 +78,50 @@ enum WatchPlanMediaSnapshotFactory {
             type: type,
             source: .manual
         )
+    }
+
+    private static func externalMetadata(
+        from candidate: BattleCandidate
+    ) -> EntryExternalMetadata? {
+        guard candidate.tmdbId != nil,
+              candidate.tmdbMediaTypeRaw != nil else {
+            return nil
+        }
+
+        return EntryExternalMetadata(
+            tmdbResult: tmdbLikeResult(from: candidate)
+        )
+    }
+
+    private static func tmdbLikeResult(
+        from candidate: BattleCandidate
+    ) -> TMDBMediaSearchResult {
+        let resolvedTMDBId = candidate.tmdbId ?? abs(candidate.id.hashValue)
+        let resolvedMediaType = resolvedMediaType(from: candidate)
+
+        return TMDBMediaSearchResult(
+            id: "battle-\(resolvedMediaType.rawValue)-\(resolvedTMDBId)",
+            tmdbId: resolvedTMDBId,
+            mediaType: resolvedMediaType,
+            title: candidate.displayTitle,
+            releaseYear: candidate.releaseYear,
+            overview: candidate.overview,
+            posterPath: candidate.posterPath,
+            backdropPath: candidate.backdropPath,
+            voteAverage: candidate.tmdbRating,
+            popularity: candidate.tmdbPopularity,
+            genreIds: candidate.tmdbGenreIds
+        )
+    }
+
+    private static func resolvedMediaType(
+        from candidate: BattleCandidate
+    ) -> TMDBMediaType {
+        if let raw = candidate.tmdbMediaTypeRaw,
+           let mediaType = TMDBMediaType(rawValue: raw) {
+            return mediaType
+        }
+
+        return candidate.type == .series ? .tv : .movie
     }
 }

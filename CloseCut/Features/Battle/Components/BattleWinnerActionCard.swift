@@ -14,6 +14,7 @@ struct BattleWinnerActionCard: View {
     let isProcessing: Bool
     let onAddToPersonal: () -> Void
     let onSaveToWatchlist: () -> Void
+    let onPlanWithCircle: () -> Void
 
     @State private var sharePayload: CloseCutSharePayload?
 
@@ -34,11 +35,22 @@ struct BattleWinnerActionCard: View {
             VStack(alignment: .leading, spacing: 12) {
                 actionSummary
 
+                Button {
+                    onPlanWithCircle()
+                } label: {
+                    primaryActionLabel(
+                        icon: "person.2.wave.2.fill",
+                        title: isProcessing ? "Opening plan..." : "Plan winner with Circle"
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(isProcessing)
+
                 if canAddToPersonal {
                     Button {
                         onAddToPersonal()
                     } label: {
-                        primaryActionLabel(
+                        secondaryActionLabel(
                             icon: "checkmark.circle.fill",
                             title: isProcessing ? "Adding to Personal..." : "Add winner to Personal"
                         )
@@ -62,7 +74,7 @@ struct BattleWinnerActionCard: View {
 
                 shareSection
 
-                Text("Sharing uses the system share sheet. Nothing is posted automatically to Circles yet.")
+                Text("Battle stays private. Planning with a Circle creates a Watch Together plan, but does not add the winner to Personal automatically.")
                     .font(.caption)
                     .foregroundStyle(CloseCutColors.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -163,13 +175,13 @@ struct BattleWinnerActionCard: View {
     private var actionContextText: String {
         switch winner.source {
         case .archive:
-            return "This winner already belongs to Personal. You can share the result."
+            return "This winner already belongs to Personal. You can turn it into a Circle plan."
         case .watchlist:
-            return "This winner is already saved for later. Mark it watched when you actually watch it."
+            return "This winner is already saved for later. You can plan it with a Circle now."
         case .tmdb:
-            return "This winner came from Discover/TMDB. Save it before you forget it."
+            return "This winner came from TMDB. You can plan it directly with a Circle."
         case .manual:
-            return "This winner was added manually for Battle. You can turn it into a real memory."
+            return "This winner was added manually for Battle. You can still create a Circle plan."
         }
     }
 

@@ -29,6 +29,11 @@ struct BattleView: View {
     @State private var isClearingResults = false
     @State private var isProcessingWinnerAction = false
 
+    @State private var selectedMediaForWatchPlan: WatchPlanMediaSnapshot?
+    @State private var showCreateWatchPlanSheet = false
+    @State private var isCreatingWatchPlan = false
+    @State private var watchPlanErrorMessage: String?
+
     @State private var noRepeatPolicy = BattleNoRepeatPolicy()
 
     @Query(sort: \LocalEntry.watchedAt, order: .reverse)
@@ -37,12 +42,20 @@ struct BattleView: View {
     @Query(sort: \LocalWatchlistItem.updatedAt, order: .reverse)
     private var localWatchlistItems: [LocalWatchlistItem]
 
+    @Query(sort: \LocalCircle.updatedAt, order: .reverse)
+    private var localCircles: [LocalCircle]
+
+    @Query(sort: \LocalCircleMembership.updatedAt, order: .reverse)
+    private var localMemberships: [LocalCircleMembership]
+
     @Query(sort: \LocalBattleResult.createdAt, order: .reverse)
     private var localBattleResults: [LocalBattleResult]
 
     private let battleResultRepository = BattleResultRepository()
     private let entryRepository = EntryRepository()
     private let watchlistRepository = WatchlistRepository()
+    private let watchPlanRepository = WatchPlanRepository()
+    private let watchPlanSyncService = WatchPlanSyncService()
 
     private var entries: [Entry] {
         localEntries
@@ -74,6 +87,37 @@ struct BattleView: View {
             .sorted { first, second in
                 first.updatedAt > second.updatedAt
             }
+    }
+
+    private var memberships: [CircleMembership] {
+        localMemberships
+            .filter { $0.userId == user.id }
+            .map { $0.domain }
+            .filter { $0.isActive }
+            .sorted { first, second in
+                if first.isOwner != second.isOwner {
+                    return first.isOwner && !second.isOwner
+                }
+
+                return first.updatedAt > second.updatedAt
+            }
+    }
+
+    private var circlesById: [String: CloseCircle] {
+        Dictionary(
+            uniqueKeysWithValues: localCircles.map { ($0.id, $0.domain) }
+        )
+    }
+
+    private var circleRows: [(circle: CloseCircle, membership: CircleMembership)] {
+        memberships.compactMap { membership in
+            guard let circle = circlesById[membership.circleId],
+                  circle.deletedAt == nil else {
+                return nil
+            }
+
+            return (circle, membership)
+        }
     }
 
     private var canUseArchiveModes: Bool {
@@ -155,7 +199,7 @@ struct BattleView: View {
                             winner: pickedCandidate,
                             canAddToPersonal: pickedCandidate.canBeSavedToTimeline,
                             canSaveToWatchlist: pickedCandidate.source == .tmdb || pickedCandidate.source == .manual,
-                            isProcessing: isProcessingWinnerAction,
+                            isProcessing: isProcessingWinnerAction || isCreatingWatchPlan,
                             onAddToPersonal: {
                                 Task {
                                     await addWinnerToPersonal(pickedCandidate)
@@ -165,6 +209,9 @@ struct BattleView: View {
                                 Task {
                                     await saveWinnerToWatchlist(pickedCandidate)
                                 }
+                            },
+                            onPlanWithCircle: {
+                                openCreateWatchPlanFromBattleWinner(pickedCandidate)
                             }
                         )
                     }
@@ -254,6 +301,33 @@ struct BattleView: View {
                     )
                 }
             )
+        }
+        .sheet(isPresented: $showCreateWatchPlanSheet) {
+            CreateWatchPlanSheet(
+                circleRows: circleRows,
+                selectedCircleId: circleRows.first?.circle.id,
+                initialMedia: selectedMediaForWatchPlan,
+                isCreating: isCreatingWatchPlan,
+                onCancel: {
+                    showCreateWatchPlanSheet = false
+                    selectedMediaForWatchPlan = nil
+                },
+                onCreate: { draft in
+                    Task {
+                        await createWatchPlanFromBattleWinner(draft)
+                    }
+                }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+        .alert("Watch Together failed", isPresented: Binding(
+            get: { watchPlanErrorMessage != nil },
+            set: { if !$0 { watchPlanErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(watchPlanErrorMessage ?? "Unknown error.")
         }
         .confirmationDialog(
             "Clear Battle results?",
@@ -674,6 +748,102 @@ struct BattleView: View {
         }
     }
 
+    // MARK: - Watch Together From Battle
+
+    private func openCreateWatchPlanFromBattleWinner(
+        _ winner: BattleCandidate
+    ) {
+        guard circleRows.isEmpty == false else {
+            battleBannerStyle = .warning
+            battleMessage = "Create or join a Circle before planning this Battle winner."
+            return
+        }
+
+        selectedMediaForWatchPlan = WatchPlanMediaSnapshotFactory.fromBattleCandidate(winner)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            showCreateWatchPlanSheet = true
+        }
+    }
+
+    private func createWatchPlanFromBattleWinner(
+        _ draft: WatchPlanCreationDraft
+    ) async {
+        guard isCreatingWatchPlan == false else {
+            return
+        }
+
+        guard let selectedRow = circleRows.first(where: { row in
+            row.circle.id == draft.circleId
+        }) else {
+            watchPlanErrorMessage = "Choose a valid Circle before creating this plan."
+            return
+        }
+
+        let invitedMemberIds = draft.invitedMemberIds.filter { memberId in
+            memberId.trimmed.isEmpty == false &&
+            memberId.trimmed != user.id.trimmed
+        }
+
+        guard invitedMemberIds.isEmpty == false else {
+            watchPlanErrorMessage = "Select at least one Circle member to invite."
+            return
+        }
+
+        isCreatingWatchPlan = true
+        watchPlanErrorMessage = nil
+
+        defer {
+            isCreatingWatchPlan = false
+        }
+
+        do {
+            let createdPlan = try watchPlanRepository.createLocalPlan(
+                ownerId: user.id,
+                ownerDisplayName: profile.displayName,
+                circleId: selectedRow.circle.id,
+                circleName: selectedRow.circle.displayName,
+                title: draft.planTitle,
+                note: draft.note,
+                media: draft.media,
+                proposedStartAt: nil,
+                proposedEndAt: nil,
+                proposedDateText: draft.proposedDateText,
+                locationType: draft.locationType,
+                locationName: draft.locationName,
+                locationAddress: draft.locationAddress,
+                streamingService: draft.streamingService,
+                invitedMemberIds: invitedMemberIds,
+                source: .battle,
+                modelContext: modelContext
+            )
+
+            let syncSummary = await watchPlanSyncService.syncPendingWatchTogetherItems(
+                userId: user.id,
+                modelContext: modelContext
+            )
+
+            await MainActor.run {
+                showCreateWatchPlanSheet = false
+                selectedMediaForWatchPlan = nil
+
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    if syncSummary.hasFailures {
+                        battleBannerStyle = .warning
+                        battleMessage = "Plan created locally, but it could not sync yet. It will retry later."
+                    } else {
+                        battleBannerStyle = .success
+                        battleMessage = "\(createdPlan.media.displayTitle) was planned with your Circle."
+                    }
+                }
+            }
+        } catch {
+            await MainActor.run {
+                watchPlanErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
     // MARK: - Winner Actions
 
     private func addWinnerToPersonal(
@@ -896,6 +1066,8 @@ struct BattleView: View {
         LocalUserState.self,
         PendingAction.self,
         LocalBattleResult.self,
-        LocalWatchlistItem.self
+        LocalWatchlistItem.self,
+        LocalWatchPlan.self,
+        LocalWatchPlanResponse.self
     ], inMemory: true)
 }
