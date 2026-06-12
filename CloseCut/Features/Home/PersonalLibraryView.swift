@@ -25,6 +25,7 @@ struct PersonalLibraryView: View {
     let onPlanWatchlistItemWithCircle: (WatchlistItem) -> Void
 
     @StateObject private var quickPickViewModel = HomeQuickPickViewModel()
+    @State private var isShowingInsights = false
 
     private let quickPickTargetCount = 3
 
@@ -107,6 +108,10 @@ struct PersonalLibraryView: View {
         activeEntries.count > 0 && activeEntries.count < quickPickTargetCount
     }
 
+    private var shouldShowInsightsPreview: Bool {
+        activeEntries.isEmpty == false || savedWatchlistItems.isEmpty == false
+    }
+
     private var homeRefreshKey: String {
         let entryKey = activeEntries
             .map { "\($0.id)-\($0.updatedAt.timeIntervalSince1970)-\($0.posterPath ?? "")-\($0.backdropPath ?? "")" }
@@ -162,6 +167,14 @@ struct PersonalLibraryView: View {
                 )
             }
         }
+        .sheet(isPresented: $isShowingInsights) {
+            InsightsView(
+                entries: activeEntries,
+                watchlistItems: savedWatchlistItems
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
     }
 
     private var libraryContent: some View {
@@ -189,6 +202,14 @@ struct PersonalLibraryView: View {
                         }
                     )
 
+                    TasteInsightPreviewCard(
+                        entries: activeEntries,
+                        watchlistItems: savedWatchlistItems,
+                        onOpen: {
+                            isShowingInsights = true
+                        }
+                    )
+
                     if shouldShowHistoryProgress {
                         HistoryProgressModule(
                             currentCount: activeEntries.count,
@@ -202,6 +223,17 @@ struct PersonalLibraryView: View {
                         )
                     }
                 }
+                .padding(.horizontal, 20)
+            }
+
+            if activeEntries.isEmpty && savedWatchlistItems.isEmpty == false {
+                TasteInsightPreviewCard(
+                    entries: activeEntries,
+                    watchlistItems: savedWatchlistItems,
+                    onOpen: {
+                        isShowingInsights = true
+                    }
+                )
                 .padding(.horizontal, 20)
             }
 
