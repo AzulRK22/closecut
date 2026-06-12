@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import UIKit
 
 struct WatchPlanDetailView: View {
     @Environment(\.dismiss) private var dismiss
@@ -33,6 +34,7 @@ struct WatchPlanDetailView: View {
     @State private var showDeleteConfirmation = false
     @State private var showSuggestTimeSheet = false
     @State private var showEditPlanSheet = false
+    @State private var calendarExportItem: CalendarExportItem?
 
     private let syncService = WatchPlanSyncService()
     private let repository = WatchPlanRepository()
@@ -137,16 +139,12 @@ struct WatchPlanDetailView: View {
         switch plan.status {
         case .draft:
             return CloseCutColors.textTertiary
-
         case .proposed:
             return CloseCutColors.accentLight
-
         case .confirmed:
             return CloseCutColors.synced
-
         case .watched:
             return CloseCutColors.textSecondary
-
         case .canceled:
             return CloseCutColors.failed
         }
@@ -169,6 +167,8 @@ struct WatchPlanDetailView: View {
                     }
 
                     responseSummarySection
+
+                    calendarExportSection
 
                     participantAccessSection
 
@@ -261,11 +261,14 @@ struct WatchPlanDetailView: View {
                 onCancel: {
                     showEditPlanSheet = false
                 },
-                onSave: { title, note, proposedDateText, locationType, locationName, locationAddress, streamingService in
+                onSave: { title, note, proposedStartAt, proposedEndAt, clearProposedSchedule, proposedDateText, locationType, locationName, locationAddress, streamingService in
                     Task {
                         await updatePlan(
                             title: title,
                             note: note,
+                            proposedStartAt: proposedStartAt,
+                            proposedEndAt: proposedEndAt,
+                            clearProposedSchedule: clearProposedSchedule,
                             proposedDateText: proposedDateText,
                             locationType: locationType,
                             locationName: locationName,
@@ -274,6 +277,11 @@ struct WatchPlanDetailView: View {
                         )
                     }
                 }
+            )
+        }
+        .sheet(item: $calendarExportItem) { item in
+            CalendarExportShareSheet(
+                itemURL: item.url
             )
         }
     }
@@ -554,6 +562,99 @@ struct WatchPlanDetailView: View {
             }
         }
     }
+
+    // MARK: - Calendar Export
+
+    private var calendarExportSection: some View {
+        DetailSectionCard(title: "Calendar") {
+            VStack(alignment: .leading, spacing: 12) {
+                WatchPlanInfoRow(
+                    icon: "calendar.badge.plus",
+                    title: "Add to calendar",
+                    value: CalendarExportService.exportReadinessText(for: plan)
+                )
+
+                Text(calendarExportHelperText)
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    exportPlanToCalendar()
+                } label: {
+                    HStack(spacing: 9) {
+                        Image(systemName: "calendar.badge.plus")
+                            .font(.caption.weight(.semibold))
+
+                        Text("Export calendar file")
+                            .font(.subheadline.weight(.semibold))
+
+                        Spacer(minLength: 0)
+
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.caption2.weight(.bold))
+                    }
+                    .foregroundStyle(CalendarExportService.canExport(plan) ? .white : CloseCutColors.textTertiary)
+                    .padding(.horizontal, 14)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+                    .background(CalendarExportService.canExport(plan) ? CloseCutColors.accent : CloseCutColors.input)
+                    .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(CalendarExportService.canExport(plan) == false)
+
+                HStack(alignment: .top, spacing: 9) {
+                    Image(systemName: "info.circle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .padding(.top, 2)
+
+                    Text("This exports an .ics file that can be opened by Apple Calendar, Google Calendar, Outlook, or shared with someone else.")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 0)
+                }
+                .padding(12)
+                .background(CloseCutColors.input.opacity(0.74))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+        }
+    }
+
+    private var calendarExportHelperText: String {
+        if plan.confirmedStartAt != nil {
+            return "CloseCut will export the confirmed time for this Watch Together plan."
+        }
+
+        if plan.proposedStartAt != nil {
+            return "CloseCut will export the proposed time. You can update the calendar event later if the Circle changes the plan."
+        }
+
+        if let proposedDateText = plan.proposedDateText?.trimmed.nilIfBlank {
+            return "This plan only has a text date: “\(proposedDateText)”. Edit the plan and add a real date/time to export it."
+        }
+
+        return "Edit the plan and add a proposed or confirmed date before exporting."
+    }
+
+    private func exportPlanToCalendar() {
+        do {
+            calendarExportItem = try CalendarExportService.exportICS(
+                for: plan
+            )
+
+            actionBannerStyle = .success
+            actionMessage = "Calendar file ready to share."
+        } catch {
+            actionBannerStyle = .warning
+            actionMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Access
 
     private var participantAccessSection: some View {
         DetailSectionCard(title: "Access") {
@@ -1193,6 +1294,9 @@ struct WatchPlanDetailView: View {
     private func updatePlan(
         title: String,
         note: String?,
+        proposedStartAt: Date?,
+        proposedEndAt: Date?,
+        clearProposedSchedule: Bool,
         proposedDateText: String?,
         locationType: WatchPlanLocationType,
         locationName: String?,
@@ -1223,6 +1327,9 @@ struct WatchPlanDetailView: View {
                 planId: plan.id,
                 title: cleanedTitle,
                 note: note?.trimmed.nilIfBlank,
+                proposedStartAt: proposedStartAt,
+                proposedEndAt: proposedEndAt,
+                clearProposedSchedule: clearProposedSchedule,
                 proposedDateText: proposedDateText?.trimmed.nilIfBlank,
                 locationType: locationType,
                 locationName: locationName?.trimmed.nilIfBlank,
@@ -1663,4 +1770,24 @@ private struct WatchPlanResponseRow: View {
             Spacer(minLength: 0)
         }
     }
+}
+
+// MARK: - Calendar Share Sheet
+
+private struct CalendarExportShareSheet: UIViewControllerRepresentable {
+    let itemURL: URL
+
+    func makeUIViewController(
+        context: Context
+    ) -> UIActivityViewController {
+        UIActivityViewController(
+            activityItems: [itemURL],
+            applicationActivities: nil
+        )
+    }
+
+    func updateUIViewController(
+        _ uiViewController: UIActivityViewController,
+        context: Context
+    ) {}
 }

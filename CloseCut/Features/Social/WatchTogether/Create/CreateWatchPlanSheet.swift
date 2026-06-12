@@ -25,6 +25,26 @@ struct CreateWatchPlanSheet: View {
     @State private var planTitle = ""
     @State private var note = ""
     @State private var proposedDateText = ""
+
+    @State private var hasRealSchedule = false
+    @State private var proposedStartAt = Calendar.current.date(
+        bySettingHour: 20,
+        minute: 0,
+        second: 0,
+        of: Date()
+    ) ?? Date()
+
+    @State private var proposedEndAt = Calendar.current.date(
+        byAdding: .minute,
+        value: 150,
+        to: Calendar.current.date(
+            bySettingHour: 20,
+            minute: 0,
+            second: 0,
+            of: Date()
+        ) ?? Date()
+    ) ?? Date().addingTimeInterval(150 * 60)
+
     @State private var selectedType: EntryType = .movie
     @State private var locationType: WatchPlanLocationType = .notDecided
     @State private var locationName = ""
@@ -653,6 +673,8 @@ struct CreateWatchPlanSheet: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
 
+            realScheduleSection
+
             VStack(alignment: .leading, spacing: 8) {
                 Text("Note optional")
                     .font(.caption2.weight(.semibold))
@@ -670,6 +692,82 @@ struct CreateWatchPlanSheet: View {
                     .padding(14)
                     .background(CloseCutColors.input)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+        }
+    }
+
+    private var realScheduleSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle(isOn: $hasRealSchedule) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Use real date & time")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
+
+                    Text("Required for calendar export.")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                }
+            }
+            .tint(CloseCutColors.accent)
+            .padding(14)
+            .background(CloseCutColors.input.opacity(0.74))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            if hasRealSchedule {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Starts")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .textCase(.uppercase)
+                        .tracking(0.8)
+
+                    DatePicker(
+                        "Start date",
+                        selection: $proposedStartAt,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
+                    .tint(CloseCutColors.accent)
+                    .onChange(of: proposedStartAt) { _, newValue in
+                        if proposedEndAt <= newValue {
+                            proposedEndAt = newValue.addingTimeInterval(
+                                selectedType == .series ? 60 * 60 : 150 * 60
+                            )
+                        }
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(CloseCutColors.input)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Ends")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .textCase(.uppercase)
+                        .tracking(0.8)
+
+                    DatePicker(
+                        "End date",
+                        selection: $proposedEndAt,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
+                    .tint(CloseCutColors.accent)
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(CloseCutColors.input)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+
+                Text("This real schedule will be used for Calendar Export. The text field above can still be used as friendly context for the Circle.")
+                    .font(.caption2)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -923,6 +1021,8 @@ struct CreateWatchPlanSheet: View {
                 media: mediaSnapshot,
                 planTitle: cleanedPlanTitle,
                 note: cleanedNote,
+                proposedStartAt: hasRealSchedule ? proposedStartAt : nil,
+                proposedEndAt: hasRealSchedule ? proposedEndAt : nil,
                 proposedDateText: cleanedProposedDateText,
                 locationType: locationType,
                 locationName: cleanedLocationName,
@@ -981,6 +1081,12 @@ struct CreateWatchPlanSheet: View {
             planTitle = "Watch \(media.title)"
         }
 
+        if proposedEndAt <= proposedStartAt {
+            proposedEndAt = proposedStartAt.addingTimeInterval(
+                media.entryType == .series ? 60 * 60 : 150 * 60
+            )
+        }
+
         focusedField = .planTitle
     }
 
@@ -1032,6 +1138,8 @@ struct WatchPlanCreationDraft: Equatable {
     let media: WatchPlanMediaSnapshot
     let planTitle: String?
     let note: String?
+    let proposedStartAt: Date?
+    let proposedEndAt: Date?
     let proposedDateText: String?
     let locationType: WatchPlanLocationType
     let locationName: String?

@@ -16,6 +16,9 @@ struct EditWatchPlanSheet: View {
     let onSave: (
         _ title: String,
         _ note: String?,
+        _ proposedStartAt: Date?,
+        _ proposedEndAt: Date?,
+        _ clearProposedSchedule: Bool,
         _ proposedDateText: String?,
         _ locationType: WatchPlanLocationType,
         _ locationName: String?,
@@ -26,6 +29,10 @@ struct EditWatchPlanSheet: View {
     @State private var title: String
     @State private var note: String
     @State private var proposedDateText: String
+    @State private var hasRealSchedule: Bool
+    @State private var proposedStartAt: Date
+    @State private var proposedEndAt: Date
+
     @State private var locationType: WatchPlanLocationType
     @State private var locationName: String
     @State private var locationAddress: String
@@ -49,6 +56,9 @@ struct EditWatchPlanSheet: View {
         onSave: @escaping (
             _ title: String,
             _ note: String?,
+            _ proposedStartAt: Date?,
+            _ proposedEndAt: Date?,
+            _ clearProposedSchedule: Bool,
             _ proposedDateText: String?,
             _ locationType: WatchPlanLocationType,
             _ locationName: String?,
@@ -61,9 +71,24 @@ struct EditWatchPlanSheet: View {
         self.onCancel = onCancel
         self.onSave = onSave
 
+        let fallbackStartDate = plan.proposedStartAt ?? plan.confirmedStartAt ?? Calendar.current.date(
+            bySettingHour: 20,
+            minute: 0,
+            second: 0,
+            of: Date()
+        ) ?? Date()
+
+        let fallbackEndDate = plan.proposedEndAt ?? plan.confirmedEndAt ?? fallbackStartDate.addingTimeInterval(
+            plan.media.type == .series ? 60 * 60 : 150 * 60
+        )
+
         _title = State(initialValue: plan.title)
         _note = State(initialValue: plan.note ?? "")
         _proposedDateText = State(initialValue: plan.proposedDateText ?? "")
+        _hasRealSchedule = State(initialValue: plan.proposedStartAt != nil || plan.confirmedStartAt != nil)
+        _proposedStartAt = State(initialValue: fallbackStartDate)
+        _proposedEndAt = State(initialValue: fallbackEndDate)
+
         _locationType = State(initialValue: plan.locationType)
         _locationName = State(initialValue: plan.locationName ?? "")
         _locationAddress = State(initialValue: plan.locationAddress ?? "")
@@ -146,6 +171,9 @@ struct EditWatchPlanSheet: View {
                         onSave(
                             cleanedTitle,
                             cleanedNote.nilIfBlank,
+                            hasRealSchedule ? proposedStartAt : nil,
+                            hasRealSchedule ? proposedEndAt : nil,
+                            hasRealSchedule == false,
                             cleanedProposedDateText.nilIfBlank,
                             locationType,
                             cleanedLocationName.nilIfBlank,
@@ -318,16 +346,90 @@ struct EditWatchPlanSheet: View {
     private var scheduleSection: some View {
         editSection(
             title: "Schedule",
-            subtitle: "Use natural language for now."
+            subtitle: "Use a real date for calendar export, plus optional friendly text."
         ) {
-            inputField(
-                label: "Proposed date",
-                placeholder: "Friday night, Sunday afternoon, next week…",
-                text: $proposedDateText,
-                focusedField: .date,
-                axis: .vertical,
-                lineLimit: 1...3
-            )
+            VStack(alignment: .leading, spacing: 14) {
+                inputField(
+                    label: "Proposed date text",
+                    placeholder: "Friday night, Sunday afternoon, next week…",
+                    text: $proposedDateText,
+                    focusedField: .date,
+                    axis: .vertical,
+                    lineLimit: 1...3
+                )
+
+                Toggle(isOn: $hasRealSchedule) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Use real date & time")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textPrimary)
+
+                        Text("Required for calendar export.")
+                            .font(.caption)
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                    }
+                }
+                .tint(CloseCutColors.accent)
+                .padding(14)
+                .background(CloseCutColors.input.opacity(0.74))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                if hasRealSchedule {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Starts")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                            .textCase(.uppercase)
+                            .tracking(0.8)
+
+                        DatePicker(
+                            "Start date",
+                            selection: $proposedStartAt,
+                            displayedComponents: [.date, .hourAndMinute]
+                        )
+                        .datePickerStyle(.compact)
+                        .labelsHidden()
+                        .tint(CloseCutColors.accent)
+                        .onChange(of: proposedStartAt) { _, newValue in
+                            if proposedEndAt <= newValue {
+                                proposedEndAt = newValue.addingTimeInterval(
+                                    plan.media.type == .series ? 60 * 60 : 150 * 60
+                                )
+                            }
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(CloseCutColors.input)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Ends")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                            .textCase(.uppercase)
+                            .tracking(0.8)
+
+                        DatePicker(
+                            "End date",
+                            selection: $proposedEndAt,
+                            displayedComponents: [.date, .hourAndMinute]
+                        )
+                        .datePickerStyle(.compact)
+                        .labelsHidden()
+                        .tint(CloseCutColors.accent)
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(CloseCutColors.input)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+
+                    Text("This real schedule will be used for Calendar Export. The text field above can still be used as friendly context for the Circle.")
+                        .font(.caption2)
+                        .foregroundStyle(CloseCutColors.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 

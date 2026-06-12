@@ -287,6 +287,7 @@ final class WatchPlanRepository {
         note: String? = nil,
         proposedStartAt: Date? = nil,
         proposedEndAt: Date? = nil,
+        clearProposedSchedule: Bool = false,
         proposedDateText: String? = nil,
         locationType: WatchPlanLocationType? = nil,
         locationName: String? = nil,
@@ -314,12 +315,17 @@ final class WatchPlanRepository {
             localPlan.note = note.trimmed.nilIfBlank
         }
 
-        if let proposedStartAt {
-            localPlan.proposedStartAt = proposedStartAt
-        }
+        if clearProposedSchedule {
+            localPlan.proposedStartAt = nil
+            localPlan.proposedEndAt = nil
+        } else {
+            if let proposedStartAt {
+                localPlan.proposedStartAt = proposedStartAt
+            }
 
-        if let proposedEndAt {
-            localPlan.proposedEndAt = proposedEndAt
+            if let proposedEndAt {
+                localPlan.proposedEndAt = proposedEndAt
+            }
         }
 
         if let proposedDateText {
@@ -464,6 +470,7 @@ final class WatchPlanRepository {
 
         return responseDomain
     }
+
     // MARK: - Confirm / Cancel / Watched
 
     func confirmPlan(
