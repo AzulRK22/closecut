@@ -23,12 +23,12 @@ struct TasteInsightPreviewCard: View {
         Button {
             onOpen()
         } label: {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 15) {
                 HStack(alignment: .top, spacing: 12) {
                     ZStack {
                         Circle()
                             .fill(CloseCutColors.accent.opacity(0.18))
-                            .frame(width: 44, height: 44)
+                            .frame(width: 46, height: 46)
 
                         Image(systemName: "sparkles.rectangle.stack.fill")
                             .font(.subheadline.weight(.semibold))
@@ -36,7 +36,7 @@ struct TasteInsightPreviewCard: View {
                     }
 
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("Your Taste")
+                        Text("Your Taste Dashboard")
                             .font(.headline.weight(.semibold))
                             .foregroundStyle(CloseCutColors.textPrimary)
 
@@ -55,17 +55,29 @@ struct TasteInsightPreviewCard: View {
                         .padding(.top, 14)
                 }
 
-                HStack(spacing: 8) {
-                    previewPill(
-                        icon: "film.fill",
-                        text: "\(summary.totalWatchedCount) watched"
+                HStack(alignment: .bottom, spacing: 14) {
+                    previewBigNumber(
+                        value: "\(summary.overviewStats.watchedCount)",
+                        label: "watched"
                     )
 
-                    previewPill(
-                        icon: "bookmark.fill",
-                        text: "\(summary.savedWatchlistCount) saved"
+                    previewBigNumber(
+                        value: "\(summary.overviewStats.movieCount)",
+                        label: "movies"
+                    )
+
+                    previewBigNumber(
+                        value: "\(summary.overviewStats.seriesCount)",
+                        label: "series"
+                    )
+
+                    previewBigNumber(
+                        value: "\(summary.overviewStats.savedCount)",
+                        label: "saved"
                     )
                 }
+
+                segmentedPreviewBar
 
                 if summary.tasteProfile.traits.isEmpty == false {
                     HStack(spacing: 8) {
@@ -86,19 +98,19 @@ struct TasteInsightPreviewCard: View {
             }
             .padding(16)
             .background(cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 23, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                RoundedRectangle(cornerRadius: 23, style: .continuous)
                     .stroke(CloseCutColors.separator, lineWidth: 0.5)
             }
-            .shadow(color: .black.opacity(0.12), radius: 14, x: 0, y: 8)
+            .shadow(color: .black.opacity(0.14), radius: 14, x: 0, y: 8)
         }
         .buttonStyle(.plain)
     }
 
     private var previewText: String {
         if summary.hasEnoughData {
-            return summary.tasteProfile.summary
+            return "A visual snapshot of your movies, series, moods, genres, and rewatch signals."
         }
 
         if summary.totalWatchedCount == 0 && summary.savedWatchlistCount == 0 {
@@ -108,22 +120,48 @@ struct TasteInsightPreviewCard: View {
         return "Your profile is starting to form from your watched titles and saved picks."
     }
 
-    private func previewPill(
-        icon: String,
-        text: String
+    private func previewBigNumber(
+        value: String,
+        label: String
     ) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: icon)
-                .font(.caption2.weight(.semibold))
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(.system(size: 23, weight: .bold, design: .rounded))
+                .foregroundStyle(CloseCutColors.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
 
-            Text(text)
+            Text(label)
                 .font(.caption2.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textTertiary)
+                .textCase(.uppercase)
+                .tracking(0.5)
         }
-        .foregroundStyle(CloseCutColors.textTertiary)
-        .padding(.horizontal, 9)
-        .padding(.vertical, 6)
-        .background(CloseCutColors.input.opacity(0.78))
-        .clipShape(Capsule())
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var segmentedPreviewBar: some View {
+        GeometryReader { proxy in
+            let total = max(
+                summary.overviewStats.movieCount + summary.overviewStats.seriesCount,
+                1
+            )
+
+            let movieWidth = proxy.size.width * CGFloat(summary.overviewStats.movieCount) / CGFloat(total)
+            let seriesWidth = proxy.size.width * CGFloat(summary.overviewStats.seriesCount) / CGFloat(total)
+
+            HStack(spacing: 4) {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(CloseCutColors.accent)
+                    .frame(width: max(8, movieWidth))
+
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(CloseCutColors.accentLight.opacity(0.72))
+                    .frame(width: max(8, seriesWidth))
+            }
+        }
+        .frame(height: 12)
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 
     private var cardBackground: some View {
@@ -132,7 +170,7 @@ struct TasteInsightPreviewCard: View {
                 colors: [
                     CloseCutColors.cardElevated,
                     CloseCutColors.card,
-                    CloseCutColors.accent.opacity(0.08)
+                    CloseCutColors.accent.opacity(0.09)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -140,7 +178,7 @@ struct TasteInsightPreviewCard: View {
 
             RadialGradient(
                 colors: [
-                    CloseCutColors.accentLight.opacity(0.12),
+                    CloseCutColors.accentLight.opacity(0.14),
                     .clear
                 ],
                 center: .topTrailing,

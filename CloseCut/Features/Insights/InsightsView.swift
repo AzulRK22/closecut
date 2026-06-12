@@ -27,30 +27,31 @@ struct InsightsView: View {
                     .ignoresSafeArea()
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        headerSection
+                    VStack(alignment: .leading, spacing: 20) {
+                        heroSection
 
-                        if summary.hasEnoughData {
-                            tasteProfileSection
+                        bigStatsGrid
 
-                            moodPatternSection
+                        tasteSignatureSection
 
-                            genrePatternSection
+                        mediaTypeSection
 
-                            rewatchCandidatesSection
-
-                            watchlistPatternSection
-
-                            privacySection
-                        } else {
-                            earlyStateSection
-
-                            tasteProfileSection
-
-                            watchlistPatternSection
-
-                            privacySection
+                        if summary.genrePattern.watchedGenres.isEmpty == false ||
+                            summary.genrePattern.watchlistGenres.isEmpty == false {
+                            genreSection
                         }
+
+                        moodSection
+
+                        intensitySection
+
+                        watchContextSection
+
+                        rewatchRadarSection
+
+                        watchlistDirectionSection
+
+                        privacySection
 
                         Spacer(minLength: 24)
                     }
@@ -75,80 +76,80 @@ struct InsightsView: View {
         .preferredColorScheme(.dark)
     }
 
-    // MARK: - Header
+    // MARK: - Hero
 
-    private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(CloseCutColors.accent.opacity(0.18))
-                    .frame(width: 54, height: 54)
+    private var heroSection: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(CloseCutColors.accent.opacity(0.18))
+                        .frame(width: 58, height: 58)
 
-                Image(systemName: "sparkles.rectangle.stack.fill")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.accentLight)
+                    Image(systemName: "sparkles.rectangle.stack.fill")
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.accentLight)
+                }
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("Your Taste Dashboard")
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text("A private visual map of what you watch, save, feel, and revisit.")
+                        .font(.subheadline)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
             }
 
-            VStack(alignment: .leading, spacing: 7) {
-                Text("Your taste is taking shape.")
-                    .font(.title2.weight(.semibold))
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(summary.overviewStats.watchedCount)")
+                    .font(.system(size: 64, weight: .bold, design: .rounded))
                     .foregroundStyle(CloseCutColors.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .contentTransition(.numericText())
 
-                Text("CloseCut reads your private history locally to find patterns in what you watch, save, feel, and revisit.")
-                    .font(.subheadline)
+                Text(summary.overviewStats.watchedLabel)
+                    .font(.headline.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textSecondary)
-                    .lineSpacing(3)
-                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(summary.overviewStats.movieSeriesText)
+                    .font(.subheadline)
+                    .foregroundStyle(CloseCutColors.textTertiary)
             }
 
-            HStack(spacing: 10) {
-                metricPill(
-                    value: "\(summary.totalWatchedCount)",
-                    label: "Watched"
-                )
-
-                metricPill(
-                    value: "\(summary.savedWatchlistCount)",
-                    label: "Saved"
-                )
+            if summary.hasEnoughData == false {
+                Text("Add a few more watches or saved picks to make these insights sharper.")
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(CloseCutColors.input.opacity(0.68))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
         }
-        .padding(18)
-        .background(heroBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .padding(20)
+        .background(premiumBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
+        .shadow(color: .black.opacity(0.18), radius: 20, x: 0, y: 12)
     }
 
-    private func metricPill(
-        value: String,
-        label: String
-    ) -> some View {
-        HStack(spacing: 6) {
-            Text(value)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(CloseCutColors.textPrimary)
-
-            Text(label)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(CloseCutColors.textTertiary)
-        }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 8)
-        .background(CloseCutColors.input.opacity(0.8))
-        .clipShape(Capsule())
-    }
-
-    private var heroBackground: some View {
+    private var premiumBackground: some View {
         ZStack {
             LinearGradient(
                 colors: [
                     CloseCutColors.cardElevated,
                     CloseCutColors.card,
-                    CloseCutColors.accent.opacity(0.10)
+                    CloseCutColors.accent.opacity(0.12)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -156,41 +157,116 @@ struct InsightsView: View {
 
             RadialGradient(
                 colors: [
-                    CloseCutColors.accentLight.opacity(0.16),
+                    CloseCutColors.accentLight.opacity(0.18),
                     .clear
                 ],
                 center: .topTrailing,
+                startRadius: 16,
+                endRadius: 260
+            )
+
+            RadialGradient(
+                colors: [
+                    CloseCutColors.accent.opacity(0.12),
+                    .clear
+                ],
+                center: .bottomLeading,
                 startRadius: 20,
-                endRadius: 250
+                endRadius: 240
             )
         }
     }
 
-    // MARK: - Early State
+    // MARK: - Big Stats
 
-    private var earlyStateSection: some View {
-        insightCard(
-            title: "Add a few more signals",
-            icon: "chart.line.uptrend.xyaxis"
+    private var bigStatsGrid: some View {
+        LazyVGrid(
+            columns: [
+                GridItem(.flexible(), spacing: 12),
+                GridItem(.flexible(), spacing: 12)
+            ],
+            spacing: 12
         ) {
-            Text("Insights get sharper after a few watched titles, saved picks, moods, or quick reactions. Your data stays private and local.")
-                .font(.subheadline)
-                .foregroundStyle(CloseCutColors.textSecondary)
-                .lineSpacing(3)
-                .fixedSize(horizontal: false, vertical: true)
+            bigStatCard(
+                value: "\(summary.overviewStats.movieCount)",
+                title: "Movies",
+                subtitle: "watched",
+                icon: "film.fill"
+            )
+
+            bigStatCard(
+                value: "\(summary.overviewStats.seriesCount)",
+                title: "Series",
+                subtitle: "watched",
+                icon: "tv.fill"
+            )
+
+            bigStatCard(
+                value: "\(summary.overviewStats.savedCount)",
+                title: "Saved",
+                subtitle: "for later",
+                icon: "bookmark.fill"
+            )
+
+            bigStatCard(
+                value: summary.overviewStats.averageIntensityText,
+                title: "Intensity",
+                subtitle: "average",
+                icon: "waveform.path.ecg"
+            )
         }
     }
 
-    // MARK: - Taste
+    private func bigStatCard(
+        value: String,
+        title: String,
+        subtitle: String,
+        icon: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Image(systemName: icon)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CloseCutColors.accentLight)
+                .frame(width: 30, height: 30)
+                .background(CloseCutColors.input)
+                .clipShape(Circle())
 
-    private var tasteProfileSection: some View {
-        insightCard(
-            title: "Taste Profile",
+            VStack(alignment: .leading, spacing: 2) {
+                Text(value)
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textSecondary)
+
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(CloseCutColors.textTertiary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(15)
+        .background(CloseCutColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(CloseCutColors.separator, lineWidth: 0.5)
+        }
+    }
+
+    // MARK: - Taste Signature
+
+    private var tasteSignatureSection: some View {
+        premiumCard(
+            eyebrow: "Taste Signature",
             icon: "person.crop.square.filled.and.at.rectangle"
         ) {
-            VStack(alignment: .leading, spacing: 13) {
+            VStack(alignment: .leading, spacing: 14) {
                 Text(summary.tasteProfile.title)
-                    .font(.headline.weight(.semibold))
+                    .font(.title3.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -206,7 +282,6 @@ struct InsightsView: View {
                             traitRow(trait)
                         }
                     }
-                    .padding(.top, 2)
                 }
             }
         }
@@ -238,81 +313,82 @@ struct InsightsView: View {
         }
     }
 
-    // MARK: - Mood
+    // MARK: - Media Type
 
-    private var moodPatternSection: some View {
-        insightCard(
-            title: "Mood Patterns",
-            icon: "heart.text.square.fill"
+    private var mediaTypeSection: some View {
+        premiumCard(
+            eyebrow: "Movies vs Series",
+            icon: "rectangle.split.2x1.fill"
         ) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(summary.moodPattern.title)
+            VStack(alignment: .leading, spacing: 14) {
+                Text(summary.mediaTypeBreakdown.title)
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
 
-                Text(summary.moodPattern.summary)
+                Text(summary.mediaTypeBreakdown.summary)
                     .font(.subheadline)
                     .foregroundStyle(CloseCutColors.textSecondary)
-                    .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
 
+                segmentedDistributionBar(
+                    items: summary.mediaTypeBreakdown.items
+                )
+
                 VStack(spacing: 10) {
-                    if let dominantMood = summary.moodPattern.dominantMood {
-                        miniMetricRow(
-                            icon: "face.smiling.fill",
-                            title: "Dominant mood",
-                            value: dominantMood
-                        )
+                    ForEach(summary.mediaTypeBreakdown.items) { item in
+                        breakdownRow(item)
                     }
-
-                    if let dominantSentiment = summary.moodPattern.dominantSentiment {
-                        miniMetricRow(
-                            icon: "bolt.heart.fill",
-                            title: "Dominant reaction",
-                            value: dominantSentiment
-                        )
-                    }
-
-                    miniMetricRow(
-                        icon: "waveform.path.ecg",
-                        title: "Emotional signals",
-                        value: "\(summary.moodPattern.emotionalSignalCount)"
-                    )
                 }
             }
         }
     }
 
-    // MARK: - Genre
+    private func segmentedDistributionBar(
+        items: [InsightBreakdownItem]
+    ) -> some View {
+        GeometryReader { proxy in
+            let totalWidth = proxy.size.width
+            let totalCount = max(items.map { $0.count }.reduce(0, +), 1)
 
-    private var genrePatternSection: some View {
-        insightCard(
-            title: "Genre Patterns",
+            HStack(spacing: 4) {
+                ForEach(items) { item in
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(item.id == "movies" ? CloseCutColors.accent : CloseCutColors.accentLight.opacity(0.72))
+                        .frame(width: max(8, totalWidth * CGFloat(item.count) / CGFloat(totalCount)))
+                }
+            }
+        }
+        .frame(height: 16)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    // MARK: - Genres
+
+    private var genreSection: some View {
+        premiumCard(
+            eyebrow: "Top Genres",
             icon: "square.stack.3d.up.fill"
         ) {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 14) {
                 Text(summary.genrePattern.title)
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
 
                 Text(summary.genrePattern.summary)
                     .font(.subheadline)
                     .foregroundStyle(CloseCutColors.textSecondary)
-                    .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if summary.genrePattern.watchedGenres.isEmpty == false {
-                    genreList(
+                    barChartSection(
                         title: "Watched",
                         genres: summary.genrePattern.watchedGenres
                     )
                 }
 
                 if summary.genrePattern.watchlistGenres.isEmpty == false {
-                    genreList(
-                        title: "Saved",
+                    barChartSection(
+                        title: "Saved for later",
                         genres: summary.genrePattern.watchlistGenres
                     )
                 }
@@ -321,35 +397,185 @@ struct InsightsView: View {
                     Text("Overlap: \(summary.genrePattern.overlapGenres.prefix(3).joined(separator: ", "))")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(CloseCutColors.accentLight)
-                        .padding(10)
+                        .padding(11)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(CloseCutColors.input.opacity(0.74))
-                        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                        .background(CloseCutColors.input.opacity(0.72))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
             }
         }
     }
 
-    private func genreList(
+    private func barChartSection(
         title: String,
         genres: [GenreCount]
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(CloseCutColors.textTertiary)
                 .textCase(.uppercase)
                 .tracking(0.8)
 
-            FlowLayout(spacing: 8) {
+            VStack(spacing: 10) {
                 ForEach(genres) { genre in
-                    Text("\(genre.name) \(genre.count)")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(CloseCutColors.textSecondary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(CloseCutColors.input)
-                        .clipShape(Capsule())
+                    genreBarRow(
+                        genre: genre,
+                        maxCount: max(genres.map { $0.count }.max() ?? 1, 1)
+                    )
+                }
+            }
+        }
+    }
+
+    private func genreBarRow(
+        genre: GenreCount,
+        maxCount: Int
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text(genre.name)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+
+                Spacer()
+
+                Text("\(genre.count)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textTertiary)
+            }
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(CloseCutColors.input)
+
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(CloseCutColors.accent)
+                        .frame(
+                            width: proxy.size.width * CGFloat(genre.count) / CGFloat(maxCount)
+                        )
+                }
+            }
+            .frame(height: 10)
+        }
+    }
+
+    // MARK: - Mood
+
+    private var moodSection: some View {
+        premiumCard(
+            eyebrow: "Emotional Pattern",
+            icon: "heart.text.square.fill"
+        ) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(summary.moodBreakdown.title)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+
+                Text(summary.moodBreakdown.summary)
+                    .font(.subheadline)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if summary.moodBreakdown.items.isEmpty {
+                    emptyChartText("Add quick reactions or moods to see your emotional breakdown.")
+                } else {
+                    VStack(spacing: 10) {
+                        ForEach(summary.moodBreakdown.items) { item in
+                            breakdownRow(item)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Intensity
+
+    private var intensitySection: some View {
+        premiumCard(
+            eyebrow: "Intensity",
+            icon: "waveform.path.ecg"
+        ) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(summary.intensityInsight.title)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+
+                Text(summary.intensityInsight.summary)
+                    .font(.subheadline)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 12) {
+                    compactStat(
+                        value: summary.overviewStats.averageIntensityText,
+                        label: "Average"
+                    )
+
+                    compactStat(
+                        value: "\(summary.intensityInsight.highIntensityCount)",
+                        label: "High intensity"
+                    )
+
+                    compactStat(
+                        value: "\(summary.intensityInsight.totalSignalCount)",
+                        label: "Signals"
+                    )
+                }
+            }
+        }
+    }
+
+    private func compactStat(
+        value: String,
+        label: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(value)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(CloseCutColors.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(CloseCutColors.textTertiary)
+                .textCase(.uppercase)
+                .tracking(0.6)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(CloseCutColors.input.opacity(0.72))
+        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+    }
+
+    // MARK: - Watch Context
+
+    private var watchContextSection: some View {
+        premiumCard(
+            eyebrow: "Where You Watch",
+            icon: "play.rectangle.fill"
+        ) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(summary.watchContextBreakdown.title)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+
+                Text(summary.watchContextBreakdown.summary)
+                    .font(.subheadline)
+                    .foregroundStyle(CloseCutColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if summary.watchContextBreakdown.items.isEmpty {
+                    emptyChartText("Log watch context to understand where your memories happen.")
+                } else {
+                    VStack(spacing: 10) {
+                        ForEach(summary.watchContextBreakdown.items) { item in
+                            breakdownRow(item)
+                        }
+                    }
                 }
             }
         }
@@ -357,31 +583,47 @@ struct InsightsView: View {
 
     // MARK: - Rewatch
 
-    private var rewatchCandidatesSection: some View {
-        insightCard(
-            title: "Rewatch Candidates",
+    private var rewatchRadarSection: some View {
+        premiumCard(
+            eyebrow: "Rewatch Radar",
             icon: "arrow.clockwise.heart.fill"
         ) {
-            VStack(alignment: .leading, spacing: 12) {
-                if summary.rewatchCandidates.isEmpty {
-                    Text("No strong rewatch candidates yet.")
+            VStack(alignment: .leading, spacing: 14) {
+                if let topCandidate = summary.rewatchCandidates.first {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\(summary.rewatchCandidates.count) titles are worth revisiting")
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.textPrimary)
+
+                        Text("Top pick: \(topCandidate.title)")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(CloseCutColors.accentLight)
+
+                        Text(topCandidate.reason)
+                            .font(.caption)
+                            .foregroundStyle(CloseCutColors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    VStack(spacing: 10) {
+                        ForEach(summary.rewatchCandidates.prefix(4)) { candidate in
+                            rewatchCandidateRow(candidate)
+
+                            if candidate.id != summary.rewatchCandidates.prefix(4).last?.id {
+                                Divider()
+                                    .overlay(CloseCutColors.separator)
+                            }
+                        }
+                    }
+                } else {
+                    Text("No strong rewatch candidates yet")
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(CloseCutColors.textPrimary)
 
                     Text("CloseCut looks for older watches with strong emotional signals, high ratings, or tags like comfort, favorite, or rewatch.")
                         .font(.subheadline)
                         .foregroundStyle(CloseCutColors.textSecondary)
-                        .lineSpacing(3)
                         .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    ForEach(summary.rewatchCandidates.prefix(4)) { candidate in
-                        rewatchCandidateRow(candidate)
-
-                        if candidate.id != summary.rewatchCandidates.prefix(4).last?.id {
-                            Divider()
-                                .overlay(CloseCutColors.separator)
-                        }
-                    }
                 }
             }
         }
@@ -397,7 +639,7 @@ struct InsightsView: View {
 
                 if let url = TMDBImageURLBuilder.imageURL(
                     path: candidate.posterPath,
-                    size: .posterSmall
+                    size: .posterMedium
                 ) {
                     AsyncImage(url: url) { phase in
                         switch phase {
@@ -453,51 +695,50 @@ struct InsightsView: View {
 
     // MARK: - Watchlist
 
-    private var watchlistPatternSection: some View {
-        insightCard(
-            title: "Watchlist Patterns",
+    private var watchlistDirectionSection: some View {
+        premiumCard(
+            eyebrow: "Watchlist Direction",
             icon: "bookmark.fill"
         ) {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 14) {
                 Text(summary.watchlistPattern.title)
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
 
                 Text(summary.watchlistPattern.summary)
                     .font(.subheadline)
                     .foregroundStyle(CloseCutColors.textSecondary)
-                    .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
 
-                VStack(spacing: 10) {
-                    miniMetricRow(
-                        icon: "film.fill",
-                        title: "Movies",
-                        value: "\(summary.watchlistPattern.movieCount)"
+                HStack(spacing: 12) {
+                    compactStat(
+                        value: "\(summary.watchlistPattern.savedCount)",
+                        label: "Saved"
                     )
 
-                    miniMetricRow(
-                        icon: "tv.fill",
-                        title: "Series",
-                        value: "\(summary.watchlistPattern.seriesCount)"
+                    compactStat(
+                        value: "\(summary.watchlistPattern.movieCount)",
+                        label: "Movies"
                     )
 
-                    if let oldestSavedTitle = summary.watchlistPattern.oldestSavedTitle {
-                        miniMetricRow(
-                            icon: "clock.fill",
-                            title: "Oldest saved",
-                            value: oldestSavedTitle
-                        )
-                    }
+                    compactStat(
+                        value: "\(summary.watchlistPattern.seriesCount)",
+                        label: "Series"
+                    )
+                }
 
-                    if let highestRatedTitle = summary.watchlistPattern.highestRatedTitle {
-                        miniMetricRow(
-                            icon: "star.fill",
-                            title: "Highest rated saved",
-                            value: highestRatedTitle
-                        )
-                    }
+                if let highestRatedTitle = summary.watchlistPattern.highestRatedTitle {
+                    detailCallout(
+                        icon: "star.fill",
+                        text: "Highest-rated saved title: \(highestRatedTitle)"
+                    )
+                }
+
+                if let oldestSavedTitle = summary.watchlistPattern.oldestSavedTitle {
+                    detailCallout(
+                        icon: "clock.fill",
+                        text: "Waiting the longest: \(oldestSavedTitle)"
+                    )
                 }
             }
         }
@@ -506,11 +747,11 @@ struct InsightsView: View {
     // MARK: - Privacy
 
     private var privacySection: some View {
-        insightCard(
-            title: "Privacy",
+        premiumCard(
+            eyebrow: "Private by default",
             icon: "lock.fill"
         ) {
-            Text("Insights are generated from your local Personal library and saved picks. They are not shared with Circles unless you explicitly share something later.")
+            Text("These insights are generated from your local Personal library and saved picks. They are not shared with Circles unless you explicitly share something later.")
                 .font(.caption)
                 .foregroundStyle(CloseCutColors.textTertiary)
                 .lineSpacing(3)
@@ -520,12 +761,12 @@ struct InsightsView: View {
 
     // MARK: - Components
 
-    private func insightCard<Content: View>(
-        title: String,
+    private func premiumCard<Content: View>(
+        eyebrow: String,
         icon: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 15) {
             HStack(spacing: 9) {
                 Image(systemName: icon)
                     .font(.caption.weight(.semibold))
@@ -534,7 +775,7 @@ struct InsightsView: View {
                     .background(CloseCutColors.input)
                     .clipShape(Circle())
 
-                Text(title)
+                Text(eyebrow)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(CloseCutColors.textTertiary)
                     .textCase(.uppercase)
@@ -547,67 +788,97 @@ struct InsightsView: View {
         }
         .padding(16)
         .background(CloseCutColors.card)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
         }
     }
 
-    private func miniMetricRow(
-        icon: String,
-        title: String,
-        value: String
+    private func breakdownRow(
+        _ item: InsightBreakdownItem
     ) -> some View {
-        HStack(alignment: .top, spacing: 10) {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .center, spacing: 9) {
+                Image(systemName: item.systemImage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.accentLight)
+                    .frame(width: 26, height: 26)
+                    .background(CloseCutColors.input)
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
+
+                    if let subtitle = item.subtitle {
+                        Text(subtitle)
+                            .font(.caption2)
+                            .foregroundStyle(CloseCutColors.textTertiary)
+                    }
+                }
+
+                Spacer()
+
+                Text("\(item.count)")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(CloseCutColors.textPrimary)
+
+                Text(item.percentageText)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(CloseCutColors.textTertiary)
+                    .frame(width: 38, alignment: .trailing)
+            }
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(CloseCutColors.input)
+
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(CloseCutColors.accent)
+                        .frame(
+                            width: proxy.size.width * CGFloat(item.percentage / 100)
+                        )
+                }
+            }
+            .frame(height: 9)
+        }
+    }
+
+    private func emptyChartText(
+        _ text: String
+    ) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(CloseCutColors.textTertiary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(CloseCutColors.input.opacity(0.72))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func detailCallout(
+        icon: String,
+        text: String
+    ) -> some View {
+        HStack(alignment: .top, spacing: 9) {
             Image(systemName: icon)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(CloseCutColors.accentLight)
-                .frame(width: 28, height: 28)
-                .background(CloseCutColors.input)
-                .clipShape(Circle())
+                .padding(.top, 2)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(CloseCutColors.textTertiary)
-                    .textCase(.uppercase)
-                    .tracking(0.7)
-
-                Text(value)
-                    .font(.subheadline)
-                    .foregroundStyle(CloseCutColors.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(CloseCutColors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             Spacer(minLength: 0)
         }
-    }
-}
-
-// MARK: - Flow Layout
-
-private struct FlowLayout<Content: View>: View {
-    let spacing: CGFloat
-    let content: Content
-
-    init(
-        spacing: CGFloat = 8,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.spacing = spacing
-        self.content = content()
-    }
-
-    var body: some View {
-        LazyVGrid(
-            columns: [
-                GridItem(.adaptive(minimum: 96), spacing: spacing)
-            ],
-            alignment: .leading,
-            spacing: spacing
-        ) {
-            content
-        }
+        .padding(12)
+        .background(CloseCutColors.input.opacity(0.72))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }

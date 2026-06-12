@@ -21,6 +21,11 @@ final class InsightsGenerator {
             .filter { $0.deletedAt == nil }
             .filter { $0.status == .saved }
 
+        let overviewStats = buildOverviewStats(
+            entries: activeEntries,
+            watchlistItems: savedItems
+        )
+
         let tasteProfile = buildTasteProfile(
             entries: activeEntries,
             watchlistItems: savedItems
@@ -44,14 +49,85 @@ final class InsightsGenerator {
             now: now
         )
 
+        let mediaTypeBreakdown = buildMediaTypeBreakdown(
+            overviewStats: overviewStats
+        )
+
+        let moodBreakdown = buildMoodBreakdown(
+            entries: activeEntries
+        )
+
+        let watchContextBreakdown = buildWatchContextBreakdown(
+            entries: activeEntries
+        )
+
+        let intensityInsight = buildIntensityInsight(
+            entries: activeEntries,
+            overviewStats: overviewStats
+        )
+
         return InsightsSummary(
+            overviewStats: overviewStats,
             totalWatchedCount: activeEntries.count,
             savedWatchlistCount: savedItems.count,
             tasteProfile: tasteProfile,
             moodPattern: moodPattern,
             genrePattern: genrePattern,
             watchlistPattern: watchlistPattern,
-            rewatchCandidates: rewatchCandidates
+            rewatchCandidates: rewatchCandidates,
+            mediaTypeBreakdown: mediaTypeBreakdown,
+            moodBreakdown: moodBreakdown,
+            watchContextBreakdown: watchContextBreakdown,
+            intensityInsight: intensityInsight
+        )
+    }
+
+    // MARK: - Overview
+
+    private func buildOverviewStats(
+        entries: [Entry],
+        watchlistItems: [WatchlistItem]
+    ) -> InsightOverviewStats {
+        let movieCount = entries.filter { $0.type == .movie }.count
+        let seriesCount = entries.filter { $0.type == .series }.count
+
+        let quickAddCount = entries.filter { $0.sourceType == .quickAdd }.count
+        let fullEntryCount = entries.filter { $0.sourceType == .fullEntry }.count
+
+        let sharedMemoryCount = entries.filter {
+            $0.visibility == .circle &&
+            $0.sharedCircleIds.isEmpty == false
+        }.count
+
+        let cinemaWatchCount = entries.filter {
+            $0.watchContext == .cinema
+        }.count
+
+        let intensityValues = entries
+            .map { $0.intensity }
+            .filter { $0 > 0 }
+
+        let averageIntensity: Double
+
+        if intensityValues.isEmpty {
+            averageIntensity = 0
+        } else {
+            averageIntensity = Double(intensityValues.reduce(0, +)) / Double(intensityValues.count)
+        }
+
+        let highIntensityCount = entries.filter { $0.intensity >= 4 }.count
+
+        return InsightOverviewStats(
+            watchedCount: entries.count,
+            movieCount: movieCount,
+            seriesCount: seriesCount,
+            savedCount: watchlistItems.count,
+            quickAddCount: quickAddCount,
+            fullEntryCount: fullEntryCount,
+            sharedMemoryCount: sharedMemoryCount,
+            cinemaWatchCount: cinemaWatchCount,
+            averageIntensity: averageIntensity,
+            highIntensityCount: highIntensityCount
         )
     }
 
@@ -157,16 +233,14 @@ final class InsightsGenerator {
         if finalTraits.isEmpty {
             title = "Your taste is still forming"
             summary = "CloseCut found early signals, but a few more watched titles will make your profile sharper."
-        } else if let firstTrait = finalTraits.first {
-            title = "Your taste leans \(firstTrait.title.lowercased())"
-            summary = finalTraits
+        } else {
+            let signature = finalTraits
                 .map { $0.title.lowercased() }
                 .prefix(3)
                 .joined(separator: ", ")
-                .capitalizedSentence + " are shaping your CloseCut identity."
-        } else {
-            title = "Your taste is taking shape"
-            summary = "Your watched history and saved picks are starting to reveal patterns."
+
+            title = "Your taste signature is forming"
+            summary = "\(signature.capitalizedSentence) are shaping your CloseCut identity."
         }
 
         return TasteProfileInsight(
@@ -235,6 +309,62 @@ final class InsightsGenerator {
         )
     }
 
+    private func buildMoodBreakdown(
+        entries: [Entry]
+    ) -> MoodBreakdownInsight {
+        let sentimentValues = entries.compactMap { entry -> String? in
+            if let quickSentiment = entry.quickSentiment {
+                return quickSentiment.displayName
+            }
+
+            let mood = entry.mood.trimmed
+            return mood.isEmpty ? nil : mood
+        }
+
+        let items = buildBreakdownItems(
+            values: sentimentValues,
+            total: max(sentimentValues.count, entries.count),
+            iconProvider: { value in
+                let lowered = value.lowercased()
+
+                if lowered.contains("love") {
+                    return "heart.fill"
+                }
+
+                if lowered.contains("stay") {
+                    return "sparkles"
+                }
+
+                if lowered.contains("no") || lowered.contains("not") {
+                    return "hand.thumbsdown.fill"
+                }
+
+                if lowered.contains("mixed") || lowered.contains("maybe") {
+                    return "circle.lefthalf.filled"
+                }
+
+                return "face.smiling.fill"
+            }
+        )
+
+        let title: String
+        let summary: String
+
+        if let top = items.first {
+            title = "\(top.title) leads your reactions"
+            summary = "Your emotional pattern is strongest around \(top.title.lowercased())."
+        } else {
+            title = "No reaction breakdown yet"
+            summary = "Add quick reactions, moods, or takeaways to make this chart meaningful."
+        }
+
+        return MoodBreakdownInsight(
+            title: title,
+            summary: summary,
+            items: items
+        )
+    }
+
     // MARK: - Genres
 
     private func buildGenrePattern(
@@ -275,6 +405,146 @@ final class InsightsGenerator {
             watchedGenres: watchedGenres,
             watchlistGenres: watchlistGenres,
             overlapGenres: overlapGenres
+        )
+    }
+
+    // MARK: - Media Type
+
+    private func buildMediaTypeBreakdown(
+        overviewStats: InsightOverviewStats
+    ) -> MediaTypeBreakdownInsight {
+        let total = max(overviewStats.watchedCount, 1)
+
+        let items = [
+            InsightBreakdownItem(
+                id: "movies",
+                title: "Movies",
+                subtitle: "Watched films",
+                count: overviewStats.movieCount,
+                percentage: percentage(
+                    count: overviewStats.movieCount,
+                    total: total
+                ),
+                systemImage: "film.fill"
+            ),
+            InsightBreakdownItem(
+                id: "series",
+                title: "Series",
+                subtitle: "Watched shows",
+                count: overviewStats.seriesCount,
+                percentage: percentage(
+                    count: overviewStats.seriesCount,
+                    total: total
+                ),
+                systemImage: "tv.fill"
+            )
+        ]
+
+        let title: String
+        let summary: String
+
+        if overviewStats.watchedCount == 0 {
+            title = "No watched titles yet"
+            summary = "Add movies or series to start building your visual taste profile."
+        } else if overviewStats.movieCount > overviewStats.seriesCount {
+            title = "Your library leans movie-first"
+            summary = "\(overviewStats.movieCount) of your watched stories are movies."
+        } else if overviewStats.seriesCount > overviewStats.movieCount {
+            title = "Your library leans series-first"
+            summary = "\(overviewStats.seriesCount) of your watched stories are series."
+        } else {
+            title = "Your library is balanced"
+            summary = "Movies and series are showing up evenly in your history."
+        }
+
+        return MediaTypeBreakdownInsight(
+            title: title,
+            summary: summary,
+            items: items
+        )
+    }
+
+    // MARK: - Watch Context
+
+    private func buildWatchContextBreakdown(
+        entries: [Entry]
+    ) -> WatchContextBreakdownInsight {
+        let values = entries.map { entry in
+            entry.watchContext.rawValue.readableIdentifier
+        }
+
+        let items = buildBreakdownItems(
+            values: values,
+            total: max(entries.count, 1),
+            iconProvider: { value in
+                let lowered = value.lowercased()
+
+                if lowered.contains("cinema") || lowered.contains("theater") {
+                    return "popcorn.fill"
+                }
+
+                if lowered.contains("home") {
+                    return "house.fill"
+                }
+
+                if lowered.contains("travel") {
+                    return "airplane"
+                }
+
+                return "play.rectangle.fill"
+            }
+        )
+
+        let title: String
+        let summary: String
+
+        if let top = items.first {
+            title = "\(top.title) is your main watch context"
+            summary = "\(top.count) watches happened in this context."
+        } else {
+            title = "No watch context yet"
+            summary = "Log where you watch to unlock better context insights."
+        }
+
+        return WatchContextBreakdownInsight(
+            title: title,
+            summary: summary,
+            items: items
+        )
+    }
+
+    // MARK: - Intensity
+
+    private func buildIntensityInsight(
+        entries: [Entry],
+        overviewStats: InsightOverviewStats
+    ) -> IntensityInsight {
+        let signalCount = entries.filter {
+            $0.intensity > 0 ||
+            $0.quickSentiment != nil ||
+            $0.takeaway.trimmed.isEmpty == false
+        }.count
+
+        let title: String
+        let summary: String
+
+        if overviewStats.averageIntensity >= 4 {
+            title = "Your watches leave a strong impression"
+            summary = "Your average intensity is \(overviewStats.averageIntensityText), with \(overviewStats.highIntensityCount) high-intensity memories."
+        } else if overviewStats.averageIntensity > 0 {
+            title = "Your emotional intensity is building"
+            summary = "Your average intensity is \(overviewStats.averageIntensityText). Add more reactions to sharpen this signal."
+        } else {
+            title = "No intensity signal yet"
+            summary = "Add intensity ratings or quick reactions to reveal what hits hardest."
+        }
+
+        return IntensityInsight(
+            title: title,
+            summary: summary,
+            averageIntensity: overviewStats.averageIntensity,
+            highIntensityCount: overviewStats.highIntensityCount,
+            totalSignalCount: signalCount
         )
     }
 
@@ -403,7 +673,7 @@ final class InsightsGenerator {
             .map { $0 }
     }
 
-    // MARK: - Helpers
+    // MARK: - Genre Helpers
 
     private func countEntryGenres(
         _ entries: [Entry]
@@ -465,6 +735,51 @@ final class InsightsGenerator {
             .map { $0 }
     }
 
+    // MARK: - Generic Breakdown Helpers
+
+    private func buildBreakdownItems(
+        values: [String],
+        total: Int,
+        iconProvider: (String) -> String
+    ) -> [InsightBreakdownItem] {
+        let grouped = Dictionary(grouping: values, by: { $0 })
+
+        return grouped
+            .map { value, groupedValues in
+                InsightBreakdownItem(
+                    id: value.normalizedTitleKey,
+                    title: value,
+                    subtitle: nil,
+                    count: groupedValues.count,
+                    percentage: percentage(
+                        count: groupedValues.count,
+                        total: total
+                    ),
+                    systemImage: iconProvider(value)
+                )
+            }
+            .sorted { first, second in
+                if first.count != second.count {
+                    return first.count > second.count
+                }
+
+                return first.title < second.title
+            }
+            .prefix(5)
+            .map { $0 }
+    }
+
+    private func percentage(
+        count: Int,
+        total: Int
+    ) -> Double {
+        guard total > 0 else {
+            return 0
+        }
+
+        return (Double(count) / Double(total)) * 100
+    }
+
     private func mostCommonString(
         _ values: [String]
     ) -> String? {
@@ -491,5 +806,11 @@ private extension String {
         }
 
         return String(first).uppercased() + dropFirst()
+    }
+
+    var readableIdentifier: String {
+        replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .capitalizedSentence
     }
 }
