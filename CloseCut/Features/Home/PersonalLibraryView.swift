@@ -25,7 +25,10 @@ struct PersonalLibraryView: View {
     let onPlanWatchlistItemWithCircle: (WatchlistItem) -> Void
 
     @StateObject private var quickPickViewModel = HomeQuickPickViewModel()
+
     @State private var isShowingInsights = false
+    @State private var isShowingWrapStories = false
+    @State private var selectedWrapSummary: WrapSummary?
 
     private let quickPickTargetCount = 3
 
@@ -104,6 +107,35 @@ struct PersonalLibraryView: View {
             .map { $0 }
     }
 
+    private var wrapAvailability: WrapAvailability {
+        WrapAvailabilityService.availability(
+            entries: activeEntries,
+            watchlistItems: savedWatchlistItems
+        )
+    }
+
+    private var promotedWrapSummary: WrapSummary? {
+        let generator = MonthlyWrapGenerator()
+
+        if wrapAvailability.shouldPromoteMonthlyWrap,
+           let latestMonthlyPeriod = wrapAvailability.latestMonthlyPeriod {
+            return generator.generate(
+                period: latestMonthlyPeriod,
+                entries: activeEntries,
+                watchlistItems: savedWatchlistItems
+            )
+        }
+
+        if wrapAvailability.canShowAllTimeRecap {
+            return generator.generateAllTime(
+                entries: activeEntries,
+                watchlistItems: savedWatchlistItems
+            )
+        }
+
+        return nil
+    }
+
     private var shouldShowHistoryProgress: Bool {
         activeEntries.count > 0 && activeEntries.count < quickPickTargetCount
     }
@@ -175,6 +207,14 @@ struct PersonalLibraryView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
+        .fullScreenCover(isPresented: $isShowingWrapStories) {
+            if let selectedWrapSummary {
+                WrapStoriesView(
+                    summary: selectedWrapSummary,
+                    onOpenShare: nil
+                )
+            }
+        }
     }
 
     private var libraryContent: some View {
@@ -202,6 +242,18 @@ struct PersonalLibraryView: View {
                         }
                     )
 
+                    if let promotedWrapSummary {
+                        WrapPreviewCard(
+                            summary: promotedWrapSummary,
+                            isPromoted: wrapAvailability.shouldPromoteMonthlyWrap,
+                            onOpen: {
+                                openWrapStories(
+                                    promotedWrapSummary
+                                )
+                            }
+                        )
+                    }
+
                     TasteInsightPreviewCard(
                         entries: activeEntries,
                         watchlistItems: savedWatchlistItems,
@@ -227,13 +279,27 @@ struct PersonalLibraryView: View {
             }
 
             if activeEntries.isEmpty && savedWatchlistItems.isEmpty == false {
-                TasteInsightPreviewCard(
-                    entries: activeEntries,
-                    watchlistItems: savedWatchlistItems,
-                    onOpen: {
-                        isShowingInsights = true
+                VStack(spacing: 16) {
+                    if let promotedWrapSummary {
+                        WrapPreviewCard(
+                            summary: promotedWrapSummary,
+                            isPromoted: wrapAvailability.shouldPromoteMonthlyWrap,
+                            onOpen: {
+                                openWrapStories(
+                                    promotedWrapSummary
+                                )
+                            }
+                        )
                     }
-                )
+
+                    TasteInsightPreviewCard(
+                        entries: activeEntries,
+                        watchlistItems: savedWatchlistItems,
+                        onOpen: {
+                            isShowingInsights = true
+                        }
+                    )
+                }
                 .padding(.horizontal, 20)
             }
 
@@ -362,6 +428,16 @@ struct PersonalLibraryView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(CloseCutColors.separator, lineWidth: 0.5)
+        }
+    }
+
+    private func openWrapStories(
+        _ summary: WrapSummary
+    ) {
+        selectedWrapSummary = summary
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            isShowingWrapStories = true
         }
     }
 }

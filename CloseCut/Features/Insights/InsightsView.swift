@@ -13,11 +13,60 @@ struct InsightsView: View {
     let entries: [Entry]
     let watchlistItems: [WatchlistItem]
 
+    @State private var isShowingWrapStories = false
+    @State private var selectedWrapSummary: WrapSummary?
+
     private var summary: InsightsSummary {
         InsightsGenerator().generate(
             entries: entries,
             watchlistItems: watchlistItems
         )
+    }
+
+    private var activeEntries: [Entry] {
+        entries
+            .filter { $0.deletedAt == nil }
+            .filter { $0.title.trimmed.isEmpty == false }
+    }
+
+    private var savedWatchlistItems: [WatchlistItem] {
+        watchlistItems
+            .filter { $0.deletedAt == nil }
+            .filter { $0.status == .saved }
+    }
+
+    private var wrapAvailability: WrapAvailability {
+        WrapAvailabilityService.availability(
+            entries: activeEntries,
+            watchlistItems: savedWatchlistItems
+        )
+    }
+
+    private var latestMonthlyWrapSummary: WrapSummary? {
+        guard let period = wrapAvailability.latestMonthlyPeriod else {
+            return nil
+        }
+
+        return MonthlyWrapGenerator().generate(
+            period: period,
+            entries: activeEntries,
+            watchlistItems: savedWatchlistItems
+        )
+    }
+
+    private var allTimeWrapSummary: WrapSummary? {
+        guard wrapAvailability.canShowAllTimeRecap else {
+            return nil
+        }
+
+        return MonthlyWrapGenerator().generateAllTime(
+            entries: activeEntries,
+            watchlistItems: savedWatchlistItems
+        )
+    }
+
+    private var shouldShowWrapSection: Bool {
+        latestMonthlyWrapSummary != nil || allTimeWrapSummary != nil
     }
 
     var body: some View {
@@ -29,6 +78,10 @@ struct InsightsView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
                         heroSection
+
+                        if shouldShowWrapSection {
+                            wrapSection
+                        }
 
                         bigStatsGrid
 
@@ -74,6 +127,14 @@ struct InsightsView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .fullScreenCover(isPresented: $isShowingWrapStories) {
+            if let selectedWrapSummary {
+                WrapStoriesView(
+                    summary: selectedWrapSummary,
+                    onOpenShare: nil
+                )
+            }
+        }
     }
 
     // MARK: - Hero
@@ -174,6 +235,53 @@ struct InsightsView: View {
                 startRadius: 20,
                 endRadius: 240
             )
+        }
+    }
+
+    // MARK: - Wrap
+
+    private var wrapSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Wrap Stories")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(CloseCutColors.textPrimary)
+
+                    Text("Replay your latest recap as an emotional story experience.")
+                        .font(.caption)
+                        .foregroundStyle(CloseCutColors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+            }
+
+            VStack(spacing: 14) {
+                if let latestMonthlyWrapSummary {
+                    WrapPreviewCard(
+                        summary: latestMonthlyWrapSummary,
+                        isPromoted: wrapAvailability.shouldPromoteMonthlyWrap,
+                        onOpen: {
+                            openWrapStories(
+                                latestMonthlyWrapSummary
+                            )
+                        }
+                    )
+                }
+
+                if let allTimeWrapSummary {
+                    WrapPreviewCard(
+                        summary: allTimeWrapSummary,
+                        isPromoted: false,
+                        onOpen: {
+                            openWrapStories(
+                                allTimeWrapSummary
+                            )
+                        }
+                    )
+                }
+            }
         }
     }
 
@@ -751,7 +859,7 @@ struct InsightsView: View {
             eyebrow: "Private by default",
             icon: "lock.fill"
         ) {
-            Text("These insights are generated from your local Personal library and saved picks. They are not shared with Circles unless you explicitly share something later.")
+            Text("These insights and Wrap Stories are generated from your local Personal library and saved picks. They are not shared with Circles unless you explicitly share something later.")
                 .font(.caption)
                 .foregroundStyle(CloseCutColors.textTertiary)
                 .lineSpacing(3)
@@ -880,5 +988,15 @@ struct InsightsView: View {
         .padding(12)
         .background(CloseCutColors.input.opacity(0.72))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func openWrapStories(
+        _ summary: WrapSummary
+    ) {
+        selectedWrapSummary = summary
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            isShowingWrapStories = true
+        }
     }
 }
