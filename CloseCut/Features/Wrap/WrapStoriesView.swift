@@ -14,6 +14,7 @@ struct WrapStoriesView: View {
     let onOpenShare: (() -> Void)?
 
     @State private var currentIndex = 0
+    @State private var isShowingSharePreview = false
 
     private var pages: [WrapStoryPage] {
         WrapStoryPageFactory.pages(
@@ -44,6 +45,13 @@ struct WrapStoriesView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $isShowingSharePreview) {
+            WrapSharePreviewView(
+                summary: summary
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
     }
 
     // MARK: - Header
@@ -336,7 +344,11 @@ struct WrapStoriesView: View {
 
     private var shareCTA: some View {
         Button {
-            onOpenShare?()
+            if let onOpenShare {
+                onOpenShare()
+            } else {
+                isShowingSharePreview = true
+            }
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "square.and.arrow.up.fill")
